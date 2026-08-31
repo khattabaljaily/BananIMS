@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/items.css' %}?v=1.0">
+<link rel="stylesheet" href="{% static 'css/items.css' %}?v=2.0">
 <style>
 /* ═══════════════════════════════════════════════════════════
    CATEGORY PAGE
@@ -22,9 +22,9 @@
 }
 .cat-type-btn input[type=radio]{ display:none; }
 .cat-type-btn.active{
-  border-color:var(--indigo-500,#132539);
-  background:var(--indigo-50,#eaf0f5);
-  color:var(--indigo-700,#0a1622);
+  border-color:var(--indigo-500,var(--primary));
+  background:var(--indigo-50,var(--indigo-50));
+  color:var(--indigo-700,var(--indigo-700));
 }
 .cat-type-btn i{ font-size:1.1rem; }
 
@@ -79,7 +79,7 @@
   color:var(--text-muted,#9ca3af);
   transition:background .12s,color .12s;
 }
-.cat-tree-toggle:hover{ background:var(--indigo-50,#eaf0f5); color:var(--indigo-600,#1d3a56); }
+.cat-tree-toggle:hover{ background:var(--indigo-50,var(--indigo-50)); color:var(--indigo-600,var(--primary-hover)); }
 .cat-tree-toggle--leaf{ pointer-events:none; visibility:hidden; }
 .cat-toggle-icon{ font-size:.6rem; transition:transform .2s; }
 .cat-tree-row--root[data-expanded="0"] .cat-toggle-icon{ transform:rotate(-90deg); }
@@ -89,8 +89,8 @@
   width:2rem; height:2rem;
   display:flex; align-items:center; justify-content:center;
   border-radius:8px;
-  background:var(--indigo-50,#eaf0f5);
-  color:var(--indigo-600,#1d3a56);
+  background:var(--indigo-50,var(--indigo-50));
+  color:var(--indigo-600,var(--primary-hover));
   font-size:.85rem; flex-shrink:0;
 }
 [data-theme="dark"] .cat-root-icon-box{ background:rgba(19,37,57,.2); color:#a5b4fc; }
@@ -137,7 +137,7 @@
 [data-theme="dark"] .cat-tree-row--child .cat-name-text{ color:var(--text-primary,#e5e7eb); }
 
 /* Badges */
-.cat-badge-main{ background:#eaf0f5; color:#0a1622; border-radius:20px; padding:.15rem .6rem; font-size:.65rem; font-weight:700; white-space:nowrap; flex-shrink:0; }
+.cat-badge-main{ background:var(--indigo-50); color:var(--indigo-700); border-radius:20px; padding:.15rem .6rem; font-size:.65rem; font-weight:700; white-space:nowrap; flex-shrink:0; }
 .cat-badge-sub { background:#f0fdf4; color:#166534; border-radius:20px; padding:.15rem .6rem; font-size:.65rem; font-weight:700; white-space:nowrap; flex-shrink:0; }
 [data-theme="dark"] .cat-badge-main{ background:rgba(19,37,57,.2); color:#a5b4fc; }
 [data-theme="dark"] .cat-badge-sub { background:rgba(16,185,129,.2); color:#6ee7b7; }
@@ -146,8 +146,8 @@
 .cat-children-count{
   display:inline-flex; align-items:center; justify-content:center;
   min-width:1.25rem; height:1.25rem;
-  background:var(--indigo-100,#d6e2ea);
-  color:var(--indigo-700,#0a1622);
+  background:var(--indigo-100,var(--indigo-100));
+  color:var(--indigo-700,var(--indigo-700));
   border-radius:999px; font-size:.63rem; font-weight:700;
   padding:0 .3rem; flex-shrink:0;
 }
@@ -171,8 +171,8 @@
 }
 .cat-tree-ctrl-btn:hover{
   border-color:var(--indigo-400,#4a6e8c);
-  color:var(--indigo-600,#1d3a56);
-  background:var(--indigo-50,#eaf0f5);
+  color:var(--indigo-600,var(--primary-hover));
+  background:var(--indigo-50,var(--indigo-50));
 }
 @media(max-width:768px){ .cat-tree-controls{ display:none !important; } }
 
@@ -218,8 +218,8 @@
   width:2.2rem; height:2.2rem;
   display:flex; align-items:center; justify-content:center;
   border-radius:10px;
-  background:var(--indigo-50,#eaf0f5);
-  color:var(--indigo-600,#1d3a56);
+  background:var(--indigo-50,var(--indigo-50));
+  color:var(--indigo-600,var(--primary-hover));
   font-size:.9rem; flex-shrink:0;
 }
 [data-theme="dark"] .cat-mobile-icon-box{ background:rgba(19,37,57,.2); color:#a5b4fc; }

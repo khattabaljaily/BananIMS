@@ -61,7 +61,7 @@
     width:34px; height:34px; border-radius:50%; font-size:.75rem; font-weight:700;
     display:flex; align-items:center; justify-content:center; flex-shrink:0;
 }
-.sup-msg__avatar--admin { background:linear-gradient(135deg,#132539,#1d3a56); color:#fff; }
+.sup-msg__avatar--admin { background:linear-gradient(135deg,var(--primary),var(--primary-hover)); color:#fff; }
 .sup-msg__avatar--tenant { background:linear-gradient(135deg,#0ea5e9,#0284c7); color:#fff; }
 .sup-msg__content { flex:1; min-width:0; max-width:75%; background:var(--input-bg,#f8fafc); border-radius:18px; padding:1rem; box-shadow:0 1px 2px rgba(15,23,42,.05); }
 .sup-msg--admin .sup-msg__content { background:rgba(19,37,57,.08); }
@@ -85,7 +85,7 @@
     font-size:.85rem; font-weight:700; color:var(--text-main,#1e293b);
     margin-bottom:.85rem; display:flex; align-items:center; gap:.5rem;
 }
-.sup-reply__title i { color:#132539; }
+.sup-reply__title i { color:var(--primary); }
 .sup-reply__textarea {
     width:100%; border:1px solid var(--border-color,#e2e8f0); border-radius:10px;
     padding:.7rem 1rem; font-size:.84rem; line-height:1.6;
@@ -93,7 +93,7 @@
     resize:vertical; min-height:100px; outline:none; font-family:inherit;
     transition:border-color .15s;
 }
-.sup-reply__textarea:focus { border-color:#132539; }
+.sup-reply__textarea:focus { border-color:var(--primary); }
 .sup-reply__footer { display:flex; align-items:center; gap:.75rem; margin-top:.75rem; flex-wrap:wrap; }
 .sup-reply__status-label { font-size:.78rem; color:var(--text-muted,#64748b); }
 .sup-select {
@@ -113,7 +113,7 @@
     padding:.5rem 1.2rem; border-radius:10px; font-size:.82rem; font-weight:600;
     border:none; cursor:pointer; transition:.15s; text-decoration:none; display:inline-flex; align-items:center; gap:.4rem;
 }
-.sup-btn--primary { background:linear-gradient(135deg,#132539,#1d3a56); color:#fff; }
+.sup-btn--primary { background:linear-gradient(135deg,var(--primary),var(--primary-hover)); color:#fff; }
 .sup-btn--primary:hover { opacity:.9; }
 .sup-btn--outline {
     background:transparent; border:1px solid var(--border-color,#e2e8f0);
@@ -201,7 +201,7 @@
     <!-- Message thread -->
     <div class="sup-thread">
         <div class="sup-thread__header">
-            <i class="fas fa-comments" style="color:#132539;"></i>
+            <i class="fas fa-comments" style="color:var(--primary);"></i>
             المحادثة ({{ ticket_messages|length }} رسالة)
         </div>
         <div class="sup-thread__body">

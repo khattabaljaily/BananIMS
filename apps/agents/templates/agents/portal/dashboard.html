@@ -11,7 +11,7 @@
 /* ─── Greeting hero ─── */
 .dash-hero {
   border-radius: 18px;
-  background: linear-gradient(135deg, #1d3a56 0%, #7c3aed 55%, #a855f7 100%);
+  background: linear-gradient(135deg, #0a534e 0%, #7c3aed 55%, #a855f7 100%);
   padding: 1.6rem 2rem;
   color: #fff; position: relative; overflow: hidden;
   margin-bottom: 1.5rem;
@@ -51,15 +51,15 @@
   transition: all .18s; white-space: nowrap;
 }
 .dash-action--primary {
-  background: linear-gradient(135deg, #132539, #faa71d);
+  background: linear-gradient(135deg, #0e6b64, #e8a33d);
   color: #fff; box-shadow: 0 4px 14px rgba(19,37,57,.35);
 }
 .dash-action--primary:hover { box-shadow: 0 6px 20px rgba(19,37,57,.5); transform: translateY(-1px); color: #fff; }
 .dash-action--soft {
-  background: #fff; color: #132539;
+  background: #fff; color: #0e6b64;
   border: 1.5px solid #afc4d2;
 }
-.dash-action--soft:hover { background: #eaf0f5; border-color: #132539; color: #132539; }
+.dash-action--soft:hover { background: #e4f2f0; border-color: #0e6b64; color: #0e6b64; }
 
 /* ─── Panel quick links ─── */
 .dash-panel-row { display: grid; gap: .6rem; padding: .85rem 1.2rem; }
@@ -70,7 +70,7 @@
   background: #faf9ff; border: 1px solid #f0eeff;
   transition: all .15s;
 }
-.dash-quick-link:hover { background: #eaf0f5; border-color: var(--brand-200); color: var(--brand-600); }
+.dash-quick-link:hover { background: #e4f2f0; border-color: var(--brand-200); color: var(--brand-600); }
 .dash-quick-link-icon {
   width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center; font-size: .78rem;
@@ -80,7 +80,7 @@
 
 /* ─── Stat card accent ─── */
 .p-stat--gradient {
-  background: linear-gradient(135deg, #132539, #faa71d);
+  background: linear-gradient(135deg, #0e6b64, #e8a33d);
   border-color: transparent;
   box-shadow: 0 6px 20px rgba(19,37,57,.35);
 }
@@ -174,7 +174,7 @@
       </div>
       <div class="dash-panel-row">
         <a href="{% url 'agents:portal_invoices' %}" class="dash-quick-link">
-          <div class="dash-quick-link-icon si-indigo" style="border-radius:8px;background:#eaf0f5;color:#132539;"><i class="fas fa-file-invoice"></i></div>
+          <div class="dash-quick-link-icon si-indigo" style="border-radius:8px;background:#e4f2f0;color:#0e6b64;"><i class="fas fa-file-invoice"></i></div>
           <div class="dash-quick-link-label">
             <div style="font-weight:600;">فواتيري المسجلة</div>
             <div style="font-size:.75rem;color:var(--text-muted);">{{ total_invoices }} فاتورة</div>
@@ -209,12 +209,12 @@
           <i class="fas fa-chevron-left dash-quick-link-arrow"></i>
         </a>
         <a href="{% url 'agents:portal_request_new' %}" class="dash-quick-link" style="background:linear-gradient(135deg,rgba(19,37,57,.06),rgba(250,167,29,.06));border-color:rgba(19,37,57,.15);">
-          <div class="dash-quick-link-icon" style="border-radius:8px;background:linear-gradient(135deg,#132539,#faa71d);color:#fff;"><i class="fas fa-plus"></i></div>
+          <div class="dash-quick-link-icon" style="border-radius:8px;background:linear-gradient(135deg,#0e6b64,#e8a33d);color:#fff;"><i class="fas fa-plus"></i></div>
           <div class="dash-quick-link-label">
-            <div style="font-weight:700;color:#0a1622;">إنشاء طلب فاتورة جديد</div>
+            <div style="font-weight:700;color:#073e3a;">إنشاء طلب فاتورة جديد</div>
             <div style="font-size:.75rem;color:var(--text-muted);">اختر العميل والمنتجات</div>
           </div>
-          <i class="fas fa-chevron-left dash-quick-link-arrow" style="color:#132539;"></i>
+          <i class="fas fa-chevron-left dash-quick-link-arrow" style="color:#0e6b64;"></i>
         </a>
       </div>
     </div>

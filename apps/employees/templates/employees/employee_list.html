@@ -3,7 +3,7 @@
 {% load humanize %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/employees.css' %}?v=1.0">
+<link rel="stylesheet" href="{% static 'css/employees.css' %}?v=2.0">
 {% endblock %}
 
 {% block page_header %}{% endblock %}
@@ -283,7 +283,7 @@
 
     let activeStatus = '';
     const empRows = new Map();
-    const COLORS = ['#132539','#faa71d','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444'];
+    const COLORS = ['var(--primary)','var(--secondary)','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444'];
     function avatarColor(name) { return COLORS[name.charCodeAt(0) % COLORS.length]; }
 
     /* ── Mobile cards ── */

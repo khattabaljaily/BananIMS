@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=4.0">
+<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=5.0">
 {% endblock %}
 
 {% block page_header %}{% endblock %}
@@ -81,7 +81,7 @@
                             <td class="text-muted" style="font-size:.8rem;">{{ row.code }}</td>
                             <td class="fw-bold">{{ row.description }}</td>
                             <td>
-                                <span class="badge" style="background:rgba(19,37,57,.1); color:#132539; font-size:.72rem; border-radius:6px; padding:.2rem .5rem;">{{ row.category_name }}</span>
+                                <span class="badge" style="background:rgba(19,37,57,.1); color:var(--primary); font-size:.72rem; border-radius:6px; padding:.2rem .5rem;">{{ row.category_name }}</span>
                             </td>
                             <td class="text-center">
                                 <span class="badge" style="background:rgba(17,153,142,.1); color:#11998e; font-size:.72rem; border-radius:6px; padding:.2rem .5rem;">{{ row.payment_method }}</span>

@@ -2,7 +2,7 @@
 {% load static humanize %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/admin_reports.css' %}?v=1.1">
+<link rel="stylesheet" href="{% static 'css/admin_reports.css' %}?v=2.1">
 {% endblock %}
 
 {% block page_title %}سجل المراجعة{% endblock %}
@@ -225,7 +225,7 @@ document.querySelectorAll('.audit-view-btn').forEach(btn => {
     color: var(--text-tertiary); font-size: 0.78rem;
     transition: background .15s, color .15s;
 }
-.audit-view-btn:hover { background: #d6e2ea; color: #132539; }
+.audit-view-btn:hover { background: var(--indigo-100); color: var(--primary); }
 
 .audit-detail-table { width: 100%; border-collapse: collapse; }
 .audit-detail-table tr + tr td { border-top: 1px solid var(--border-color); }

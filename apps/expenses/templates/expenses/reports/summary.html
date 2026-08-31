@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=4.0">
+<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=5.0">
 {% endblock %}
 
 {% block page_header %}{% endblock %}
@@ -102,7 +102,7 @@
                         <tr>
                             <td class="fw-bold">{{ row.category_name }}</td>
                             <td class="text-center text-muted">{{ row.expense_count }}</td>
-                            <td class="text-end fw-bold" style="color:#132539;">{{ row.total_amount }}</td>
+                            <td class="text-end fw-bold" style="color:var(--primary);">{{ row.total_amount }}</td>
                         </tr>
                         {% endfor %}
                         <tr class="rpt-total-row">
@@ -133,7 +133,7 @@
     const cats = [{% for r in by_category.data %}{ name: "{{ r.category_name|truncatechars:18 }}", amt: parseFloat("{{ r.total_amount }}".replace(/,/g,'')) || 0 }{% if not forloop.last %},{% endif %}{% endfor %}];
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     const textColor = isDark ? '#9ca3af' : '#6b7280';
-    const palette = ['#132539','#1d3a56','#4a6e8c','#a5b4fc','#afc4d2','#d6e2ea','#f59e0b','#ef4444','#14b8a6','#10b981'];
+    const palette = ['var(--primary)','var(--primary-hover)','#4a6e8c','#a5b4fc','#afc4d2','var(--indigo-100)','#f59e0b','#ef4444','#14b8a6','#10b981'];
 
     new Chart(document.getElementById('expensesCategoryChart'), {
         type: 'doughnut',

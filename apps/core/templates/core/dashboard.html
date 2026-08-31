@@ -7,8 +7,8 @@
 {% block page_title %}نظرة عامة{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/dashboard.css' %}?v=2.0">
-<link rel="stylesheet" href="{% static 'css/ai_advices.css' %}">
+<link rel="stylesheet" href="{% static 'css/dashboard.css' %}?v=3.0">
+<link rel="stylesheet" href="{% static 'css/ai_advices.css' %}?v=2.0">
 {% endblock %}
 
 {% block content %}
@@ -120,7 +120,7 @@
 <div class="db-stat-row">
 
     <div class="db-stat">
-        <div class="db-stat-icon" style="background:rgba(19,37,57,.1); color:#132539;">
+        <div class="db-stat-icon" style="background:rgba(19,37,57,.1); color:var(--primary);">
             <i class="fas fa-users"></i>
         </div>
         <div>
@@ -167,7 +167,7 @@
         <div class="db-panel">
             <div class="db-panel-head">
                 <h3 class="db-panel-title">
-                    <i class="fas fa-chart-area" style="color:#132539;"></i>
+                    <i class="fas fa-chart-area" style="color:var(--primary);"></i>
                     المبيعات الأسبوعية
                 </h3>
                 <span class="db-panel-meta">7 أيام</span>
@@ -204,7 +204,7 @@
     <div class="db-panel" style="background:linear-gradient(135deg,rgba(19,37,57,.06) 0%,rgba(250,167,29,.04) 100%);border-color:rgba(19,37,57,.18);">
       <div class="db-panel-head" style="border-color:rgba(19,37,57,.12);">
         <h3 class="db-panel-title">
-          <i class="fas fa-store" style="color:#132539;"></i>
+          <i class="fas fa-store" style="color:var(--primary);"></i>
           متجرك الإلكتروني
         </h3>
         {% if store.is_enabled %}
@@ -227,12 +227,12 @@
             <div style="font-size:.8rem;color:var(--text-secondary,#64748b);margin-bottom:.75rem;direction:ltr;text-align:right;">{{ request.scheme }}://{{ request.META.HTTP_HOST }}/store/{{ store.slug }}/</div>
             <div style="display:flex;flex-wrap:wrap;gap:.5rem;">
               {% if store.is_enabled %}
-              <a href="/store/{{ store.slug }}/" target="_blank" style="display:inline-flex;align-items:center;gap:.4rem;padding:.38rem .85rem;border-radius:8px;border:1.5px solid rgba(19,37,57,.3);color:#132539;font-size:.8rem;font-weight:600;text-decoration:none;background:rgba(19,37,57,.06);">
+              <a href="/store/{{ store.slug }}/" target="_blank" style="display:inline-flex;align-items:center;gap:.4rem;padding:.38rem .85rem;border-radius:8px;border:1.5px solid rgba(19,37,57,.3);color:var(--primary);font-size:.8rem;font-weight:600;text-decoration:none;background:rgba(19,37,57,.06);">
                 <i class="fas fa-external-link-alt"></i> عرض المتجر
               </a>
               {% endif %}
               <button onclick="openStoreQR('{{ request.scheme }}://{{ request.META.HTTP_HOST }}/store/{{ store.slug }}/', '{{ store.display_name|default:request.tenant.name }}')"
-                      style="display:inline-flex;align-items:center;gap:.4rem;padding:.38rem .85rem;border-radius:8px;border:1.5px solid rgba(19,37,57,.3);color:#132539;font-size:.8rem;font-weight:600;cursor:pointer;background:rgba(19,37,57,.06);font-family:inherit;">
+                      style="display:inline-flex;align-items:center;gap:.4rem;padding:.38rem .85rem;border-radius:8px;border:1.5px solid rgba(19,37,57,.3);color:var(--primary);font-size:.8rem;font-weight:600;cursor:pointer;background:rgba(19,37,57,.06);font-family:inherit;">
                 <i class="fas fa-print"></i> طباعة QR
               </button>
               <a href="{% url 'store:manage_settings' %}" style="display:inline-flex;align-items:center;gap:.4rem;padding:.38rem .85rem;border-radius:8px;border:1.5px solid var(--border-color,#e2e8f0);color:var(--text-secondary,#64748b);font-size:.8rem;font-weight:600;text-decoration:none;background:var(--surface-alt,#f8fafc);">
@@ -289,7 +289,7 @@
         <div class="db-panel">
             <div class="db-panel-head">
                 <h3 class="db-panel-title">
-                    <i class="fas fa-chart-pie" style="color:#faa71d;"></i>
+                    <i class="fas fa-chart-pie" style="color:var(--secondary);"></i>
                     أفضل الفئات
                 </h3>
                 <span class="db-panel-meta">هذا الشهر</span>
@@ -401,7 +401,7 @@
 
 <!-- Lock notice banner -->
 <div style="display:flex;align-items:center;gap:.65rem;padding:.65rem 1rem;margin-bottom:1rem;background:rgba(19,37,57,.08);border:1px solid rgba(19,37,57,.2);border-radius:10px;font-size:.84rem;color:var(--text-secondary,#64748b);">
-    <i class="fas fa-lock" style="color:#132539;font-size:.9rem;flex-shrink:0;"></i>
+    <i class="fas fa-lock" style="color:var(--primary);font-size:.9rem;flex-shrink:0;"></i>
     <span>إحصاءات لوحة التحكم محجوبة — تواصل مع مدير النظام للحصول على صلاحية <strong>عرض لوحة التحكم</strong></span>
 </div>
 
@@ -444,7 +444,7 @@
 <!-- Secondary stats — blurred -->
 <div class="db-stat-row" style="pointer-events:none;user-select:none;">
     <div class="db-stat">
-        <div class="db-stat-icon" style="background:rgba(19,37,57,.1);color:#132539;"><i class="fas fa-users"></i></div>
+        <div class="db-stat-icon" style="background:rgba(19,37,57,.1);color:var(--primary);"><i class="fas fa-users"></i></div>
         <div><div class="db-stat-num" style="filter:blur(6px);opacity:.7;">12</div><div class="db-stat-lbl">مستخدمون</div></div>
     </div>
     <div class="db-stat">
@@ -466,27 +466,27 @@
     <div class="col-lg-8">
         <div class="db-panel">
             <div class="db-panel-head">
-                <h3 class="db-panel-title"><i class="fas fa-chart-area" style="color:#132539;"></i> المبيعات الأسبوعية</h3>
+                <h3 class="db-panel-title"><i class="fas fa-chart-area" style="color:var(--primary);"></i> المبيعات الأسبوعية</h3>
                 <span class="db-panel-meta">7 أيام</span>
             </div>
             <div class="db-panel-body" style="position:relative;overflow:hidden;">
                 <div class="db-chart-wrap" style="filter:blur(3px);opacity:.4;pointer-events:none;">
                     <svg width="100%" height="160" viewBox="0 0 420 160" preserveAspectRatio="none">
-                        <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#132539" stop-opacity=".25"/><stop offset="100%" stop-color="#132539" stop-opacity=".01"/></linearGradient></defs>
+                        <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--primary)" stop-opacity=".25"/><stop offset="100%" stop-color="var(--primary)" stop-opacity=".01"/></linearGradient></defs>
                         <polygon fill="url(#g1)" points="0,160 0,95 60,75 120,105 180,55 240,85 300,40 360,70 420,60 420,160"/>
-                        <polyline fill="none" stroke="#132539" stroke-width="2.5" stroke-linejoin="round" points="0,95 60,75 120,105 180,55 240,85 300,40 360,70 420,60"/>
-                        <circle cx="0"   cy="95"  r="4" fill="#132539"/>
-                        <circle cx="60"  cy="75"  r="4" fill="#132539"/>
-                        <circle cx="120" cy="105" r="4" fill="#132539"/>
-                        <circle cx="180" cy="55"  r="4" fill="#132539"/>
-                        <circle cx="240" cy="85"  r="4" fill="#132539"/>
-                        <circle cx="300" cy="40"  r="4" fill="#132539"/>
-                        <circle cx="360" cy="70"  r="4" fill="#132539"/>
-                        <circle cx="420" cy="60"  r="4" fill="#132539"/>
+                        <polyline fill="none" stroke="var(--primary)" stroke-width="2.5" stroke-linejoin="round" points="0,95 60,75 120,105 180,55 240,85 300,40 360,70 420,60"/>
+                        <circle cx="0"   cy="95"  r="4" fill="var(--primary)"/>
+                        <circle cx="60"  cy="75"  r="4" fill="var(--primary)"/>
+                        <circle cx="120" cy="105" r="4" fill="var(--primary)"/>
+                        <circle cx="180" cy="55"  r="4" fill="var(--primary)"/>
+                        <circle cx="240" cy="85"  r="4" fill="var(--primary)"/>
+                        <circle cx="300" cy="40"  r="4" fill="var(--primary)"/>
+                        <circle cx="360" cy="70"  r="4" fill="var(--primary)"/>
+                        <circle cx="420" cy="60"  r="4" fill="var(--primary)"/>
                     </svg>
                 </div>
                 <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.4rem;">
-                    <div style="width:40px;height:40px;border-radius:50%;background:#132539;display:flex;align-items:center;justify-content:center;">
+                    <div style="width:40px;height:40px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;">
                         <i class="fas fa-lock" style="color:#fff;font-size:.95rem;"></i>
                     </div>
                     <p style="margin:0;font-size:.82rem;font-weight:600;color:var(--text-secondary,#64748b);">البيانات محجوبة</p>
@@ -535,11 +535,11 @@
                 <table class="db-prod-table">
                     <thead><tr><th style="width:36px;">#</th><th>المنتج</th><th class="text-end">الكمية</th><th class="text-end">الإيراد</th></tr></thead>
                     <tbody>
-                        <tr><td><span class="db-prod-rank db-prod-rank--1">1</span></td><td class="fw-bold">منتج أ</td><td class="text-end text-muted">125</td><td class="text-end fw-bold" style="color:#132539;">18,500</td></tr>
-                        <tr><td><span class="db-prod-rank db-prod-rank--2">2</span></td><td class="fw-bold">منتج ب</td><td class="text-end text-muted">98</td><td class="text-end fw-bold" style="color:#132539;">12,300</td></tr>
-                        <tr><td><span class="db-prod-rank db-prod-rank--3">3</span></td><td class="fw-bold">منتج ج</td><td class="text-end text-muted">74</td><td class="text-end fw-bold" style="color:#132539;">9,800</td></tr>
-                        <tr><td><span class="db-prod-rank db-prod-rank--n">4</span></td><td class="fw-bold">منتج د</td><td class="text-end text-muted">61</td><td class="text-end fw-bold" style="color:#132539;">7,200</td></tr>
-                        <tr><td><span class="db-prod-rank db-prod-rank--n">5</span></td><td class="fw-bold">منتج ه</td><td class="text-end text-muted">45</td><td class="text-end fw-bold" style="color:#132539;">5,100</td></tr>
+                        <tr><td><span class="db-prod-rank db-prod-rank--1">1</span></td><td class="fw-bold">منتج أ</td><td class="text-end text-muted">125</td><td class="text-end fw-bold" style="color:var(--primary);">18,500</td></tr>
+                        <tr><td><span class="db-prod-rank db-prod-rank--2">2</span></td><td class="fw-bold">منتج ب</td><td class="text-end text-muted">98</td><td class="text-end fw-bold" style="color:var(--primary);">12,300</td></tr>
+                        <tr><td><span class="db-prod-rank db-prod-rank--3">3</span></td><td class="fw-bold">منتج ج</td><td class="text-end text-muted">74</td><td class="text-end fw-bold" style="color:var(--primary);">9,800</td></tr>
+                        <tr><td><span class="db-prod-rank db-prod-rank--n">4</span></td><td class="fw-bold">منتج د</td><td class="text-end text-muted">61</td><td class="text-end fw-bold" style="color:var(--primary);">7,200</td></tr>
+                        <tr><td><span class="db-prod-rank db-prod-rank--n">5</span></td><td class="fw-bold">منتج ه</td><td class="text-end text-muted">45</td><td class="text-end fw-bold" style="color:var(--primary);">5,100</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -548,7 +548,7 @@
     <div class="col-lg-4">
         <div class="db-panel">
             <div class="db-panel-head">
-                <h3 class="db-panel-title"><i class="fas fa-chart-pie" style="color:#faa71d;"></i> أفضل الفئات</h3>
+                <h3 class="db-panel-title"><i class="fas fa-chart-pie" style="color:var(--secondary);"></i> أفضل الفئات</h3>
                 <span class="db-panel-meta">هذا الشهر</span>
             </div>
             <div class="db-panel-body" style="filter:blur(4px);opacity:.5;">
@@ -673,12 +673,12 @@
                     data: {{ stats.weekly_sales_json|safe }},
                     fill: true,
                     backgroundColor: grad,
-                    borderColor: '#132539',
+                    borderColor: 'var(--primary)',
                     borderWidth: 2.5,
                     tension: 0.42,
                     pointRadius: 4,
                     pointHoverRadius: 7,
-                    pointBackgroundColor: '#132539',
+                    pointBackgroundColor: 'var(--primary)',
                     pointBorderColor: '#fff',
                     pointBorderWidth: 2,
                 }]
@@ -756,7 +756,7 @@
                 <td><span class="db-prod-rank ${rankClass(i)}">${i+1}</span></td>
                 <td class="fw-bold" style="color:var(--text-primary)">${p['item__name'] || '—'}</td>
                 <td class="text-end text-muted">${fmt(p.total_qty)}</td>
-                <td class="text-end fw-bold" style="color:#132539">${fmt(Math.round(p.total_revenue))}</td>`;
+                <td class="text-end fw-bold" style="color:var(--primary)">${fmt(Math.round(p.total_revenue))}</td>`;
             tbody.appendChild(tr);
         });
     } else {

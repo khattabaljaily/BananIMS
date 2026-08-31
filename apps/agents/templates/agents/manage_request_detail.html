@@ -16,11 +16,11 @@
 .rd-back-btn {
   display: inline-flex; align-items: center; gap: .4rem;
   padding: .4rem .85rem; border-radius: 8px;
-  background: #f4f3ff; color: #132539; border: 1px solid #afc4d2;
+  background: #f4f3ff; color: var(--primary); border: 1px solid #afc4d2;
   font-size: .82rem; font-weight: 600; text-decoration: none;
   transition: all .15s; white-space: nowrap;
 }
-.rd-back-btn:hover { background: #eaf0f5; color: #0a1622; }
+.rd-back-btn:hover { background: var(--indigo-50); color: var(--indigo-700); }
 .rd-nav-sep { color: #d1d5db; font-size: .8rem; }
 .rd-nav-req { font-weight: 800; color: #1e293b; font-size: .92rem; }
 
@@ -60,7 +60,7 @@
   display: flex; align-items: center; gap: .5rem;
   font-weight: 700; font-size: .88rem; color: #1e293b;
 }
-.rd-panel-head i { color: #132539; font-size: .85rem; }
+.rd-panel-head i { color: var(--primary); font-size: .85rem; }
 .rd-panel-body { padding: 1.25rem 1.35rem; }
 
 /* ─── Agent / Customer info ─── */
@@ -77,7 +77,7 @@
   display: flex; align-items: center; justify-content: center;
   font-size: 1rem; font-weight: 800; color: #fff;
 }
-.rd-person-avatar--agent    { background: linear-gradient(135deg, #132539, #faa71d); }
+.rd-person-avatar--agent    { background: linear-gradient(135deg, var(--primary), var(--secondary)); }
 .rd-person-avatar--customer { background: linear-gradient(135deg, #06b6d4, #0891b2); }
 .rd-person-label { font-size: .7rem; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; margin-bottom: .18rem; }
 .rd-person-name  { font-weight: 700; font-size: .9rem; color: #1e293b; }
@@ -115,7 +115,7 @@
 .rd-item-cell { display: flex; align-items: center; gap: .65rem; }
 .rd-item-icon {
   width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
-  background: #eaf0f5; color: #132539;
+  background: var(--indigo-50); color: var(--primary);
   display: flex; align-items: center; justify-content: center; font-size: .72rem;
 }
 .rd-item-name { font-weight: 600; color: #1e293b; font-size: .87rem; }
@@ -128,7 +128,7 @@
   border-top: 2px solid rgba(19,37,57,.1);
 }
 .rd-total-label { font-size: .82rem; font-weight: 600; color: #64748b; }
-.rd-total-value { font-size: 1.2rem; font-weight: 800; color: #0a1622; }
+.rd-total-value { font-size: 1.2rem; font-weight: 800; color: var(--indigo-700); }
 
 /* ═══════════════════ ACTION SIDEBAR ═══════════════════ */
 
@@ -168,7 +168,7 @@
   -webkit-appearance: none; outline: none;
   transition: border-color .18s;
 }
-.rd-select:focus { border-color: #132539; box-shadow: 0 0 0 3px rgba(19,37,57,.1); }
+.rd-select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(19,37,57,.1); }
 
 .rd-btn-approve {
   width: 100%; margin-top: .85rem;
@@ -382,7 +382,7 @@
         <div class="rd-meta-row">
           <div class="rd-meta-item">
             <div class="rd-meta-label">رقم الطلب</div>
-            <div class="rd-meta-value"><code style="color:#132539;background:#eaf0f5;padding:.1rem .4rem;border-radius:5px;font-size:.85rem;">{{ req.request_number }}</code></div>
+            <div class="rd-meta-value"><code style="color:var(--primary);background:var(--indigo-50);padding:.1rem .4rem;border-radius:5px;font-size:.85rem;">{{ req.request_number }}</code></div>
           </div>
           <div class="rd-meta-item">
             <div class="rd-meta-label">تاريخ الطلب</div>
@@ -390,7 +390,7 @@
           </div>
           <div class="rd-meta-item">
             <div class="rd-meta-label">إجمالي الطلب</div>
-            <div class="rd-meta-value" style="color:#0a1622;" dir="ltr">{{ req.total_amount|money }}</div>
+            <div class="rd-meta-value" style="color:var(--indigo-700);" dir="ltr">{{ req.total_amount|money }}</div>
           </div>
         </div>
 
@@ -407,7 +407,7 @@
     <div class="rd-panel">
       <div class="rd-panel-head">
         <i class="fas fa-boxes"></i> المنتجات المطلوبة
-        <span style="margin-right:auto;background:#eaf0f5;color:#0a1622;border-radius:100px;font-size:.7rem;font-weight:700;padding:.12rem .5rem;">{{ lines|length }} صنف</span>
+        <span style="margin-right:auto;background:var(--indigo-50);color:var(--indigo-700);border-radius:100px;font-size:.7rem;font-weight:700;padding:.12rem .5rem;">{{ lines|length }} صنف</span>
       </div>
       <div style="overflow-x:auto;">
         <table class="rd-table">
@@ -433,7 +433,7 @@
               </td>
               <td class="text-end" dir="ltr" style="color:#64748b;font-size:.84rem;">{{ line.unit_price|money }}</td>
               <td class="text-end" style="font-weight:700;">× {{ line.quantity|floatformat:0 }}</td>
-              <td class="text-end" dir="ltr" style="font-weight:800;color:#0a1622;">{{ line.line_total|money }}</td>
+              <td class="text-end" dir="ltr" style="font-weight:800;color:var(--indigo-700);">{{ line.line_total|money }}</td>
             </tr>
             {% endfor %}
           </tbody>

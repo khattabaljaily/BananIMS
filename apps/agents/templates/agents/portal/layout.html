@@ -9,10 +9,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 :root {
-  --brand-50: #eaf0f5; --brand-100: #d6e2ea; --brand-200: #afc4d2;
-  --brand-300: #a5b4fc; --brand-400: #4a6e8c; --brand-500: #132539;
-  --brand-600: #1d3a56; --brand-700: #0a1622;
-  --violet: #faa71d; --violet-d: #7c3aed;
+  --brand-50: #e4f2f0; --brand-100: #cbe6e2; --brand-200: #afc4d2;
+  --brand-300: #a5b4fc; --brand-400: #4a6e8c; --brand-500: #0e6b64;
+  --brand-600: #0a534e; --brand-700: #073e3a;
+  --violet: #e8a33d; --violet-d: #7c3aed;
   --success: #10b981; --warning: #f59e0b;
   --danger: #ef4444; --info: #06b6d4;
   --text: #1e293b; --text-muted: #94a3b8; --text-subtle: #64748b;
@@ -254,7 +254,7 @@ body { font-family: 'Cairo', 'Segoe UI', sans-serif; background: var(--bg); colo
 .p-badge--pending   { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
 .p-badge--approved  { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
 .p-badge--rejected  { background: #fff1f2; color: #be123c; border: 1px solid #fecdd3; }
-.p-badge--confirmed { background: #eaf0f5; color: #0a1622; border: 1px solid #afc4d2; }
+.p-badge--confirmed { background: #e4f2f0; color: #073e3a; border: 1px solid #afc4d2; }
 .p-badge--draft     { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; }
 
 /* ═══════════════════ BUTTONS ═══════════════════ */
@@ -333,7 +333,7 @@ body { font-family: 'Cairo', 'Segoe UI', sans-serif; background: var(--bg); colo
 .p-mqn-label { font-weight: 700; font-size: .92rem; flex: 1; }
 .p-mqn-arrow { color: var(--text-muted); font-size: .72rem; }
 .p-mqn-btn--cta {
-  background: linear-gradient(135deg, #132539, #faa71d);
+  background: linear-gradient(135deg, #0e6b64, #e8a33d);
   border-color: transparent;
   box-shadow: 0 4px 16px rgba(19,37,57,.38);
 }
@@ -473,7 +473,7 @@ code.inv-num { color: var(--brand-500); font-size: .83rem; background: var(--bra
         <i class="fas fa-chevron-left p-mqn-arrow"></i>
       </a>
       <a href="{% url 'agents:portal_invoices' %}" class="p-mqn-btn">
-        <div class="p-mqn-icon" style="background:#eaf0f5;color:#132539;"><i class="fas fa-file-invoice"></i></div>
+        <div class="p-mqn-icon" style="background:#e4f2f0;color:#0e6b64;"><i class="fas fa-file-invoice"></i></div>
         <span class="p-mqn-label">فواتيري</span>
         <i class="fas fa-chevron-left p-mqn-arrow"></i>
       </a>

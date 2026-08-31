@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=4.0">
+<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=5.0">
 <style>
 .cx-searchable-select { position: relative; }
 .cx-searchable-select-dropdown {
@@ -140,7 +140,7 @@
                             <td class="d-none d-lg-table-cell text-muted">{{ row.stock_name }}</td>
                             <td>
                                 {% if row.source_ref %}
-                                <code style="background:rgba(19,37,57,.08);color:#132539;border-radius:5px;padding:.15rem .45rem;font-size:.78rem;">{{ row.source_ref }}</code>
+                                <code style="background:rgba(19,37,57,.08);color:var(--primary);border-radius:5px;padding:.15rem .45rem;font-size:.78rem;">{{ row.source_ref }}</code>
                                 {% else %}—{% endif %}
                             </td>
                             <td>

@@ -3,7 +3,7 @@
 {% load humanize %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/employees.css' %}?v=1.0">
+<link rel="stylesheet" href="{% static 'css/employees.css' %}?v=2.0">
 {% endblock %}
 
 {% block page_header %}{% endblock %}
@@ -168,7 +168,7 @@
                             </div>
                         </div>
                         <div class="col-12">
-                            <div style="background:linear-gradient(135deg,#132539,#1d3a56);color:#fff;border-radius:12px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;">
+                            <div style="background:linear-gradient(135deg,var(--primary),var(--primary-hover));color:#fff;border-radius:12px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;">
                                 <span class="fw-bold">صافي الراتب المستحق</span>
                                 <span class="fs-5 fw-bold" id="salNetDisplay">0.00</span>
                             </div>

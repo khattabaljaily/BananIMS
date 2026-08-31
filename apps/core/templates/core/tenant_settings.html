@@ -6,7 +6,7 @@
 {% block page_description %}تعديل بيانات النشاط التجاري والإعدادات الأساسية وحفظها مباشرة{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/tenant_settings.css' %}?v=5.0">
+<link rel="stylesheet" href="{% static 'css/tenant_settings.css' %}?v=6.0">
 {% endblock %}
 
 {% block breadcrumb_items %}
@@ -393,22 +393,22 @@
             <div class="ts-card__body">
                 <form id="tenantColorForm" class="ts-color-form">
                     <div class="ts-color-picker-wrap">
-                        <div class="ts-color-swatch" id="colorSwatch" style="background:{{ tenant_settings.invoice_color|default:'#132539' }}"></div>
+                        <div class="ts-color-swatch" id="colorSwatch" style="background:{{ tenant_settings.invoice_color|default:'var(--primary)' }}"></div>
                         <input type="color" id="invoiceColorPicker" name="invoice_color"
-                               value="{{ tenant_settings.invoice_color|default:'#132539' }}"
+                               value="{{ tenant_settings.invoice_color|default:'var(--primary)' }}"
                                class="ts-color-native">
                         <input class="form-control ts-input ts-color-hex" id="invoiceColorHex"
                                name="invoice_color_hex" maxlength="7"
-                               value="{{ tenant_settings.invoice_color|default:'#132539' }}"
-                               placeholder="#132539">
+                               value="{{ tenant_settings.invoice_color|default:'var(--primary)' }}"
+                               placeholder="var(--primary)">
                     </div>
                     <div class="ts-color-presets">
-                        <button type="button" class="ts-color-preset" data-color="#132539" style="background:#132539" title="بنفسجي"></button>
+                        <button type="button" class="ts-color-preset" data-color="var(--primary)" style="background:var(--primary)" title="بنفسجي"></button>
                         <button type="button" class="ts-color-preset" data-color="#0ea5e9" style="background:#0ea5e9" title="أزرق"></button>
                         <button type="button" class="ts-color-preset" data-color="#10b981" style="background:#10b981" title="أخضر"></button>
                         <button type="button" class="ts-color-preset" data-color="#f59e0b" style="background:#f59e0b" title="ذهبي"></button>
                         <button type="button" class="ts-color-preset" data-color="#ef4444" style="background:#ef4444" title="أحمر"></button>
-                        <button type="button" class="ts-color-preset" data-color="#faa71d" style="background:#faa71d" title="بنفسجي غامق"></button>
+                        <button type="button" class="ts-color-preset" data-color="var(--secondary)" style="background:var(--secondary)" title="بنفسجي غامق"></button>
                         <button type="button" class="ts-color-preset" data-color="#ec4899" style="background:#ec4899" title="وردي"></button>
                         <button type="button" class="ts-color-preset" data-color="#1a1a2e" style="background:#1a1a2e" title="أسود"></button>
                     </div>

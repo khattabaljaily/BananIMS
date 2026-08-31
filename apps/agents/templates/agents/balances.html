@@ -2,7 +2,7 @@
 {% load static number_format %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=4.0">
+<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=5.0">
 {% endblock %}
 
 {% block page_header %}{% endblock %}
@@ -10,7 +10,7 @@
 {% block content %}
 <div class="cx-scene printable-scene">
 
-    <div class="rpt-hero" style="background:linear-gradient(135deg,#132539,#4a6e8c);">
+    <div class="rpt-hero" style="background:linear-gradient(135deg,var(--primary),#4a6e8c);">
         <div class="rpt-hero-inner">
             <div class="rpt-hero-left">
                 <div class="rpt-hero-icon"><i class="fas fa-id-badge"></i></div>
@@ -42,7 +42,7 @@
     <div class="rpt-panel">
         <div class="rpt-panel-header" style="background:linear-gradient(135deg,rgba(19,37,57,.06),rgba(129,140,248,.04));">
             <h3 class="rpt-panel-title">
-                <i class="fas fa-table me-2" style="color:#132539;"></i>تفاصيل المستحقات
+                <i class="fas fa-table me-2" style="color:var(--primary);"></i>تفاصيل المستحقات
             </h3>
         </div>
         <div class="rpt-panel-body">
@@ -62,7 +62,7 @@
                     <tbody>
                         {% for row in rows %}
                         <tr>
-                            <td><code style="font-size:.8rem;color:#132539;">{{ row.agent.code }}</code></td>
+                            <td><code style="font-size:.8rem;color:var(--primary);">{{ row.agent.code }}</code></td>
                             <td class="fw-semibold">{{ row.agent.name }}</td>
                             <td class="text-muted">{{ row.agent.phone|default:"—" }}</td>
                             <td>
@@ -80,11 +80,11 @@
                                 <span class="text-muted" style="font-size:.8rem;">بدون عمولة</span>
                                 {% endif %}
                             </td>
-                            <td class="text-end fw-bold" style="color:{% if row.balance > 0 %}#132539{% elif row.balance < 0 %}#ef4444{% else %}#6b7280{% endif %};">
+                            <td class="text-end fw-bold" style="color:{% if row.balance > 0 %}var(--primary){% elif row.balance < 0 %}#ef4444{% else %}#6b7280{% endif %};">
                                 {{ row.balance|money }}
                             </td>
                             <td class="text-end">
-                                <a href="{% url 'agents:statement' %}?agent_id={{ row.agent.id }}" class="btn btn-sm" style="background:rgba(19,37,57,.08);color:#132539;border:none;font-size:.75rem;">
+                                <a href="{% url 'agents:statement' %}?agent_id={{ row.agent.id }}" class="btn btn-sm" style="background:rgba(19,37,57,.08);color:var(--primary);border:none;font-size:.75rem;">
                                     <i class="fas fa-file-invoice-dollar me-1"></i>كشف
                                 </a>
                             </td>

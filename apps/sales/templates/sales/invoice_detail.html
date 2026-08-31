@@ -4,8 +4,8 @@
 {% load permission_tags %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/sales.css' %}?v=3.2">
-<link rel="stylesheet" href="{% static 'css/inv_detail.css' %}?v=1.0">
+<link rel="stylesheet" href="{% static 'css/sales.css' %}?v=4.2">
+<link rel="stylesheet" href="{% static 'css/inv_detail.css' %}?v=2.0">
 <link rel="stylesheet" href="{% static 'css/print_invoice.css' %}?v=2.6">
 {% endblock %}
 
@@ -121,7 +121,7 @@
     </div>
     {% if invoice.agent %}
     <div class="doc-card">
-        <div class="doc-card-icon" style="background:rgba(19,37,57,.12);color:#132539;"><i class="fas fa-id-badge"></i></div>
+        <div class="doc-card-icon" style="background:rgba(19,37,57,.12);color:var(--primary);"><i class="fas fa-id-badge"></i></div>
         <div class="doc-card-body">
             <span class="doc-card-label">المندوب</span>
             <span class="doc-card-value">{{ invoice.agent.name }}</span>

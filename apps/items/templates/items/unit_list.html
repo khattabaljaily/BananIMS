@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/items.css' %}?v=1.0">
+<link rel="stylesheet" href="{% static 'css/items.css' %}?v=2.0">
 <style>
 /* ── Unit type toggle (same pattern as categories) ─────────── */
 .unit-type-row {
@@ -31,9 +31,9 @@
 }
 .unit-type-btn input[type=radio] { display: none; }
 .unit-type-btn.active {
-  border-color: var(--indigo-500, #132539);
-  background: var(--indigo-50, #eaf0f5);
-  color: var(--indigo-700, #0a1622);
+  border-color: var(--indigo-500, var(--primary));
+  background: var(--indigo-50, var(--indigo-50));
+  color: var(--indigo-700, var(--indigo-700));
 }
 .unit-type-btn i { font-size: 1.1rem; display: block; margin-bottom: .2rem; }
 .unit-type-btn small { font-size: .7rem; font-weight: 400; opacity: .75; }
@@ -76,7 +76,7 @@
 [data-theme="dark"] .cx-label-opt { background: rgba(255,255,255,.08); }
 
 /* ── Type badge in table ──────────────────────────────────── */
-.unit-badge-standalone { background:#eaf0f5; color:#0a1622; border-radius:20px; padding:.18rem .65rem; font-size:.68rem; font-weight:700; }
+.unit-badge-standalone { background:var(--indigo-50); color:var(--indigo-700); border-radius:20px; padding:.18rem .65rem; font-size:.68rem; font-weight:700; }
 .unit-badge-derived    { background:#f0fdf4; color:#166534; border-radius:20px; padding:.18rem .65rem; font-size:.68rem; font-weight:700; }
 [data-theme="dark"] .unit-badge-standalone { background:rgba(19,37,57,.18); color:#a5b4fc; }
 [data-theme="dark"] .unit-badge-derived    { background:rgba(16,185,129,.18); color:#6ee7b7; }

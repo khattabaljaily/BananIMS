@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=4.0">
+<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=5.0">
 {% endblock %}
 
 {% block page_header %}{% endblock %}
@@ -69,7 +69,7 @@
                             <td class="fw-bold">{{ row.name }}</td>
                             <td class="text-center text-muted">{{ row.phone|default:"—" }}</td>
                             <td class="text-end text-muted">{{ row.credit_limit }}</td>
-                            <td class="text-end fw-bold" style="color:{% if row.balance_raw > 0 %}#132539{% elif row.balance_raw < 0 %}#11998e{% else %}var(--text-secondary){% endif %}">
+                            <td class="text-end fw-bold" style="color:{% if row.balance_raw > 0 %}var(--primary){% elif row.balance_raw < 0 %}#11998e{% else %}var(--text-secondary){% endif %}">
                                 {{ row.balance }}
                             </td>
                         </tr>

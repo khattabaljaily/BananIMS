@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=4.0">
+<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=5.0">
 {% endblock %}
 
 {% block page_header %}{% endblock %}
@@ -103,7 +103,7 @@
                                 {% elif row.payment_method_key == 'bank' %}
                                 <span class="badge" style="background:rgba(79,172,254,.12); color:#4facfe; font-size:.75rem; border-radius:6px; padding:.25rem .6rem;"><i class="fas fa-building-columns me-1"></i>{{ row.payment_method }}</span>
                                 {% else %}
-                                <span class="badge" style="background:rgba(19,37,57,.12); color:#132539; font-size:.75rem; border-radius:6px; padding:.25rem .6rem;"><i class="fas fa-file-invoice-dollar me-1"></i>{{ row.payment_method }}</span>
+                                <span class="badge" style="background:rgba(19,37,57,.12); color:var(--primary); font-size:.75rem; border-radius:6px; padding:.25rem .6rem;"><i class="fas fa-file-invoice-dollar me-1"></i>{{ row.payment_method }}</span>
                                 {% endif %}
                             </td>
                             <td class="text-end fw-bold" style="color:#11998e;">{{ row.amount }}</td>
