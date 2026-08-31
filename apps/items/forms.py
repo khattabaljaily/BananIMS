@@ -91,17 +91,12 @@ class ItemForm(forms.ModelForm):
     min_quantity     = forms.DecimalField(required=False, widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.0001'}), label='حد الطلب الأدنى')
     max_quantity     = forms.DecimalField(required=False, widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.0001'}), label='الحد الأقصى')
 
-    cost_price_hc       = forms.DecimalField(required=False, widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.0001'}), label='سعر التكلفة')
-    selling_price_hc    = forms.DecimalField(required=False, widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.0001'}), label='سعر البيع')
-    min_selling_price_hc= forms.DecimalField(required=False, widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.0001'}), label='الحد الأدنى للبيع')
-
     class Meta:
         model = Item
         fields = [
             'name', 'name_en', 'sku', 'barcode', 'item_type',
             'category',
             'cost_price', 'selling_price', 'min_selling_price', 'tax_rate',
-            'cost_price_hc', 'selling_price_hc', 'min_selling_price_hc',
             'min_quantity', 'max_quantity',
             'track_expiry', 'track_batch', 'track_serial',
             'description', 'image', 'is_active', 'is_sellable', 'is_purchasable',

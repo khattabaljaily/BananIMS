@@ -31,7 +31,7 @@ A multi-tenant SaaS system for inventory and sales management, initially targeti
 - **Sales** — invoices, quotes, returns, POS, deferred delivery
 - **Purchases** — invoices, RFQ (request for quotation), purchase orders, returns
 - **Expenses** — categories + linked to treasuries
-- **Treasury** — cash and bank accounts, inter-treasury transfers, hard-currency mode (price in USD/EUR, auto-reprice on exchange rate change)
+- **Treasury** — cash and bank accounts, inter-treasury transfers
 - **Employees** — records, salary payments, instant advances, incentives/deductions, auto-linked to treasuries
 - **Sales Agents** — accounts with commission based on invoice, collection, or both, plus a self-service portal for their invoices and statements
 
@@ -87,7 +87,7 @@ BananIMS/
 │   ├── sales/        # Sales, quotes, POS, returns
 │   ├── purchases/    # Purchases, RFQ, returns
 │   ├── expenses/     # Expenses
-│   ├── treasury/     # Treasuries, hard-currency mode
+│   ├── treasury/     # Treasuries, inter-treasury transfers
 │   ├── employees/    # Payroll, advances, incentives
 │   ├── agents/       # Sales agents, commissions, agent portal
 │   ├── notifications/# Smart notifications

@@ -220,13 +220,11 @@ def _apply_payment(tenant, invoice, method, amount, date, reference='', notes=''
 
 
 def _apply_customer_ledger(tenant, customer, amount, entry_type,
-                           reference_type, reference_id, date, notes='',
-                           hc_amount=None, hc_currency='', hc_exchange_rate=None):
+                           reference_type, reference_id, date, notes=''):
     """
     يُنشئ قيداً في CustomerLedger.
     amount موجب = مطالبة على العميل.
     amount سالب = رصيد دائن للعميل.
-    hc_amount يُملأ فقط عندما HC mode مفعّل.
     """
     if not customer:
         return
@@ -238,16 +236,6 @@ def _apply_customer_ledger(tenant, customer, amount, entry_type,
         .aggregate(s=_Sum('amount'))['s'] or Decimal('0')
     )
 
-    hc_prev = None
-    hc_run = None
-    if hc_amount is not None:
-        hc_prev = (
-            CustomerLedger.objects
-            .filter(tenant=tenant, customer=customer, hc_amount__isnull=False)
-            .aggregate(s=_Sum('hc_amount'))['s'] or Decimal('0')
-        )
-        hc_run = hc_prev + hc_amount
-
     entry = CustomerLedger.objects.create(
         tenant=tenant,
         customer=customer,
@@ -258,10 +246,6 @@ def _apply_customer_ledger(tenant, customer, amount, entry_type,
         reference_id=reference_id,
         running_balance=prev + amount,
         notes=notes,
-        hc_amount=hc_amount,
-        hc_currency=hc_currency or '',
-        hc_exchange_rate=hc_exchange_rate,
-        hc_running_balance=hc_run,
     )
     return entry
 

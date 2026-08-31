@@ -25,7 +25,6 @@ class SupplierForm(forms.ModelForm):
             'email',
             'city',
             'address',
-            'currency',
             'opening_balance',
             'credit_limit',
             'notes',
@@ -33,7 +32,6 @@ class SupplierForm(forms.ModelForm):
         ]
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'مثال: شركة التوريدات المحدودة'}),
-            'currency': forms.Select(attrs={'class': 'form-control'}),
             'phone': forms.TextInput(attrs={'class': 'form-control', 'type': 'tel', 'placeholder': 'مثال: 55512345'}),
             'email': forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'example@email.com'}),
             'city': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'الدوحة'}),

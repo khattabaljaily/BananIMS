@@ -149,16 +149,6 @@ class Tenant(models.Model):
     language = models.CharField('اللغة', max_length=10, default='ar')
     currency = models.CharField('العملة', max_length=3, default='QAR')
 
-    # Hard Currency Mode
-    hard_currency_mode = models.BooleanField('وضع العملة الصعبة', default=False)
-    hard_currency = models.CharField('العملة الصعبة', max_length=3, default='USD', blank=True)
-    exchange_rate = models.DecimalField(
-        'سعر الصرف',
-        max_digits=12, decimal_places=2, default=1,
-        help_text='سعر العملة المحلية مقابل وحدة واحدة من العملة الصعبة'
-    )
-    exchange_rate_updated_at = models.DateTimeField('آخر تحديث للسعر', null=True, blank=True)
-    
     # Terms of Service
     terms_accepted_at = models.DateTimeField('تاريخ قبول الاتفاقية', null=True, blank=True)
     terms_version     = models.CharField('إصدار الاتفاقية المقبولة', max_length=20, blank=True)
@@ -773,23 +763,3 @@ class SocialMediaPost(models.Model):
 
     def __str__(self):
         return self.content[:50]
-
-
-class ExchangeRateHistory(models.Model):
-    tenant     = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='exchange_rate_history', db_index=True)
-    rate       = models.DecimalField('سعر الصرف', max_digits=12, decimal_places=2)
-    changed_at = models.DateTimeField('وقت التغيير', auto_now_add=True, db_index=True)
-    changed_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True,
-        on_delete=models.SET_NULL, verbose_name='بواسطة'
-    )
-    notes = models.CharField('ملاحظة', max_length=200, blank=True)
-
-    class Meta:
-        db_table      = 'exchange_rate_history'
-        ordering      = ['-changed_at']
-        verbose_name  = 'سجل سعر الصرف'
-        verbose_name_plural = 'سجل أسعار الصرف'
-
-    def __str__(self):
-        return f'{self.tenant} — {self.rate} @ {self.changed_at:%Y-%m-%d}'

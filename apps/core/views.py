@@ -1589,112 +1589,6 @@ def tenant_settings_update_api(request):
     return JsonResponse({'success': True, 'message': 'تم تحديث إعدادات النظام بنجاح'})
 
 
-@login_required
-@require_permission('change_tenant_settings')
-@require_POST
-def exchange_rate_update_api(request):
-    """API: تحديث سعر الصرف وإعادة حساب أسعار كل المنتجات تلقائياً."""
-    from apps.items.models import Item
-    from django.db import transaction as db_transaction
-
-    tenant = getattr(request, 'tenant', None)
-    if not tenant:
-        return JsonResponse({'success': False, 'message': 'لا يوجد نشاط مرتبط'}, status=400)
-
-    if not tenant.hard_currency_mode:
-        return JsonResponse({'success': False, 'message': 'وضع العملة الصعبة غير مفعّل'}, status=400)
-
-    try:
-        payload = json.loads(request.body or '{}')
-        new_rate = Decimal(str(payload.get('exchange_rate', '')).replace(',', '.').strip())
-        if new_rate <= 0:
-            raise ValueError
-    except (InvalidOperation, ValueError, TypeError):
-        return JsonResponse({'success': False, 'message': 'سعر الصرف غير صالح'}, status=400)
-
-    notes = payload.get('notes', '').strip()[:200]
-    with db_transaction.atomic():
-        from .models import ExchangeRateHistory
-        previous_rate = tenant.exchange_rate
-        tenant.exchange_rate = new_rate
-        tenant.exchange_rate_updated_at = dj_timezone.now()
-        tenant.save(update_fields=['exchange_rate', 'exchange_rate_updated_at', 'updated_at'])
-        ExchangeRateHistory.objects.create(
-            tenant=tenant,
-            rate=new_rate,
-            changed_by=request.user,
-            notes=notes or f'السعر السابق: {previous_rate}',
-        )
-
-        from apps.core.models import ExchangeRateHistory
-        ExchangeRateHistory.objects.create(
-            tenant=tenant,
-            rate=new_rate,
-            changed_by=request.user if request.user.is_authenticated else None,
-            notes=notes,
-        )
-
-        items = Item.objects.for_tenant(tenant).filter(selling_price_hc__isnull=False)
-        updated = 0
-        bulk = []
-        for item in items:
-            if item.selling_price_hc:
-                item.selling_price = (item.selling_price_hc * new_rate).quantize(Decimal('0.01'))
-            if item.cost_price_hc:
-                item.cost_price = (item.cost_price_hc * new_rate).quantize(Decimal('0.01'))
-            if item.min_selling_price_hc:
-                item.min_selling_price = (item.min_selling_price_hc * new_rate).quantize(Decimal('0.01'))
-            bulk.append(item)
-            updated += 1
-        if bulk:
-            Item.objects.bulk_update(bulk, ['selling_price', 'cost_price', 'min_selling_price'])
-
-    log_activity(request, 'تغيير سعر الصرف', f'{previous_rate} ← {new_rate}', 'update')
-    return JsonResponse({
-        'success': True,
-        'message': f'تم تحديث سعر الصرف وإعادة تسعير {updated} منتج',
-        'updated_items': updated,
-        'new_rate': str(new_rate),
-    })
-
-
-@login_required
-@require_permission('change_tenant_settings')
-def exchange_rate_page(request):
-    """صفحة سعر الصرف المستقلة — فورم + سجل + مخطط."""
-    from apps.core.models import ExchangeRateHistory
-    tenant = getattr(request, 'tenant', None)
-    if not tenant:
-        from django.shortcuts import redirect
-        return redirect('core:dashboard')
-
-    history = ExchangeRateHistory.objects.filter(tenant=tenant).order_by('-changed_at')[:90]
-    return render(request, 'core/exchange_rate.html', {
-        'tenant': tenant,
-        'history': history,
-    })
-
-
-@login_required
-@require_permission('change_tenant_settings')
-def exchange_rate_history_api(request):
-    """JSON: آخر 90 يوم من سجل سعر الصرف للمخطط."""
-    from apps.core.models import ExchangeRateHistory
-    tenant = getattr(request, 'tenant', None)
-    if not tenant:
-        return JsonResponse({'success': False}, status=400)
-
-    qs = ExchangeRateHistory.objects.filter(tenant=tenant).order_by('changed_at')[:90]
-    data = [
-        {
-            'date': e.changed_at.strftime('%Y-%m-%d'),
-            'rate': str(e.rate),
-            'user': e.changed_by.get_full_name() or e.changed_by.username if e.changed_by else '—',
-            'notes': e.notes or '',
-        }
-        for e in qs
-    ]
-    return JsonResponse({'success': True, 'data': data})
 
 
 @login_required
@@ -2084,9 +1978,6 @@ def tenant_detail_api(request, pk):
             'admin_full_name': admin_user.get_full_name() if admin_user else '',
             'tax_enabled': settings_obj.tax_enabled if settings_obj else False,
             'tax_value': float(settings_obj.tax_value) if settings_obj else 0,
-            'hard_currency_mode': tenant.hard_currency_mode,
-            'hard_currency': tenant.hard_currency or 'USD',
-            'exchange_rate': float(tenant.exchange_rate) if tenant.exchange_rate else 1,
         }
     })
 
@@ -2539,31 +2430,17 @@ def analytics(request):
             payment_method__in=('credit', 'mixed'),
         ).aggregate(t=Sum(F('grand_total') - F('paid_amount')))['t'] or 0
     )
-    # supplier debt — calculated per-supplier to handle HC vs local correctly
+    # supplier debt — per-supplier running balance from ledger + opening balance
     from apps.purchases.models import SupplierLedger
     from apps.suppliers.models import Supplier as SupplierModel
-    _hc_mode = getattr(tenant, 'hard_currency_mode', False)
-    _hc_rate = Decimal(str(tenant.exchange_rate or 1)) if _hc_mode and tenant.exchange_rate else Decimal('1')
-    _tenant_currency = (getattr(tenant, 'currency', '') or '').strip()
     supplier_debt = Decimal('0')
     for _sup in SupplierModel.objects.filter(tenant=tenant):
-        _sup_cur = (_sup.currency or '').strip()
-        _is_hc_sup = _hc_mode and bool(_sup_cur) and _sup_cur != _tenant_currency
-        if _is_hc_sup:
-            # balance in HC currency — use hc_amount field (same as payment view)
-            _hc_bal = (
-                SupplierLedger.objects.filter(tenant=tenant, supplier=_sup, hc_amount__isnull=False)
-                .aggregate(s=Sum('hc_amount'))['s'] or Decimal('0')
-            ) + (_sup.opening_balance or Decimal('0'))
-            if _hc_bal > 0:
-                supplier_debt += (_hc_bal * _hc_rate).quantize(Decimal('0.01'))
-        else:
-            _local_bal = (
-                SupplierLedger.objects.filter(tenant=tenant, supplier=_sup)
-                .aggregate(s=Sum('amount'))['s'] or Decimal('0')
-            ) + (_sup.opening_balance or Decimal('0'))
-            if _local_bal > 0:
-                supplier_debt += _local_bal
+        _local_bal = (
+            SupplierLedger.objects.filter(tenant=tenant, supplier=_sup)
+            .aggregate(s=Sum('amount'))['s'] or Decimal('0')
+        ) + (_sup.opening_balance or Decimal('0'))
+        if _local_bal > 0:
+            supplier_debt += _local_bal
     supplier_debt = float(supplier_debt)
 
     context = {

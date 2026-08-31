@@ -38,27 +38,15 @@ def treasury_list(request):
     active = qs.filter(is_active=True).count()
     default = qs.filter(is_default=True).count()
 
-    # Auto-create HC treasury if tenant has HC mode but treasury doesn't exist yet
-    if tenant.hard_currency_mode and tenant.hard_currency:
-        from apps.core.signals import _ensure_hc_treasury
-        _ensure_hc_treasury(tenant)
-
-    hc_treasury = Treasury.objects.for_tenant(tenant).filter(is_hard_currency=True).first()
     other_treasuries = Treasury.objects.for_tenant(tenant).filter(is_active=True)
-
     local_cur = tenant.currency or 'QAR'
-    hc_cur = tenant.hard_currency if tenant.hard_currency_mode else ''
 
     context = {
         'form': TreasuryForm(),
         'today': dj_tz.localdate().isoformat(),
-        'hc_mode': tenant.hard_currency_mode,
-        'hc_currency': hc_cur,
-        'hc_currency_symbol': _currency_symbol(hc_cur),
-        'hc_treasury': hc_treasury,
         'local_currency': local_cur,
         'local_currency_symbol': _currency_symbol(local_cur),
-        'transfer_treasuries': list(other_treasuries.values('id', 'name', 'currency', 'is_hard_currency')),
+        'transfer_treasuries': list(other_treasuries.values('id', 'name')),
         'currency_symbols_json': {k: v for k, v in _CURRENCY_SYMBOLS.items()},
         'stats': {
             'total': total,
@@ -84,8 +72,6 @@ def treasury_table_api(request):
     status = request.GET.get('status', '').strip()
 
     queryset = Treasury.objects.for_tenant(tenant)
-    if not tenant.hard_currency_mode:
-        queryset = queryset.filter(is_hard_currency=False)
     records_total = queryset.count()
 
     if status == 'active':
@@ -127,11 +113,10 @@ def treasury_table_api(request):
             'name': treasury.name,
             'code': treasury.code or '—',
             'current_balance': str(treasury.current_balance),
-            'currency': treasury.currency or local_currency,
+            'currency': local_currency,
             'is_active': treasury.is_active,
             'is_default': treasury.is_default,
             'is_system_default': treasury.is_system_default,
-            'is_hard_currency': treasury.is_hard_currency,
         }
         for treasury in queryset
     ]
@@ -336,9 +321,6 @@ def treasury_delete_api(request, pk):
     if treasury.is_system_default:
         return JsonResponse({'success': False, 'message': 'لا يمكن حذف الخزينة الافتراضية النظامية.'}, status=400)
 
-    if treasury.is_hard_currency:
-        return JsonResponse({'success': False, 'message': 'لا يمكن حذف خزينة العملة الصعبة.'}, status=400)
-
     if treasury.is_default:
         return JsonResponse({'success': False, 'message': 'لا يمكن حذف الخزينة الافتراضية. عيّن خزينة أخرى كافتراضية أولاً.'}, status=400)
 
@@ -389,11 +371,6 @@ def treasury_transfer_api(request):
     from_treasury = get_object_or_404(Treasury.objects.for_tenant(tenant), pk=from_id)
     to_treasury = get_object_or_404(Treasury.objects.for_tenant(tenant), pk=to_id)
 
-    # ── قيد: التحويل يجب أن يشمل خزينة العملة الصعبة عندها ──
-    hc_treasuries = {from_treasury.is_hard_currency, to_treasury.is_hard_currency}
-    if True in hc_treasuries and exchange_rate <= 0:
-        return JsonResponse({'success': False, 'message': 'يجب إدخال سعر صرف صحيح عند التحويل مع خزينة العملة الصعبة'}, status=400)
-
     try:
         transfer = post_treasury_transfer(
             tenant=tenant,
@@ -411,7 +388,7 @@ def treasury_transfer_api(request):
 
     log_activity(
         request, 'تحويل بين الخزائن',
-        f'من: {from_treasury.name} ({from_amount}) → إلى: {to_treasury.name} ({to_amount}) | سعر الصرف: {exchange_rate}',
+        f'من: {from_treasury.name} ({from_amount}) → إلى: {to_treasury.name} ({to_amount})',
         'create',
     )
     return JsonResponse({

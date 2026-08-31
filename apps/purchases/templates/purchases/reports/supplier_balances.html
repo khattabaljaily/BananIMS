@@ -27,16 +27,11 @@
         </div>
     </div>
 
-    <div class="rpt-kpi-grid" style="grid-template-columns: repeat(2, 1fr);">
+    <div class="rpt-kpi-grid" style="grid-template-columns: repeat(1, 1fr);">
         <div class="rpt-kpi-card rpt-kpi--purple">
             <div class="rpt-kpi-icon"><i class="fas fa-coins"></i></div>
             <div class="rpt-kpi-value">{{ report.summary.total_local }}</div>
-            <div class="rpt-kpi-label">إجمالي مديونيات الموردين المحليين</div>
-        </div>
-        <div class="rpt-kpi-card rpt-kpi--amber">
-            <div class="rpt-kpi-icon"><i class="fas fa-dollar-sign"></i></div>
-            <div class="rpt-kpi-value">{{ report.summary.total_hc }} {% if report.summary.hc_currency %}<span style="font-size:.75rem;opacity:.7;">{{ report.summary.hc_currency }}</span>{% endif %}</div>
-            <div class="rpt-kpi-label">إجمالي مديونيات موردين العملة الصعبة</div>
+            <div class="rpt-kpi-label">إجمالي مديونيات الموردين</div>
         </div>
     </div>
 
@@ -65,7 +60,7 @@
                             <td class="text-center text-muted">{{ row.phone|default:"—" }}</td>
                             <td class="text-end text-muted">{{ row.credit_limit }}</td>
                             <td class="text-end fw-bold" style="color:{% if row.balance_raw > 0 %}#132539{% elif row.balance_raw < 0 %}#11998e{% else %}var(--text-secondary){% endif %}">
-                                {{ row.balance }}{% if row.is_hc %} <span style="font-size:.7rem;opacity:.7;">{{ row.currency }}</span>{% endif %}
+                                {{ row.balance }}
                             </td>
                         </tr>
                         {% endfor %}

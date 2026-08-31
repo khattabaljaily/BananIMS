@@ -8,9 +8,7 @@ class Treasury(TenantMixin):
     code = models.CharField('الرمز', max_length=30, blank=True)
     is_default = models.BooleanField('افتراضية', default=False)
     is_system_default = models.BooleanField('افتراضية نظامية', default=False)
-    is_hard_currency = models.BooleanField('خزينة العملة الصعبة', default=False)
     is_active = models.BooleanField('نشطة', default=True)
-    currency = models.CharField('العملة', max_length=3, blank=True, default='')
     current_balance = models.DecimalField('الرصيد الحالي', max_digits=14, decimal_places=2, default=0)
     notes = models.TextField('ملاحظات', blank=True)
 

@@ -33,19 +33,6 @@ def _serialize_errors(form):
     return {f: [str(e) for e in errs] for f, errs in form.errors.items()}
 
 
-def _apply_hc_prices(item, tenant):
-    """إذا كان وضع العملة الصعبة مفعّلاً، يحسب الأسعار المحلية من سعر العملة الصعبة × سعر الصرف."""
-    if not (tenant and tenant.hard_currency_mode and tenant.exchange_rate):
-        return
-    rate = Decimal(str(tenant.exchange_rate))
-    if item.selling_price_hc:
-        item.selling_price = (item.selling_price_hc * rate).quantize(Decimal('0.01'))
-    if item.cost_price_hc:
-        item.cost_price = (item.cost_price_hc * rate).quantize(Decimal('0.01'))
-    if item.min_selling_price_hc:
-        item.min_selling_price = (item.min_selling_price_hc * rate).quantize(Decimal('0.01'))
-
-
 # ============================================================
 # صفحة المنتجات الرئيسية
 # ============================================================
@@ -64,16 +51,11 @@ def item_list(request):
 
     caps = _get_capabilities(tenant)
     from apps.core.utils import currency_symbol, CURRENCY_SYMBOLS
-    hc_cur = tenant.hard_currency if tenant.hard_currency_mode else ''
     local_cur = tenant.currency or 'QAR'
     context = {
         'item_form': ItemForm(tenant=tenant, capabilities=caps),
-        'hc_mode': tenant.hard_currency_mode,
-        'hc_currency': hc_cur,
-        'hc_currency_symbol': currency_symbol(hc_cur),
         'local_currency': local_cur,
         'local_currency_symbol': currency_symbol(local_cur),
-        'exchange_rate': tenant.exchange_rate if tenant.hard_currency_mode else None,
         'currency_symbols_json': CURRENCY_SYMBOLS,
         'stats': {
             'total': total,
@@ -195,8 +177,6 @@ def item_table_api(request):
             return units[0].name
         return '-'   # multi-unit: show — per user request
 
-    hc_mode = tenant.hard_currency_mode
-    hc_currency = tenant.hard_currency if hc_mode else ''
     data = [
         {
             'id': item.id,
@@ -209,8 +189,6 @@ def item_table_api(request):
             'has_multiple_units': item.has_multiple_units,
             'cost_price': str(item.cost_price),
             'selling_price': str(item.selling_price),
-            'selling_price_hc': str(item.selling_price_hc) if (hc_mode and item.selling_price_hc) else None,
-            'hc_currency': hc_currency,
             'track_expiry': item.track_expiry,
             'track_serial': item.track_serial,
             'is_active': item.is_active,
@@ -286,7 +264,6 @@ def item_create_api(request):
         item.tenant = tenant
         item.created_by = request.user
         item.updated_by = request.user
-        _apply_hc_prices(item, tenant)
         try:
             item.save()
         except IntegrityError:
@@ -338,9 +315,6 @@ def item_detail_api(request, pk):
             'cost_price': str(item.cost_price),
             'selling_price': str(item.selling_price),
             'min_selling_price': str(item.min_selling_price),
-            'cost_price_hc': str(item.cost_price_hc) if item.cost_price_hc is not None else '',
-            'selling_price_hc': str(item.selling_price_hc) if item.selling_price_hc is not None else '',
-            'min_selling_price_hc': str(item.min_selling_price_hc) if item.min_selling_price_hc is not None else '',
             'tax_rate': str(item.tax_rate),
             'min_quantity': str(item.min_quantity),
             'max_quantity': str(item.max_quantity),
@@ -444,7 +418,6 @@ def item_update_api(request, pk):
     if form.is_valid():
         updated = form.save(commit=False)
         updated.updated_by = request.user
-        _apply_hc_prices(updated, tenant)
         updated.save()
         _save_item_units(item, request.POST.get('units_json', ''), tenant)
         log_activity(request, 'تعديل منتج', updated.name, 'update')

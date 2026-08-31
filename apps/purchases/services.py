@@ -53,12 +53,7 @@ def _add_stock(tenant, stock, item, qty, unit_cost, invoice):
 
     if unit_cost and unit_cost > 0 and item.cost_price != unit_cost:
         item.cost_price = unit_cost
-        update_fields = ['cost_price']
-        if getattr(tenant, 'hard_currency_mode', False) and tenant.exchange_rate:
-            hc_rate = Decimal(str(tenant.exchange_rate))
-            item.cost_price_hc = (unit_cost / hc_rate).quantize(Decimal('0.0001'))
-            update_fields.append('cost_price_hc')
-        item.save(update_fields=update_fields)
+        item.save(update_fields=['cost_price'])
 
 
 def _adjust_stock_for_purchase_edit(tenant, invoice, old_lines, new_lines):
@@ -220,8 +215,7 @@ def _reverse_payments(tenant, invoice):
         payment.save(update_fields=['is_reversed', 'updated_at'])
 
 
-def _apply_supplier_ledger(tenant, supplier, amount, entry_type, reference_type, reference_id, date, notes='',
-                           hc_amount=None, hc_currency='', hc_exchange_rate=None):
+def _apply_supplier_ledger(tenant, supplier, amount, entry_type, reference_type, reference_id, date, notes=''):
     if not supplier:
         return None
 
@@ -233,17 +227,6 @@ def _apply_supplier_ledger(tenant, supplier, amount, entry_type, reference_type,
         or Decimal('0')
     )
 
-    hc_run = None
-    if hc_amount is not None:
-        hc_prev = (
-            SupplierLedger.objects
-            .filter(tenant=tenant, supplier=supplier, hc_amount__isnull=False)
-            .aggregate(s=Sum('hc_amount'))['s'] or Decimal('0')
-        )
-        if supplier and getattr(supplier, 'currency', ''):
-            hc_prev += (supplier.opening_balance or Decimal('0'))
-        hc_run = hc_prev + hc_amount
-
     return SupplierLedger.objects.create(
         tenant=tenant,
         supplier=supplier,
@@ -254,10 +237,6 @@ def _apply_supplier_ledger(tenant, supplier, amount, entry_type, reference_type,
         reference_id=reference_id,
         running_balance=prev + amount,
         notes=notes,
-        hc_amount=hc_amount,
-        hc_currency=hc_currency or '',
-        hc_exchange_rate=hc_exchange_rate,
-        hc_running_balance=hc_run,
     )
 
 
@@ -277,17 +256,6 @@ def _reverse_supplier_ledger(tenant, reference_type, reference_id):
         )
         reversed_amount = -entry.amount
 
-        reversed_hc_amount = None
-        hc_run = None
-        if entry.hc_amount is not None:
-            reversed_hc_amount = -entry.hc_amount
-            hc_prev = (
-                SupplierLedger.objects
-                .filter(tenant=tenant, supplier=entry.supplier, hc_amount__isnull=False)
-                .aggregate(s=_Sum('hc_amount'))['s'] or Decimal('0')
-            )
-            hc_run = hc_prev + reversed_hc_amount
-
         SupplierLedger.objects.create(
             tenant=tenant,
             supplier=entry.supplier,
@@ -299,10 +267,6 @@ def _reverse_supplier_ledger(tenant, reference_type, reference_id):
             running_balance=prev + reversed_amount,
             notes=f'إلغاء: {entry.notes}' if entry.notes else 'إلغاء قيد',
             is_reversal=True,
-            hc_amount=reversed_hc_amount,
-            hc_currency=entry.hc_currency or '',
-            hc_exchange_rate=entry.hc_exchange_rate,
-            hc_running_balance=hc_run,
         )
 
 
@@ -408,64 +372,44 @@ def confirm_purchase_invoice(invoice: PurchaseInvoice, user, reapply_stock=True)
                     f'المتاح: {available:,.2f}'
                 )
 
-    # ── HC helpers ───────────────────────────────────────────
-    hc_mode = getattr(tenant, 'hard_currency_mode', False)
-    hc_cur  = (tenant.hard_currency or '') if hc_mode else ''
-    hc_rate = Decimal(str(tenant.exchange_rate or 1)) if hc_mode and tenant.exchange_rate else None
-
-    def _hc(local_amount):
-        if not hc_mode or not hc_rate or hc_rate == 0:
-            return None, None, None
-        return (local_amount / hc_rate).quantize(Decimal('0.01')), hc_cur, hc_rate
-
     if pm == 'credit':
-        hc_amt, hc_c, hc_r = _hc(total)
         _apply_supplier_ledger(
             tenant=tenant, supplier=invoice.supplier, amount=total,
             entry_type='invoice', reference_type='purchase_invoice',
             reference_id=invoice.id, date=invoice.invoice_date,
             notes=f'أمر شراء {invoice.invoice_number}',
-            hc_amount=hc_amt, hc_currency=hc_c, hc_exchange_rate=hc_r,
         )
     elif pm == 'cash':
         _apply_payment(tenant, invoice, 'cash', total, invoice.invoice_date)
         if invoice.supplier:
-            hc_amt, hc_c, hc_r = _hc(total)
             _apply_supplier_ledger(
                 tenant=tenant, supplier=invoice.supplier, amount=total,
                 entry_type='invoice', reference_type='purchase_invoice',
                 reference_id=invoice.id, date=invoice.invoice_date,
                 notes=f'أمر شراء {invoice.invoice_number}',
-                hc_amount=hc_amt, hc_currency=hc_c, hc_exchange_rate=hc_r,
             )
             _apply_supplier_ledger(
                 tenant=tenant, supplier=invoice.supplier, amount=-total,
                 entry_type='payment', reference_type='purchase_payment_cash',
                 reference_id=invoice.id, date=invoice.invoice_date,
                 notes=f'سداد نقدي — {invoice.invoice_number}',
-                hc_amount=(-hc_amt) if hc_amt is not None else None,
-                hc_currency=hc_c, hc_exchange_rate=hc_r,
             )
     elif pm == 'bank':
         if not bank_reference:
             raise ValueError('يرجى إدخال مرجع التحويل البنكي.')
         _apply_payment(tenant, invoice, 'bank', total, invoice.invoice_date, reference=bank_reference)
         if invoice.supplier:
-            hc_amt, hc_c, hc_r = _hc(total)
             _apply_supplier_ledger(
                 tenant=tenant, supplier=invoice.supplier, amount=total,
                 entry_type='invoice', reference_type='purchase_invoice',
                 reference_id=invoice.id, date=invoice.invoice_date,
                 notes=f'أمر شراء {invoice.invoice_number}',
-                hc_amount=hc_amt, hc_currency=hc_c, hc_exchange_rate=hc_r,
             )
             _apply_supplier_ledger(
                 tenant=tenant, supplier=invoice.supplier, amount=-total,
                 entry_type='payment', reference_type='purchase_payment_bank',
                 reference_id=invoice.id, date=invoice.invoice_date,
                 notes=f'سداد بنكي — {invoice.invoice_number} ({bank_reference})',
-                hc_amount=(-hc_amt) if hc_amt is not None else None,
-                hc_currency=hc_c, hc_exchange_rate=hc_r,
             )
     elif pm == 'mixed':
         cash_amt = invoice.cash_amount or Decimal('0')
@@ -492,33 +436,25 @@ def confirm_purchase_invoice(invoice: PurchaseInvoice, user, reapply_stock=True)
             _apply_payment(tenant, invoice, 'bank', bank_amt, invoice.invoice_date, reference=bank_reference)
 
         if invoice.supplier:
-            hc_total_amt, hc_c, hc_r = _hc(total)
             _apply_supplier_ledger(
                 tenant=tenant, supplier=invoice.supplier, amount=total,
                 entry_type='invoice', reference_type='purchase_invoice',
                 reference_id=invoice.id, date=invoice.invoice_date,
                 notes=f'أمر شراء {invoice.invoice_number}',
-                hc_amount=hc_total_amt, hc_currency=hc_c, hc_exchange_rate=hc_r,
             )
             if cash_amt > 0:
-                hc_c_amt, _, _ = _hc(cash_amt)
                 _apply_supplier_ledger(
                     tenant=tenant, supplier=invoice.supplier, amount=-cash_amt,
                     entry_type='payment', reference_type='purchase_payment_cash',
                     reference_id=invoice.id, date=invoice.invoice_date,
                     notes=f'سداد نقدي — {invoice.invoice_number}',
-                    hc_amount=(-hc_c_amt) if hc_c_amt is not None else None,
-                    hc_currency=hc_c, hc_exchange_rate=hc_r,
                 )
             if bank_amt > 0:
-                hc_b_amt, _, _ = _hc(bank_amt)
                 _apply_supplier_ledger(
                     tenant=tenant, supplier=invoice.supplier, amount=-bank_amt,
                     entry_type='payment', reference_type='purchase_payment_bank',
                     reference_id=invoice.id, date=invoice.invoice_date,
                     notes=f'سداد بنكي — {invoice.invoice_number} ({bank_reference})',
-                    hc_amount=(-hc_b_amt) if hc_b_amt is not None else None,
-                    hc_currency=hc_c, hc_exchange_rate=hc_r,
                 )
 
     invoice.status = 'confirmed'
@@ -607,28 +543,6 @@ def confirm_purchase_return(purchase_return: PurchaseReturn, user) -> PurchaseRe
         )
 
     if invoice.supplier:
-        sup_currency = (invoice.supplier.currency or '').strip()
-        _hc_mode = getattr(tenant, 'hard_currency_mode', False)
-        _is_hc_sup = _hc_mode and bool(sup_currency)
-        ret_hc_amt = ret_hc_cur = ret_hc_rate = None
-        if _is_hc_sup:
-            try:
-                _rate = Decimal(str(tenant.exchange_rate or 1))
-                if _rate > 0:
-                    ret_hc_amt = -(total / _rate).quantize(Decimal('0.01'))
-                    ret_hc_cur = sup_currency
-                    ret_hc_rate = _rate
-            except Exception:
-                pass
-        elif _hc_mode:
-            try:
-                _rate = Decimal(str(tenant.exchange_rate or 1))
-                if _rate > 0:
-                    ret_hc_amt = -(total / _rate).quantize(Decimal('0.01'))
-                    ret_hc_cur = tenant.hard_currency or ''
-                    ret_hc_rate = _rate
-            except Exception:
-                pass
         _apply_supplier_ledger(
             tenant=tenant,
             supplier=invoice.supplier,
@@ -638,9 +552,6 @@ def confirm_purchase_return(purchase_return: PurchaseReturn, user) -> PurchaseRe
             reference_id=purchase_return.id,
             date=purchase_return.return_date,
             notes=f'مرتجع شراء {purchase_return.return_number}',
-            hc_amount=ret_hc_amt,
-            hc_currency=ret_hc_cur or '',
-            hc_exchange_rate=ret_hc_rate,
         )
 
     all_lines = invoice.lines.all()
@@ -770,16 +681,10 @@ def edit_confirmed_purchase_invoice(invoice: PurchaseInvoice, header_data: dict,
     invoice.save()
 
     # Update item cost prices based on new line unit costs
-    hc_mode = getattr(tenant, 'hard_currency_mode', False)
-    hc_rate = Decimal(str(tenant.exchange_rate)) if hc_mode and tenant.exchange_rate else None
     for line in new_lines:
         if line.unit_cost and line.unit_cost > 0 and line.item.cost_price != line.unit_cost:
             line.item.cost_price = line.unit_cost
-            update_fields = ['cost_price']
-            if hc_rate:
-                line.item.cost_price_hc = (line.unit_cost / hc_rate).quantize(Decimal('0.0001'))
-                update_fields.append('cost_price_hc')
-            line.item.save(update_fields=update_fields)
+            line.item.save(update_fields=['cost_price'])
 
     _adjust_stock_for_purchase_edit(tenant, invoice, old_lines, new_lines)
     confirm_purchase_invoice(invoice, user, reapply_stock=False)

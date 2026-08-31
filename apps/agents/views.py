@@ -320,7 +320,7 @@ def agent_payments(request):
         ),
     ).order_by('name')
 
-    treasuries = Treasury.objects.for_tenant(tenant).filter(is_active=True, is_hard_currency=False).order_by('name')
+    treasuries = Treasury.objects.for_tenant(tenant).filter(is_active=True).order_by('name')
 
     stats_qs = AgentLedger.objects.for_tenant(tenant).filter(entry_type='payment')
     stats = stats_qs.aggregate(
@@ -511,7 +511,7 @@ def agent_payment_create_api(request):
                 if not treasury_id:
                     raise ValueError('يجب اختيار الخزينة عند الدفع نقداً')
                 treasury = get_object_or_404(
-                    Treasury.objects.for_tenant(tenant).filter(is_hard_currency=False),
+                    Treasury.objects.for_tenant(tenant),
                     pk=int(treasury_id),
                 )
                 movement = post_treasury_disbursement(

@@ -188,7 +188,6 @@
                     <th>وحدة البيع</th>
                     <th>سعر التكلفة</th>
                     <th>سعر البيع</th>
-                    {% if hc_mode %}<th>السعر ({{ hc_currency_symbol }})</th>{% endif %}
                     <th>الحالة</th>
                     <th></th>
                 </tr>
@@ -310,50 +309,8 @@
                             <span style="font-weight:400;font-size:.75rem;color:var(--text-muted,#9ca3af);margin-right:.5rem;">
                                 — الأسعار للوحدة: <strong id="pricingUnitLabel" style="color:var(--text-secondary,#6b7280);">—</strong>
                             </span>
-                            {% if hc_mode %}
-                            <span class="badge bg-warning text-dark ms-2" style="font-size:.7rem;">
-                                <i class="fas fa-exchange-alt me-1"></i>
-                                وضع {{ hc_currency_symbol }} — 1 {{ hc_currency_symbol }} = {{ exchange_rate|stringformat:".2f"|intcomma }} {{ local_currency_symbol }}
-                            </span>
-                            {% endif %}
                         </div>
 
-                        {% if hc_mode %}
-                        <div class="row g-3 mb-3">
-                            <div class="col-md-4">
-                                <label class="cx-label" for="id_cost_price">سعر التكلفة ({{ local_currency_symbol }})</label>
-                                {{ item_form.cost_price }}
-                            </div>
-                            <div class="col-md-4">
-                                <label class="cx-label" for="id_selling_price">سعر البيع ({{ local_currency_symbol }}) <sup class="cx-required">*</sup></label>
-                                {{ item_form.selling_price }}
-                            </div>
-                            <div class="col-md-4">
-                                <label class="cx-label" for="id_min_selling_price">أدنى سعر ({{ local_currency_symbol }})</label>
-                                {{ item_form.min_selling_price }}
-                            </div>
-                        </div>
-                        <div class="row g-3 mb-4">
-                            <div class="col-md-4">
-                                <label class="cx-label text-muted">سعر التكلفة ({{ hc_currency_symbol }}) — تلقائي</label>
-                                <input type="text" class="form-control" id="id_cost_price_hc_display" readonly>
-                                <input type="hidden" id="id_cost_price_hc" name="cost_price_hc">
-                                <div class="cx-hc-calc-hint" id="hint_cost_price_hc"></div>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="cx-label text-muted">سعر البيع ({{ hc_currency_symbol }}) — تلقائي</label>
-                                <input type="text" class="form-control" id="id_selling_price_hc_display" readonly>
-                                <input type="hidden" id="id_selling_price_hc" name="selling_price_hc">
-                                <div class="cx-hc-calc-hint" id="hint_selling_price_hc"></div>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="cx-label text-muted">أدنى سعر ({{ hc_currency_symbol }}) — تلقائي</label>
-                                <input type="text" class="form-control" id="id_min_selling_price_hc_display" readonly>
-                                <input type="hidden" id="id_min_selling_price_hc" name="min_selling_price_hc">
-                                <div class="cx-hc-calc-hint" id="hint_min_selling_price_hc"></div>
-                            </div>
-                        </div>
-                        {% else %}
                         <div class="row g-3 mb-4">
                             <div class="col-md-4">
                                 <label class="cx-label" for="id_cost_price">{{ item_form.cost_price.label }}</label>
@@ -368,7 +325,6 @@
                                 {{ item_form.min_selling_price }}
                             </div>
                         </div>
-                        {% endif %}
 
                         {# ── ٣: المخزون ── #}
                         <div class="cx-form-group-label">
@@ -603,15 +559,6 @@
                                 <span class="cx-info-card-value cx-info-card-value--money" id="viewItemMinSelling"></span>
                             </div>
                         </div>
-                        {% if hc_mode %}
-                        <div class="cx-info-card cx-info-card--money" id="viewItemHcCard">
-                            <div class="cx-info-card-icon" style="background:rgba(245,158,11,.15)"><i class="fas fa-exchange-alt" style="color:#d97706"></i></div>
-                            <div class="cx-info-card-content">
-                                <span class="cx-info-card-label">سعر البيع ({{ hc_currency_symbol }})</span>
-                                <span class="cx-info-card-value" id="viewItemSellingHc" style="color:#d97706;font-weight:600;"></span>
-                            </div>
-                        </div>
-                        {% endif %}
                     </div>
                 </div>
 
@@ -797,66 +744,6 @@
     const CURRENCY_SYMBOLS = {{ currency_symbols_json|safe }};
     function curSym(code) { return CURRENCY_SYMBOLS[(code || '').toUpperCase()] || code || ''; }
 
-    {% if hc_mode %}
-    const HC_EXCHANGE_RATE = {{ exchange_rate|stringformat:".4f" }};
-    const LOCAL_SYM = '{{ local_currency_symbol }}';
-    const HC_SYM = '{{ hc_currency_symbol }}';
-
-    function _lockHcPriceFields() {
-        ['cost_price_hc', 'selling_price_hc', 'min_selling_price_hc'].forEach(function(f) {
-            var el = document.getElementById('id_' + f + '_display');
-            if (!el) return;
-            el.readOnly = true;
-            el.style.background = '#f1f5f9';
-            el.style.cursor = 'not-allowed';
-            el.style.color = '#64748b';
-        });
-    }
-
-    // القيمة الدقيقة (4 خانات عشرية) هي اللي بتتحفظ فعلياً وتُستخدم لإعادة حساب
-    // السعر المحلي في السيرفر — لازم تفضل دقيقة عشان السعر المحلي المحفوظ يطابق
-    // اللي المشترك كتبه بالظبط. العرض للمستخدم بس بيتقرّب لخانتين عشريتين.
-    function _calcHcPrecise(localVal) {
-        var n = parseFloat(localVal);
-        return (isNaN(n) || n === 0 || !HC_EXCHANGE_RATE) ? '' : (n / HC_EXCHANGE_RATE).toFixed(4);
-    }
-
-    function _updateHint(hintId, hcVal) {
-        var el = document.getElementById(hintId);
-        if (!el) return;
-        if (hcVal === '') { el.textContent = ''; return; }
-        var fmt = parseFloat(hcVal).toLocaleString('en', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        el.textContent = '= ' + fmt + ' ' + HC_SYM;
-    }
-
-    function _syncHcPrices() {
-        var pairs = [
-            ['id_cost_price',         'id_cost_price_hc',         'hint_cost_price_hc'],
-            ['id_selling_price',      'id_selling_price_hc',      'hint_selling_price_hc'],
-            ['id_min_selling_price',  'id_min_selling_price_hc',  'hint_min_selling_price_hc'],
-        ];
-        pairs.forEach(function(p) {
-            var localEl   = document.getElementById(p[0]);
-            var hcEl      = document.getElementById(p[1]);
-            var displayEl = document.getElementById(p[1] + '_display');
-            if (!localEl || !hcEl) return;
-            var hcVal = _calcHcPrecise(localEl.value);
-            hcEl.value = hcVal;
-            if (displayEl) displayEl.value = hcVal === '' ? '' : parseFloat(hcVal).toFixed(2);
-            _updateHint(p[2], hcVal);
-        });
-    }
-
-    document.addEventListener('DOMContentLoaded', function() {
-        _lockHcPriceFields();
-
-        ['id_cost_price', 'id_selling_price', 'id_min_selling_price'].forEach(function(id) {
-            var el = document.getElementById(id);
-            if (el) el.addEventListener('input', _syncHcPrices);
-        });
-    });
-    {% endif %}
-
     const urlTable       = "{% url 'items:table_api' %}";
     const urlCreate      = "{% url 'items:create_api' %}";
     const urlDetail      = "{% url 'items:detail_api' 0 %}";
@@ -1004,15 +891,6 @@
                 data: 'selling_price',
                 render: v => `<span class="cxr-bal cxr-bal--pos">${BananIMS.formatMoney(v)}</span>`
             },
-            {% if hc_mode %}
-            {
-                data: 'selling_price_hc',
-                render: function(v, t, r) {
-                    if (!v) return '<span class="cxr-empty">—</span>';
-                    return `<span class="cxr-bal" style="color:#d97706;">${BananIMS.formatMoney(v)} ${curSym(r.hc_currency)}</span>`;
-                }
-            },
-            {% endif %}
             {
                 data: 'is_active',
                 render: a => a
@@ -1269,11 +1147,6 @@
             var el = document.querySelector(sel);
             if (el && parseFloat(el.value) === 0) el.value = '';
         });
-        {% if hc_mode %}
-        ['hint_cost_price_hc','hint_selling_price_hc','hint_min_selling_price_hc'].forEach(function(id) {
-            var el = document.getElementById(id); if (el) el.textContent = '';
-        });
-        {% endif %}
     }
 
     /* ── Open create ───────────────────────────────────────── */
@@ -1307,9 +1180,6 @@
                 $('#id_cost_price').val(BananIMS.parseNumber(d.cost_price) || '');
                 $('#id_selling_price').val(BananIMS.parseNumber(d.selling_price) || '');
                 $('#id_min_selling_price').val(BananIMS.parseNumber(d.min_selling_price) || '');
-                {% if hc_mode %}
-                _syncHcPrices();
-                {% endif %}
                 $('#id_tax_rate').val(BananIMS.parseNumber(d.tax_rate) || '');
                 $('#id_min_quantity').val(BananIMS.parseNumber(d.min_quantity) || '');
                 $('#id_max_quantity').val(BananIMS.parseNumber(d.max_quantity) || '');
@@ -1430,12 +1300,6 @@
                 $('#viewItemSellingPrice').text(BananIMS.formatMoney(d.selling_price));
                 $('#viewItemTaxRate').text((d.tax_rate || '0') + '%');
                 $('#viewItemMinSelling').text(BananIMS.formatMoney(d.min_selling_price));
-                {% if hc_mode %}
-                const hcSellingEl = document.getElementById('viewItemSellingHc');
-                if (hcSellingEl) {
-                    hcSellingEl.textContent = d.selling_price_hc ? BananIMS.formatMoney(d.selling_price_hc) + ' {{ hc_currency_symbol }}' : '—';
-                }
-                {% endif %}
                 $('#viewItemDescription').text(d.description || '—');
 
                 // Stock limits

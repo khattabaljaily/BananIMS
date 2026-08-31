@@ -303,24 +303,12 @@ class PurchasesReportGenerator:
         except Supplier.DoesNotExist:
             return None
 
-        hc_mode = getattr(self.tenant, 'hard_currency_mode', False)
-        supplier_currency = (supplier.currency or '').strip()
-        is_hc_supplier = hc_mode and bool(supplier_currency)
-
         # Opening balance = last entry before start_date
-        if is_hc_supplier:
-            pre_entry = SupplierLedger.objects.filter(
-                tenant=self.tenant, supplier=supplier,
-                entry_date__lt=self.start_date,
-                hc_running_balance__isnull=False,
-            ).order_by('entry_date', 'id').last()
-            opening_balance = float(pre_entry.hc_running_balance) if pre_entry else float(supplier.opening_balance or 0)
-        else:
-            pre_entry = SupplierLedger.objects.filter(
-                tenant=self.tenant, supplier=supplier,
-                entry_date__lt=self.start_date,
-            ).order_by('entry_date', 'id').last()
-            opening_balance = float(pre_entry.running_balance) if pre_entry else float(supplier.opening_balance or 0)
+        pre_entry = SupplierLedger.objects.filter(
+            tenant=self.tenant, supplier=supplier,
+            entry_date__lt=self.start_date,
+        ).order_by('entry_date', 'id').last()
+        opening_balance = float(pre_entry.running_balance) if pre_entry else float(supplier.opening_balance or 0)
 
         all_entries = list(SupplierLedger.objects.filter(
             tenant=self.tenant,
@@ -359,12 +347,8 @@ class PurchasesReportGenerator:
             'is_edited': False,
         }]
         for e in entries:
-            if is_hc_supplier and e.hc_amount is not None:
-                amt = float(e.hc_amount)
-                bal = float(e.hc_running_balance) if e.hc_running_balance is not None else None
-            else:
-                amt = float(e.amount)
-                bal = float(e.running_balance) + supplier_opening
+            amt = float(e.amount)
+            bal = float(e.running_balance) + supplier_opening
             data.append({
                 'entry_date': e.entry_date,
                 'entry_type': e.get_entry_type_display(),
@@ -377,22 +361,15 @@ class PurchasesReportGenerator:
 
         if entries:
             last = entries[-1]
-            if is_hc_supplier and last.hc_running_balance is not None:
-                total_debit  = sum(float(e.hc_amount) for e in entries if e.hc_amount and float(e.hc_amount) > 0)
-                total_credit = abs(sum(float(e.hc_amount) for e in entries if e.hc_amount and float(e.hc_amount) < 0))
-                closing_balance = float(last.hc_running_balance)
-            else:
-                total_debit  = sum(float(e.amount) for e in entries if float(e.amount) > 0)
-                total_credit = abs(sum(float(e.amount) for e in entries if float(e.amount) < 0))
-                closing_balance = float(last.running_balance) + supplier_opening
+            total_debit  = sum(float(e.amount) for e in entries if float(e.amount) > 0)
+            total_credit = abs(sum(float(e.amount) for e in entries if float(e.amount) < 0))
+            closing_balance = float(last.running_balance) + supplier_opening
         else:
             total_debit = total_credit = 0.0
             closing_balance = opening_balance
 
         return {
             'supplier': supplier,
-            'supplier_currency': supplier_currency,
-            'is_hc_supplier': is_hc_supplier,
             'period': {'start': self.start_date, 'end': self.end_date},
             'summary': {
                 'opening_balance': format_number(opening_balance, 2),
@@ -408,31 +385,16 @@ class PurchasesReportGenerator:
         from apps.suppliers.models import Supplier
         from django.db.models import Sum as _Sum
 
-        hc_mode = getattr(self.tenant, 'hard_currency_mode', False)
-        hc_rate = Decimal(str(self.tenant.exchange_rate or 1)) if hc_mode and self.tenant.exchange_rate else None
-
         suppliers = Supplier.objects.filter(tenant=self.tenant).order_by('name')
         data = []
         for s in suppliers:
-            supplier_currency = (s.currency or '').strip()
-            # Mirror exact logic from suppliers list page: HC = has currency + hc_mode + rate exists
-            is_hc = hc_mode and bool(supplier_currency) and hc_rate is not None
-
             opening = float(s.opening_balance or 0)
-            if is_hc:
-                hc_sum = float(
-                    SupplierLedger.objects
-                    .filter(tenant=self.tenant, supplier=s, hc_amount__isnull=False)
-                    .aggregate(s=_Sum('hc_amount'))['s'] or 0
-                )
-                balance = hc_sum + opening
-            else:
-                local_sum = float(
-                    SupplierLedger.objects
-                    .filter(tenant=self.tenant, supplier=s)
-                    .aggregate(s=_Sum('amount'))['s'] or 0
-                )
-                balance = local_sum + opening
+            local_sum = float(
+                SupplierLedger.objects
+                .filter(tenant=self.tenant, supplier=s)
+                .aggregate(s=_Sum('amount'))['s'] or 0
+            )
+            balance = local_sum + opening
 
             if balance > 0:
                 data.append({
@@ -442,19 +404,13 @@ class PurchasesReportGenerator:
                     'credit_limit': format_number(float(s.credit_limit), 2),
                     'balance': format_number(balance, 2),
                     'balance_raw': balance,
-                    'currency': supplier_currency,
-                    'is_hc': is_hc,
                 })
 
-        total_local = sum(r['balance_raw'] for r in data if not r['is_hc'])
-        total_hc = sum(r['balance_raw'] for r in data if r['is_hc'])
-        hc_currency = next((r['currency'] for r in data if r['is_hc']), '')
+        total_local = sum(r['balance_raw'] for r in data)
         return {
             'data': data,
             'summary': {
                 'total_local': format_number(total_local, 2),
-                'total_hc': format_number(total_hc, 2),
-                'hc_currency': hc_currency,
             },
         }
 
@@ -494,8 +450,6 @@ class PurchasesReportGenerator:
                 for inv in PurchaseInvoice.objects.filter(id__in=invoice_ref_ids).only('id', 'invoice_number')
             }
 
-        hc_mode = getattr(self.tenant, 'hard_currency_mode', False)
-        tenant_currency = (getattr(self.tenant, 'currency', '') or '').strip()
         # totals keyed by currency string ('' = local)
         totals: dict = {}  # currency -> {'cash': float, 'bank': float}
         data = []
@@ -503,16 +457,8 @@ class PurchasesReportGenerator:
         for e in entries:
             method_label, method_key = METHOD_MAP.get(e.reference_type, ('—', ''))
 
-            sup_currency = (e.supplier.currency or '').strip() if e.supplier else ''
-            # HC supplier: hc_mode on, has a currency different from tenant's local currency
-            is_hc = hc_mode and bool(sup_currency) and sup_currency != tenant_currency
-
-            if is_hc:
-                amt_in_currency = abs(float(e.hc_amount or 0))
-                currency_label = sup_currency
-            else:
-                amt_in_currency = abs(float(e.amount))
-                currency_label = ''
+            amt_in_currency = abs(float(e.amount))
+            currency_label = ''
 
             display_amount = format_number(amt_in_currency, 2)
 

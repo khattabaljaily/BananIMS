@@ -191,10 +191,8 @@ def post_treasury_transfer(
     to_amount = Decimal(str(to_amount))
     exchange_rate = Decimal(str(exchange_rate))
 
-    from_currency = from_treasury.currency or tenant.currency
-    to_currency = to_treasury.currency or tenant.currency
-    desc_out = f'تحويل إلى {to_treasury.name} ({to_amount} {to_currency}) — سعر الصرف: {exchange_rate}'
-    desc_in = f'تحويل من {from_treasury.name} ({from_amount} {from_currency}) — سعر الصرف: {exchange_rate}'
+    desc_out = f'تحويل إلى {to_treasury.name} ({to_amount} {tenant.currency})'
+    desc_in = f'تحويل من {from_treasury.name} ({from_amount} {tenant.currency})'
 
     mv_out = post_treasury_movement(
         tenant=tenant, movement_type='disbursement',

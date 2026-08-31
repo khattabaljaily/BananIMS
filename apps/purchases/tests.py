@@ -22,7 +22,6 @@ class PurchaseInvoiceEditTests(TestCase):
             name='Purchase Test Tenant',
             slug='purchase-test-tenant',
             business_type=self.business_type,
-            hard_currency_mode=False,
             currency='SDG',
         )
         self.user = User.objects.create_user(
@@ -34,7 +33,6 @@ class PurchaseInvoiceEditTests(TestCase):
         self.supplier = Supplier.objects.create(
             tenant=self.tenant,
             name='Supplier X',
-            currency='SDG',
             opening_balance=Decimal('0.00'),
         )
         self.stock = Stock.objects.create(

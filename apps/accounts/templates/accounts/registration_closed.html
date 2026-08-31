@@ -74,17 +74,6 @@
             <div class="text-danger small mt-1 js-field-errors" data-field="version_type"></div>
         </div>
 
-        <div class="col-md-6">
-            <label class="form-label d-block">وضع العملة الصعبة</label>
-            <div class="reg-hc-check">
-                {{ form.hard_currency_mode }}
-                <label class="form-check-label" for="{{ form.hard_currency_mode.id_for_label }}">
-                    {{ form.hard_currency_mode.label }}
-                </label>
-            </div>
-            <div class="text-danger small mt-1 js-field-errors" data-field="hard_currency_mode"></div>
-        </div>
-
         <div class="col-12">
             {{ form.address.label_tag }}
             {{ form.address }}
@@ -132,25 +121,6 @@
 @media (max-width: 991px) {
     .auth-card { max-width: 100%; }
 }
-
-.reg-hc-check {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    height: 44px;
-    padding: 0 0.95rem;
-    background: var(--bg-tertiary);
-    border: 1.5px solid var(--border-color);
-    border-radius: var(--radius-lg);
-}
-[data-theme="dark"] .reg-hc-check { background: rgba(255, 255, 255, 0.04); }
-.reg-hc-check .form-check-label {
-    font-size: 0.88rem;
-    color: var(--text-primary);
-    margin: 0;
-    cursor: pointer;
-}
-.reg-hc-check input[type="checkbox"] { cursor: pointer; margin: 0; }
 
 .reg-links-line {
     display: flex;
@@ -392,8 +362,7 @@ document.addEventListener('DOMContentLoaded', function () {
             'اسم النشاط التجاري: ' + fieldText('business_name'),
             'رقم الهاتف: ' + fieldText('phone'),
             'العنوان: ' + fieldText('address'),
-            'نوع النسخة: ' + fieldText('version_type'),
-            'وضع العملة الصعبة: ' + fieldText('hard_currency_mode')
+            'نوع النسخة: ' + fieldText('version_type')
         ];
         return 'https://wa.me/' + whatsappNumber + '?text=' + encodeURIComponent(lines.join('\n'));
     }
