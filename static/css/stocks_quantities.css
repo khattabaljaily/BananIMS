@@ -139,7 +139,7 @@
         margin: 0;
         font-size: 0.99rem;
         font-weight: 700;
-        color: var(--text-heading, #111827);
+        color: var(--text-heading, var(--text-primary));
         line-height: 1.2;
     }
 
@@ -183,7 +183,7 @@
 
     .cx-qty-card-meta-value {
         font-size: 0.92rem;
-        color: var(--text-heading, #111827);
+        color: var(--text-heading, var(--text-primary));
         font-weight: 700;
     }
 

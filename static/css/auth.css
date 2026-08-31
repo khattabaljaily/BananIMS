@@ -149,10 +149,10 @@
     background:
         linear-gradient(160deg,
             #312e81 0%,
-            #0a1622 25%,
+            var(--indigo-700) 25%,
             #6d28d9 60%,
             #7c3aed 85%,
-            #faa71d 100%);
+            var(--secondary) 100%);
 }
 
 /* Fine mesh dot layer */

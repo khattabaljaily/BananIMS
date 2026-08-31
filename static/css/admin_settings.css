@@ -100,9 +100,9 @@
     display: flex; align-items: center; justify-content: center;
     font-size: 1.1rem;
 }
-.asy-card__icon--indigo { background: rgba(19,37,57,.12); color: #132539; }
-.asy-card__icon--red    { background: rgba(239,68,68,.1);   color: #ef4444; }
-.asy-card__icon--amber  { background: rgba(245,158,11,.12); color: #f59e0b; }
+.asy-card__icon--indigo { background: rgba(19,37,57,.12); color: var(--primary); }
+.asy-card__icon--red    { background: rgba(239,68,68,.1);   color: var(--danger); }
+.asy-card__icon--amber  { background: rgba(245,158,11,.12); color: var(--warning); }
 .asy-card__icon--teal   { background: rgba(20,184,166,.12); color: #14b8a6; }
 .asy-card__title { font-weight: 700; color: var(--text-primary); font-size: .95rem; }
 .asy-card__sub   { font-size: .78rem; color: var(--text-tertiary); }
@@ -152,7 +152,7 @@
 .asy-input:focus,
 .asy-select:focus,
 .asy-textarea:focus {
-    border-color: #132539;
+    border-color: var(--primary);
     box-shadow: 0 0 0 3px rgba(19,37,57,.12);
 }
 .asy-textarea { resize: vertical; }
@@ -180,10 +180,10 @@
     display: inline-flex; align-items: center; gap: .4rem;
     padding: .48rem 1rem;
     border: 1.5px dashed var(--border-color); border-radius: 9px;
-    font-size: .8rem; font-weight: 600; color: #132539;
+    font-size: .8rem; font-weight: 600; color: var(--primary);
     cursor: pointer; transition: border-color .2s, background .2s;
 }
-.asy-file-btn:hover { border-color: #132539; background: rgba(19,37,57,.04); }
+.asy-file-btn:hover { border-color: var(--primary); background: rgba(19,37,57,.04); }
 
 /* ── Toggle ─────────────────────────────────────────────────── */
 .asy-toggle-row {
@@ -199,7 +199,7 @@
 .asy-toggle input { opacity: 0; width: 0; height: 0; }
 .asy-toggle__slider {
     position: absolute; inset: 0;
-    background: #d1d5db; border-radius: 999px;
+    background: var(--border-medium); border-radius: 999px;
     cursor: pointer; transition: background .25s;
 }
 .asy-toggle__slider::before {
@@ -210,7 +210,7 @@
     transition: transform .25s;
     box-shadow: 0 1px 4px rgba(0,0,0,.2);
 }
-.asy-toggle input:checked + .asy-toggle__slider { background: #132539; }
+.asy-toggle input:checked + .asy-toggle__slider { background: var(--primary); }
 .asy-toggle input:checked + .asy-toggle__slider::before { transform: translateX(20px); }
 
 /* ── Maintenance alert ─────────────────────────────────────── */
@@ -255,7 +255,7 @@
 .asy-btn:active  { transform: scale(.97); }
 .asy-btn:disabled { opacity: .6; cursor: not-allowed; }
 
-.asy-btn--primary { background: #132539; color: #fff; }
-.asy-btn--danger  { background: #ef4444; color: #fff; }
-.asy-btn--amber   { background: #f59e0b; color: #fff; }
+.asy-btn--primary { background: var(--primary); color: var(--text-inverse); }
+.asy-btn--danger  { background: var(--danger); color: var(--text-inverse); }
+.asy-btn--amber   { background: var(--warning); color: var(--text-inverse); }
 .asy-btn--teal    { background: #14b8a6; color: #fff; }

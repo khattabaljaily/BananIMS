@@ -3,19 +3,19 @@
    ══════════════════════════════════════════════════════════════ */
 
 :root {
-  --ab-indigo: #132539;
-  --ab-indigo-dark: #1d3a56;
-  --ab-indigo-light: #d6e2ea;
+  --ab-indigo: var(--primary);
+  --ab-indigo-dark: var(--primary-hover);
+  --ab-indigo-light: var(--indigo-100);
   --ab-purple: #a855f7;
   --ab-yellow: #fbbf24;
   --ab-yellow-dim: rgba(251,191,36,.75);
-  --ab-text: #111827;
+  --ab-text: var(--text-primary);
   --ab-text-2: #4b5563;
   --ab-text-3: #9ca3af;
-  --ab-border: #e5e7eb;
-  --ab-white: #ffffff;
-  --ab-gray-50: #f9fafb;
-  --ab-gray-100: #f3f4f6;
+  --ab-border: var(--border-color);
+  --ab-white: var(--surface);
+  --ab-gray-50: var(--surface-alt);
+  --ab-gray-100: var(--bg-tertiary);
   --ab-radius: 16px;
   --ab-radius-sm: 10px;
   --ab-shadow: 0 4px 24px rgba(19,37,57,.10);
@@ -193,7 +193,7 @@ body { font-family: 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif;
   margin-bottom: 24px; letter-spacing: -.5px;
 }
 .ab-hero__accent {
-  background: linear-gradient(90deg, #a78bfa 0%, #132539 50%, #60a5fa 100%);
+  background: linear-gradient(90deg, #a78bfa 0%, var(--primary) 50%, #60a5fa 100%);
   -webkit-background-clip: text; -webkit-text-fill-color: transparent;
   background-clip: text;
   min-width: 8px; display: inline-block;
@@ -308,11 +308,11 @@ body { font-family: 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif;
 }
 .ab-sector-chip i { font-size: .95rem; }
 .ab-sector-chip--more {
-  background: linear-gradient(135deg, #132539, #a855f7);
+  background: linear-gradient(135deg, var(--primary), #a855f7);
   color: #fff; border-color: transparent;
 }
 .ab-sector-chip--more:hover {
-  background: linear-gradient(135deg, #1d3a56, #9333ea);
+  background: linear-gradient(135deg, var(--primary-hover), #9333ea);
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -474,7 +474,7 @@ body { font-family: 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif;
   border-radius: var(--ab-radius); overflow: hidden;
   box-shadow: var(--ab-shadow-lg);
 }
-.ab-compare__col { padding: 40px 36px; background: #fff; }
+.ab-compare__col { padding: 40px 36px; background: var(--surface); }
 .ab-compare__col--before { background: #fef2f2; border-left: 1px solid #fee2e2; }
 .ab-compare__col--after { background: #f0fdf4; }
 .ab-compare__label {
@@ -485,7 +485,7 @@ body { font-family: 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif;
 .ab-compare__col--after .ab-compare__label { color: #16a34a; }
 .ab-compare__arrow {
   display: flex; align-items: center; justify-content: center;
-  width: 56px; background: #fff;
+  width: 56px; background: var(--surface);
   font-size: 1.4rem; color: var(--ab-indigo); align-self: stretch;
   border-top: 1px solid var(--ab-border); border-bottom: 1px solid var(--ab-border);
 }
@@ -501,7 +501,7 @@ body { font-family: 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif;
    FEATURES TABS
    ══════════════════════════════════════════════════════════════ */
 .ab-tabs {
-  background: #fff; border-radius: var(--ab-radius);
+  background: var(--surface); border-radius: var(--ab-radius);
   box-shadow: var(--ab-shadow-lg); overflow: hidden;
 }
 .ab-tabs__nav {
@@ -598,7 +598,7 @@ body { font-family: 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif;
 .ab-ai-card--featured { padding: 36px; }
 .ab-ai-card__glow {
   position: absolute; top: 0; left: 0; right: 0; height: 2px;
-  background: linear-gradient(90deg, #132539, #a855f7, #132539);
+  background: linear-gradient(90deg, var(--primary), #a855f7, var(--primary));
 }
 .ab-ai-card__icon {
   width: 52px; height: 52px; border-radius: 14px;
@@ -641,7 +641,7 @@ body { font-family: 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif;
    ══════════════════════════════════════════════════════════════ */
 .ab-store {
   padding: 100px 0;
-  background: linear-gradient(135deg, #f8faff 0%, #eaf0f5 100%);
+  background: linear-gradient(135deg, #f8faff 0%, var(--indigo-50) 100%);
 }
 .ab-store__inner {
   display: grid; grid-template-columns: 1fr 400px; gap: 64px; align-items: center;
@@ -696,7 +696,7 @@ body { font-family: 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif;
 .ab-mockup-cart { position: relative; color: #fff; font-size: .85rem; }
 .ab-mockup-cart span {
   position: absolute; top: -6px; left: -6px;
-  background: #ef4444; color: #fff; width: 16px; height: 16px;
+  background: var(--danger); color: #fff; width: 16px; height: 16px;
   border-radius: 50%; font-size: .65rem; display: flex;
   align-items: center; justify-content: center; font-weight: 700;
 }
@@ -829,7 +829,7 @@ body { font-family: 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif;
 .ab-support { padding: 80px 0; background: var(--ab-gray-50); }
 .ab-support__box {
   max-width: 580px; margin: 0 auto; text-align: center;
-  background: #fff; border-radius: var(--ab-radius);
+  background: var(--surface); border-radius: var(--ab-radius);
   padding: 56px 48px; box-shadow: var(--ab-shadow-lg);
   border: 1px solid var(--ab-border);
 }
@@ -865,7 +865,7 @@ body { font-family: 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif;
    ══════════════════════════════════════════════════════════════ */
 .ab-cta {
   padding: 100px 0;
-  background: linear-gradient(135deg, #312e81 0%, #132539 50%, #7c3aed 100%);
+  background: linear-gradient(135deg, #312e81 0%, var(--primary) 50%, #7c3aed 100%);
   position: relative; overflow: hidden; text-align: center;
   color: #fff;
 }

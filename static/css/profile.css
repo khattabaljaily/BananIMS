@@ -70,9 +70,9 @@
 
 .subscription-status-badge { margin-bottom: 0.8rem; }
 
-.subscription-status-badge--success { color: #10b981; background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); }
-.subscription-status-badge--warning { color: #f59e0b; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); }
-.subscription-status-badge--danger  { color: #ef4444; background: rgba(239,68,68,0.1);  border: 1px solid rgba(239,68,68,0.2);  }
+.subscription-status-badge--success { color: var(--success); background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); }
+.subscription-status-badge--warning { color: var(--warning); background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); }
+.subscription-status-badge--danger  { color: var(--danger); background: rgba(239,68,68,0.1);  border: 1px solid rgba(239,68,68,0.2);  }
 .subscription-status-badge--info    { color: #0ea5e9; background: rgba(14,165,233,0.1); border: 1px solid rgba(14,165,233,0.2); }
 
 .subscription-status-number {
@@ -240,23 +240,23 @@
 .profile-action-btn--primary {
     border-color: rgba(59,130,246,0.35);
     background: rgba(59,130,246,0.08);
-    color: #3b82f6;
+    color: var(--info);
 }
 .profile-action-btn--primary:hover {
     background: rgba(59,130,246,0.15);
-    border-color: #3b82f6;
-    color: #3b82f6;
+    border-color: var(--info);
+    color: var(--info);
 }
 
 .profile-action-btn--success {
     border-color: rgba(16,185,129,0.35);
     background: rgba(16,185,129,0.08);
-    color: #10b981;
+    color: var(--success);
 }
 .profile-action-btn--success:hover {
     background: rgba(16,185,129,0.15);
-    border-color: #10b981;
-    color: #10b981;
+    border-color: var(--success);
+    color: var(--success);
 }
 
 .profile-action-btn--warning {
@@ -266,19 +266,19 @@
 }
 .profile-action-btn--warning:hover {
     background: rgba(245,158,11,0.15);
-    border-color: #f59e0b;
+    border-color: var(--warning);
     color: #d97706;
 }
 
 .profile-action-btn--danger {
     border-color: rgba(239,68,68,0.35);
     background: rgba(239,68,68,0.08);
-    color: #ef4444;
+    color: var(--danger);
 }
 .profile-action-btn--danger:hover {
     background: rgba(239,68,68,0.15);
-    border-color: #ef4444;
-    color: #ef4444;
+    border-color: var(--danger);
+    color: var(--danger);
 }
 
 /* ── Notes ── */
@@ -310,7 +310,7 @@
 }
 
 .profile-note-item i {
-    color: #f59e0b;
+    color: var(--warning);
     margin-top: 0.1rem;
     font-size: 0.9rem;
     flex-shrink: 0;

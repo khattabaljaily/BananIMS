@@ -4,10 +4,10 @@
 
 /* ── Greeting banner ─────────────────────────────────── */
 .db-greeting {
-    background: linear-gradient(135deg, #132539 0%, #0a1622 55%, #3730a3 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--indigo-700) 55%, #3730a3 100%);
     border-radius: 20px;
     padding: 1rem 2rem;
-    color: #fff;
+    color: var(--text-inverse);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -99,12 +99,12 @@
 }
 .db-kpi:hover { box-shadow: 0 8px 28px rgba(0,0,0,.1); transform: translateY(-2px); }
 
-.db-kpi--indigo::after  { background: linear-gradient(90deg, #132539, #4a6e8c); }
-.db-kpi--emerald::after { background: linear-gradient(90deg, #10b981, #34d399); }
-.db-kpi--amber::after   { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
-.db-kpi--rose::after    { background: linear-gradient(90deg, #ef4444, #f87171); }
+.db-kpi--indigo::after  { background: linear-gradient(90deg, var(--primary), #4a6e8c); }
+.db-kpi--emerald::after { background: linear-gradient(90deg, var(--success), #34d399); }
+.db-kpi--amber::after   { background: linear-gradient(90deg, var(--warning), #fbbf24); }
+.db-kpi--rose::after    { background: linear-gradient(90deg, var(--danger), #f87171); }
 .db-kpi--sky::after     { background: linear-gradient(90deg, #0ea5e9, #38bdf8); }
-.db-kpi--violet::after  { background: linear-gradient(90deg, #faa71d, #a78bfa); }
+.db-kpi--violet::after  { background: linear-gradient(90deg, var(--secondary), #a78bfa); }
 .db-kpi--teal::after    { background: linear-gradient(90deg, #14b8a6, #2dd4bf); }
 .db-kpi--orange::after  { background: linear-gradient(90deg, #f97316, #fb923c); }
 
@@ -115,10 +115,10 @@
     flex-shrink: 0;
     font-size: 1.15rem;
 }
-.db-kpi--indigo  .db-kpi-icon { background: rgba(19,37,57,.1);  color: #132539; }
-.db-kpi--emerald .db-kpi-icon { background: rgba(16,185,129,.1);  color: #10b981; }
+.db-kpi--indigo  .db-kpi-icon { background: rgba(19,37,57,.1);  color: var(--primary); }
+.db-kpi--emerald .db-kpi-icon { background: rgba(16,185,129,.1);  color: var(--success); }
 .db-kpi--amber   .db-kpi-icon { background: rgba(245,158,11,.1);  color: #d97706; }
-.db-kpi--rose    .db-kpi-icon { background: rgba(239,68,68,.1);   color: #ef4444; }
+.db-kpi--rose    .db-kpi-icon { background: rgba(239,68,68,.1);   color: var(--danger); }
 .db-kpi--sky     .db-kpi-icon { background: rgba(14,165,233,.1);  color: #0ea5e9; }
 .db-kpi--violet  .db-kpi-icon { background: rgba(250,167,29,.1);  color: #7c3aed; }
 .db-kpi--teal    .db-kpi-icon { background: rgba(20,184,166,.1);  color: #0d9488; }
@@ -152,7 +152,7 @@
 }
 .db-kpi-tag--up   { background: rgba(16,185,129,.1);  color: #059669; }
 .db-kpi-tag--warn { background: rgba(245,158,11,.1);  color: #b45309; }
-.db-kpi-tag--info { background: rgba(19,37,57,.1);  color: #1d3a56; }
+.db-kpi-tag--info { background: rgba(19,37,57,.1);  color: var(--primary-hover); }
 .db-kpi-tag--down { background: rgba(239,68,68,.1);   color: #dc2626; }
 
 /* ── Stat mini row ────────────────────────────────────── */
@@ -254,7 +254,7 @@
 .db-cat-fill {
     height: 100%;
     border-radius: 999px;
-    background: linear-gradient(90deg, #132539, #4a6e8c);
+    background: linear-gradient(90deg, var(--primary), #4a6e8c);
     transition: width .9s cubic-bezier(.4,0,.2,1);
 }
 .db-cat-pct {
@@ -311,8 +311,8 @@
 .db-status-label { font-size: .84rem; color: var(--text-secondary); display: flex; align-items: center; gap: .5rem; }
 .db-status-val   { font-size: .88rem; font-weight: 700; }
 .db-status-val--warn   { color: #d97706; }
-.db-status-val--danger { color: #ef4444; }
-.db-status-val--ok     { color: #10b981; }
+.db-status-val--danger { color: var(--danger); }
+.db-status-val--ok     { color: var(--success); }
 .db-status-val--info   { color: #0ea5e9; }
 
 /* ── Quick actions ────────────────────────────────────── */
@@ -347,11 +347,11 @@
 
 .db-action--indigo  { background: rgba(19,37,57,.06);  border-color: rgba(19,37,57,.15); }
 .db-action--indigo:hover { background: rgba(19,37,57,.1); border-color: rgba(19,37,57,.3); }
-.db-action--indigo  .db-action-icon { background: rgba(19,37,57,.14); color: #132539; }
+.db-action--indigo  .db-action-icon { background: rgba(19,37,57,.14); color: var(--primary); }
 
 .db-action--emerald { background: rgba(16,185,129,.06);  border-color: rgba(16,185,129,.15); }
 .db-action--emerald:hover { background: rgba(16,185,129,.1); border-color: rgba(16,185,129,.3); }
-.db-action--emerald .db-action-icon { background: rgba(16,185,129,.14); color: #10b981; }
+.db-action--emerald .db-action-icon { background: rgba(16,185,129,.14); color: var(--success); }
 
 .db-action--sky     { background: rgba(14,165,233,.06);  border-color: rgba(14,165,233,.15); }
 .db-action--sky:hover { background: rgba(14,165,233,.1); border-color: rgba(14,165,233,.3); }
@@ -367,7 +367,7 @@
 
 .db-action--rose    { background: rgba(239,68,68,.06);   border-color: rgba(239,68,68,.15); }
 .db-action--rose:hover { background: rgba(239,68,68,.1); border-color: rgba(239,68,68,.3); }
-.db-action--rose    .db-action-icon { background: rgba(239,68,68,.14); color: #ef4444; }
+.db-action--rose    .db-action-icon { background: rgba(239,68,68,.14); color: var(--danger); }
 
 /* ── Low stock list ───────────────────────────────────── */
 .db-stock-item {
@@ -385,7 +385,7 @@
     box-shadow: 0 0 0 3px rgba(239,68,68,.18);
 }
 .db-stock-name { flex: 1; font-size: .82rem; color: var(--text-secondary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.db-stock-qty  { font-size: .78rem; font-weight: 700; color: #ef4444; white-space: nowrap; }
+.db-stock-qty  { font-size: .78rem; font-weight: 700; color: var(--danger); white-space: nowrap; }
 .db-stock-sep  { font-size: .7rem; color: var(--text-tertiary); margin: 0 .2rem; }
 .db-stock-min  { font-size: .73rem; color: var(--text-tertiary); }
 
@@ -393,7 +393,7 @@
 .db-ring-wrap { display: flex; flex-direction: column; align-items: center; gap: .45rem; padding: .5rem 0; }
 .db-ring-svg  { transform: rotate(-90deg); }
 .db-ring-track { fill: none; stroke: var(--bg-tertiary); stroke-width: 10; }
-.db-ring-fill  { fill: none; stroke: #132539; stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset .9s ease; }
+.db-ring-fill  { fill: none; stroke: var(--primary); stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset .9s ease; }
 .db-ring-label { font-size: 1.4rem; font-weight: 800; color: var(--text-primary); }
 .db-ring-sub   { font-size: .75rem; color: var(--text-tertiary); text-align: center; }
 

@@ -104,15 +104,15 @@ a.cx-stat-badge:hover { opacity: .8; }
     align-items: baseline;
     gap: .75rem;
     padding: .5rem 0;
-    border-bottom: 1px solid var(--border-light, #f3f4f6);
+    border-bottom: 1px solid var(--border-light, var(--border-light));
     font-size: .875rem;
 }
 .st-detail-row:last-child { border-bottom: none; }
-.st-detail-label { color: var(--text-secondary, #64748b); flex-shrink: 0; min-width: 80px; }
-.st-detail-value { font-weight: 600; color: var(--text-primary, #1e293b); }
+.st-detail-label { color: var(--text-secondary, var(--text-muted)); flex-shrink: 0; min-width: 80px; }
+.st-detail-value { font-weight: 600; color: var(--text-primary, var(--text-main)); }
 
 /* Table footer total row */
 tfoot td {
-    background: var(--surface-alt, #f8fafc);
+    background: var(--surface-alt, var(--input-bg));
     font-weight: 800;
 }

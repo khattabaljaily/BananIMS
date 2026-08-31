@@ -55,7 +55,7 @@ body {
   border-radius: 8px;
   transition: color .15s, background .15s;
 }
-.sc-back:hover { color: var(--brand); background: #f1f5f9; }
+.sc-back:hover { color: var(--brand); background: #eaf3f1; }
 .sc-header__title {
   font-size: .95rem;
   font-weight: 800;
@@ -193,7 +193,7 @@ body {
   transition: color .15s, background .15s;
   flex-shrink: 0;
 }
-.sc-remove:hover { color: #ef4444; background: #fee2e2; }
+.sc-remove:hover { color: #e5484d; background: #fee2e2; }
 
 /* ── Summary bar ──────────────────────────────────────────── */
 .sc-summary {

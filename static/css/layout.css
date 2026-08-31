@@ -652,7 +652,7 @@
 }
 
 [data-theme="dark"] .sidebar .nav-link .nav-icon {
-    color: #64748b;
+    color: var(--text-muted);
 }
 
 .sidebar .nav-link:hover .nav-icon,
@@ -670,13 +670,13 @@
 }
 
 /* Per-section icon accent colors */
-.sidebar .nav-icon--sales  { color: #10b981; }
-.sidebar .nav-icon--buy    { color: #132539; }
-.sidebar .nav-icon--stock  { color: #f59e0b; }
-.sidebar .nav-icon--report { color: #3b82f6; }
-.sidebar .nav-icon--acct   { color: #faa71d; }
-.sidebar .nav-icon--notif  { color: #ef4444; }
-.sidebar .nav-icon--dash   { color: #132539; }
+.sidebar .nav-icon--sales  { color: var(--success); }
+.sidebar .nav-icon--buy    { color: var(--primary); }
+.sidebar .nav-icon--stock  { color: var(--warning); }
+.sidebar .nav-icon--report { color: var(--info); }
+.sidebar .nav-icon--acct   { color: var(--secondary); }
+.sidebar .nav-icon--notif  { color: var(--danger); }
+.sidebar .nav-icon--dash   { color: var(--primary); }
 
 /* Muted / coming-soon links */
 .sidebar-link-muted {
@@ -788,7 +788,7 @@
 }
 
 [data-theme="dark"] .nav-sublink {
-    color: #64748b;
+    color: var(--text-muted);
 }
 
 .nav-sublink:hover {

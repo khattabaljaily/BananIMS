@@ -55,7 +55,7 @@
 .st-copy-btn--field:hover {
     background: var(--primary, #132539);
     border-color: var(--primary, #132539);
-    color: #fff;
+    color: var(--text-inverse);
 }
 
 /* ── Copy toast ────────────────────────────────────────── */
@@ -64,8 +64,8 @@
     bottom: 1.75rem;
     left: 50%;
     transform: translateX(-50%) translateY(8px);
-    background: #1e293b;
-    color: #fff;
+    background: var(--text-main);
+    color: var(--text-inverse);
     padding: .65rem 1.4rem;
     border-radius: 10px;
     font-size: .85rem;
@@ -85,7 +85,7 @@
 .st-orders-btn { position: relative; }
 .st-orders-count {
     position: absolute; top: -7px; left: -7px;
-    background: #ef4444; color: #fff;
+    background: var(--danger); color: var(--text-inverse);
     border-radius: 50%; min-width: 18px; height: 18px;
     font-size: .62rem; font-weight: 800;
     display: flex; align-items: center; justify-content: center;
@@ -95,7 +95,7 @@
 
 /* ── Intro Banner ──────────────────────────────────────── */
 .st-intro-banner {
-    background: linear-gradient(135deg, #312e81 0%, #0a1622 55%, #5b21b6 100%);
+    background: linear-gradient(135deg, #312e81 0%, var(--indigo-700) 55%, #5b21b6 100%);
     border-radius: 16px;
     padding: 1rem 1rem;
     margin-bottom: 1.25rem;
@@ -127,12 +127,12 @@
 .st-intro-badge {
     display: inline-flex; align-items: center; gap: .4rem;
     background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.25);
-    color: #d6e2ea; border-radius: 30px; padding: .28rem .85rem;
+    color: var(--indigo-100); border-radius: 30px; padding: .28rem .85rem;
     font-size: .72rem; font-weight: 700; margin-bottom: .85rem;
 }
 .st-intro-title {
     font-size: clamp(1.1rem, 2.2vw, 1.45rem);
-    font-weight: 800; color: #fff; line-height: 1.35; margin-bottom: .6rem;
+    font-weight: 800; color: var(--text-inverse); line-height: 1.35; margin-bottom: .6rem;
 }
 .st-intro-title span { color: #afc4d2; }
 .st-intro-desc { font-size: .85rem; color: rgba(255,255,255,.7); line-height: 1.65; margin-bottom: 1.25rem; }
@@ -147,7 +147,7 @@
     border-radius: 9px; padding: .4rem .8rem;
 }
 .st-intro-step__num {
-    background: rgba(255,255,255,.25); color: #fff; width: 20px; height: 20px;
+    background: rgba(255,255,255,.25); color: var(--text-inverse); width: 20px; height: 20px;
     border-radius: 50%; display: flex; align-items: center; justify-content: center;
     font-size: .65rem; font-weight: 800; flex-shrink: 0;
 }
@@ -168,7 +168,7 @@
 
 /* ── Status Section ────────────────────────────────────── */
 .st-status-section {
-    background: linear-gradient(135deg, #3730a3 0%, #0a1622 55%, #5b21b6 100%);
+    background: linear-gradient(135deg, #3730a3 0%, var(--indigo-700) 55%, #5b21b6 100%);
     border-radius: 16px;
     padding: 1rem 1rem;
     margin-bottom: 1.25rem;
@@ -236,7 +236,7 @@
 .st-live-label {
     font-weight: 800;
     font-size: .9rem;
-    color: #fff;
+    color: var(--text-inverse);
     letter-spacing: .01em;
 }
 .st-live-sub { font-size: .72rem; color: rgba(255,255,255,.6); }
@@ -278,8 +278,8 @@
     appearance: none;
 }
 .st-mode-pill input[type=radio] { display: none; }
-.st-mode-pill:hover { background: rgba(255,255,255,.15); color: #fff; }
-.st-mode-pill.active { background: rgba(255,255,255,.22); color: #fff; border-color: rgba(255,255,255,.45); box-shadow: 0 0 0 2px rgba(255,255,255,.1); }
+.st-mode-pill:hover { background: rgba(255,255,255,.15); color: var(--text-inverse); }
+.st-mode-pill.active { background: rgba(255,255,255,.22); color: var(--text-inverse); border-color: rgba(255,255,255,.45); box-shadow: 0 0 0 2px rgba(255,255,255,.1); }
 .st-mode-pill--open.active   { background: rgba(74,222,128,.2);   border-color: rgba(74,222,128,.5);   color: #86efac; }
 .st-mode-pill--closed.active { background: rgba(248,113,113,.2); border-color: rgba(248,113,113,.5); color: #fca5a5; }
 
@@ -307,7 +307,7 @@
     border-radius: 9px;
     padding: .6rem .9rem;
     font-size: .82rem;
-    color: #f1f5f9;
+    color: var(--hover-bg);
     outline: none;
     font-family: inherit;
     transition: border-color .15s, background .15s;

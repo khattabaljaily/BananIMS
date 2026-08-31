@@ -5,7 +5,7 @@
 /* ── Page Shell ──────────────────────────────────────────── */
 .pr-page {
     min-height: 100vh;
-    background: #f8fafc;
+    background: var(--input-bg);
     font-family: 'Cairo', sans-serif;
 }
 
@@ -56,7 +56,7 @@
 }
 
 .pr-topbar__link:hover {
-    color: #132539;
+    color: var(--primary);
     background: rgba(19,37,57, 0.06);
 }
 
@@ -65,7 +65,7 @@
     font-weight: 600;
     color: white;
     text-decoration: none;
-    background: #132539;
+    background: var(--primary);
     padding: 0.5rem 1.1rem;
     border-radius: 999px;
     transition: background 0.15s ease, box-shadow 0.15s ease;
@@ -73,7 +73,7 @@
 }
 
 .pr-topbar__cta:hover {
-    background: #1d3a56;
+    background: var(--primary-hover);
     color: white;
     box-shadow: 0 4px 14px rgba(19,37,57, 0.4);
 }
@@ -82,7 +82,7 @@
 .pr-hero {
     position: relative;
     overflow: hidden;
-    background: linear-gradient(135deg, #0a1622 0%, #132539 45%, #7c3aed 100%);
+    background: linear-gradient(135deg, var(--indigo-700) 0%, var(--primary) 45%, #7c3aed 100%);
     padding: 5rem 0 4.5rem;
     text-align: center;
 }
@@ -210,12 +210,12 @@
 
 .pr-btn--primary {
     background: white;
-    color: #0a1622;
+    color: var(--indigo-700);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
 }
 .pr-btn--primary:hover {
-    background: #f1f5f9;
-    color: #0a1622;
+    background: var(--hover-bg);
+    color: var(--indigo-700);
     box-shadow: 0 6px 22px rgba(0, 0, 0, 0.2);
     transform: translateY(-2px);
 }
@@ -234,7 +234,7 @@
 
 .pr-btn--outline {
     background: transparent;
-    color: #132539;
+    color: var(--primary);
     border: 1.5px solid #afc4d2;
     font-size: 0.85rem;
     padding: 0.6rem 1.2rem;
@@ -242,13 +242,13 @@
 }
 .pr-btn--outline:hover {
     background: rgba(19,37,57, 0.06);
-    border-color: #132539;
-    color: #0a1622;
+    border-color: var(--primary);
+    color: var(--indigo-700);
     transform: translateY(-1px);
 }
 
 .pr-btn--card-primary {
-    background: linear-gradient(135deg, #132539, #0a1622);
+    background: linear-gradient(135deg, var(--primary), var(--indigo-700));
     color: white;
     font-size: 0.85rem;
     padding: 0.65rem 1.2rem;
@@ -271,14 +271,14 @@
 
 .pr-btn--white {
     background: white;
-    color: #0a1622;
+    color: var(--indigo-700);
     font-size: 0.92rem;
     padding: 0.7rem 1.6rem;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 .pr-btn--white:hover {
-    background: #f1f5f9;
-    color: #0a1622;
+    background: var(--hover-bg);
+    color: var(--indigo-700);
     transform: translateY(-2px);
     box-shadow: 0 6px 22px rgba(0, 0, 0, 0.18);
 }
@@ -293,14 +293,14 @@
     border-radius: 12px;
     padding: 0.75rem 1.1rem;
     font-size: 0.85rem;
-    color: #0a1622;
+    color: var(--indigo-700);
     margin: 1.5rem auto 0;
     max-width: 500px;
     justify-content: center;
 }
 
 .pr-current-banner i {
-    color: #10b981;
+    color: var(--success);
 }
 
 /* ── Section Head ────────────────────────────────────────── */
@@ -315,7 +315,7 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    color: #132539;
+    color: var(--primary);
     background: rgba(19,37,57, 0.1);
     border-radius: 999px;
     padding: 0.3rem 0.85rem;
@@ -332,7 +332,7 @@
 
 .pr-section-sub {
     font-size: 0.95rem;
-    color: #64748b;
+    color: var(--text-muted);
     max-width: 520px;
     margin: 0 auto;
     line-height: 1.65;
@@ -371,14 +371,14 @@
 }
 
 .pr-card--featured {
-    border-color: #132539;
+    border-color: var(--primary);
     background: linear-gradient(180deg, #fafafe 0%, #ffffff 100%);
     box-shadow: 0 8px 30px rgba(19,37,57, 0.15);
 }
 
 .pr-card--featured:hover {
     box-shadow: 0 20px 55px rgba(19,37,57, 0.22);
-    border-color: #132539;
+    border-color: var(--primary);
 }
 
 .pr-card__ribbon {
@@ -386,7 +386,7 @@
     top: -1px;
     left: 50%;
     transform: translateX(-50%);
-    background: linear-gradient(90deg, #132539, #0a1622);
+    background: linear-gradient(90deg, var(--primary), var(--indigo-700));
     color: white;
     font-size: 0.68rem;
     font-weight: 700;
@@ -397,7 +397,7 @@
 }
 
 .pr-card__ribbon--current {
-    background: linear-gradient(90deg, #10b981, #059669);
+    background: linear-gradient(90deg, var(--success), #059669);
 }
 
 .pr-card__head { }
@@ -408,7 +408,7 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: #132539;
+    color: var(--primary);
     background: rgba(19,37,57, 0.1);
     border-radius: 999px;
     padding: 0.22rem 0.7rem;
@@ -425,7 +425,7 @@
 
 .pr-card__desc {
     font-size: 0.82rem;
-    color: #64748b;
+    color: var(--text-muted);
     line-height: 1.55;
     margin: 0;
 }
@@ -462,7 +462,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.55rem;
-    border-top: 1px solid #f1f5f9;
+    border-top: 1px solid var(--hover-bg);
     padding-top: 1rem;
 }
 
@@ -475,7 +475,7 @@
 }
 
 .pr-card__features li i {
-    color: #10b981;
+    color: var(--success);
     font-size: 0.7rem;
     flex-shrink: 0;
     background: rgba(16, 185, 129, 0.1);
@@ -491,7 +491,7 @@
     opacity: 0.55;
 }
 .pr-card__feature--excluded i {
-    color: #ef4444 !important;
+    color: var(--danger) !important;
     background: rgba(239, 68, 68, 0.1) !important;
 }
 
@@ -513,7 +513,7 @@
     padding: 1.5rem;
     border: 1px solid #e2e8f0;
     border-radius: 16px;
-    background: #f8fafc;
+    background: var(--input-bg);
     transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
@@ -535,10 +535,10 @@
     margin-bottom: 1rem;
 }
 
-.pr-benefit__icon--indigo { background: rgba(19,37,57,.12); color: #132539; }
+.pr-benefit__icon--indigo { background: rgba(19,37,57,.12); color: var(--primary); }
 .pr-benefit__icon--violet { background: rgba(124,58,237,.12); color: #7c3aed; }
-.pr-benefit__icon--blue   { background: rgba(59,130,246,.12); color: #3b82f6; }
-.pr-benefit__icon--green  { background: rgba(16,185,129,.12); color: #10b981; }
+.pr-benefit__icon--blue   { background: rgba(59,130,246,.12); color: var(--info); }
+.pr-benefit__icon--green  { background: rgba(16,185,129,.12); color: var(--success); }
 .pr-benefit__icon--orange { background: rgba(249,115,22,.12); color: #f97316; }
 .pr-benefit__icon--teal   { background: rgba(20,184,166,.12); color: #14b8a6; }
 
@@ -551,7 +551,7 @@
 
 .pr-benefit__desc {
     font-size: 0.8rem;
-    color: #64748b;
+    color: var(--text-muted);
     line-height: 1.6;
     margin: 0;
 }
@@ -565,7 +565,7 @@
     position: relative;
     overflow: hidden;
     border-radius: 24px;
-    background: linear-gradient(135deg, #0a1622 0%, #132539 50%, #7c3aed 100%);
+    background: linear-gradient(135deg, var(--indigo-700) 0%, var(--primary) 50%, #7c3aed 100%);
     padding: 3.5rem 2rem;
     text-align: center;
     box-shadow: 0 12px 40px rgba(19,37,57, 0.28);
@@ -626,7 +626,7 @@
 
 .pr-footer__copy {
     font-size: 0.8rem;
-    color: #64748b;
+    color: var(--text-muted);
 }
 
 .pr-footer__links {

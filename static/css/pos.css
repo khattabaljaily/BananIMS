@@ -73,7 +73,7 @@
     display: flex;
     align-items: center;
     gap: .45rem;
-    color: #fff;
+    color: var(--text-inverse);
     font-weight: 800;
     font-size: 1rem;
     white-space: nowrap;
@@ -105,7 +105,7 @@
     border: 1.5px solid rgba(255,255,255,.25);
     border-radius: var(--radius-full);
     background: rgba(255,255,255,.15);
-    color: #fff;
+    color: var(--text-inverse);
     font-family: inherit;
     font-size: .83rem;
     direction: rtl;
@@ -121,7 +121,7 @@
     border-color: rgba(255,255,255,.6);
     background: rgba(255,255,255,.22);
     box-shadow: 0 0 0 3px rgba(255,255,255,.12);
-    color: #fff;
+    color: var(--text-inverse);
 }
 
 .pos-search-icon {
@@ -140,7 +140,7 @@
     border: 1.5px solid rgba(255,255,255,.25);
     border-radius: var(--radius-md);
     background: rgba(255,255,255,.15);
-    color: #fff;
+    color: var(--text-inverse);
     font-family: inherit;
     font-size: .83rem;
     direction: rtl;
@@ -175,7 +175,7 @@
 
 .pos-home-btn:hover {
     background: rgba(255,255,255,.22);
-    color: #fff;
+    color: var(--text-inverse);
     border-color: rgba(255,255,255,.45);
 }
 
@@ -219,7 +219,7 @@
 .pos-cat-btn.active {
     background: var(--primary);
     border-color: var(--primary);
-    color: #fff;
+    color: var(--text-inverse);
     box-shadow: 0 2px 8px rgba(19,37,57,.3);
 }
 
@@ -299,7 +299,7 @@
     height: 22px;
     border-radius: 50%;
     background: var(--primary);
-    color: #fff;
+    color: var(--text-inverse);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -352,7 +352,7 @@
     align-items: center;
     justify-content: center;
     font-size: 1.35rem;
-    color: #fff;
+    color: var(--text-inverse);
     margin-bottom: .6rem;
     flex-shrink: 0;
     box-shadow: 0 4px 12px rgba(19,37,57,.3);
@@ -447,7 +447,7 @@
     height: 22px;
     padding: 0 6px;
     background: var(--primary);
-    color: #fff;
+    color: var(--text-inverse);
     border-radius: 11px;
     font-size: .7rem;
     font-weight: 700;
@@ -675,7 +675,7 @@
 .pos-ci-qty-btn:hover {
     border-color: var(--primary);
     background: var(--primary);
-    color: #fff;
+    color: var(--text-inverse);
     box-shadow: 0 2px 6px rgba(19,37,57,.3);
 }
 
@@ -873,7 +873,7 @@
 .pos-pay-btn.active {
     background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
     border-color: var(--primary);
-    color: #fff;
+    color: var(--text-inverse);
     box-shadow: 0 3px 10px rgba(19,37,57,.3);
 }
 
@@ -1040,8 +1040,8 @@
     padding: .85rem;
     border-radius: var(--radius-lg);
     border: none;
-    background: linear-gradient(135deg, #132539 0%, #faa71d 100%);
-    color: #fff;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+    color: var(--text-inverse);
     font-family: inherit;
     font-size: .95rem;
     font-weight: 800;
@@ -1122,7 +1122,7 @@
     width: 72px;
     height: 72px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #10b981, #34d399);
+    background: linear-gradient(135deg, var(--success), #34d399);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1206,7 +1206,7 @@
 .pos-success-btn.primary {
     background: linear-gradient(135deg, var(--primary), var(--secondary));
     border-color: var(--primary);
-    color: #fff;
+    color: var(--text-inverse);
     box-shadow: 0 3px 10px rgba(19,37,57,.3);
 }
 
@@ -1317,7 +1317,7 @@
         height: 20px;
         padding: 0 5px;
         background: var(--primary);
-        color: #fff;
+        color: var(--text-inverse);
         border-radius: 10px;
         font-size: .68rem;
         font-weight: 700;

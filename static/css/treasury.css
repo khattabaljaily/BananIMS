@@ -30,23 +30,23 @@
   background: transparent;
   border: 1px solid var(--border-light, #e5e7eb);
   cursor: pointer;
-  color: #6b7280;
+  color: var(--text-tertiary);
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .cx-btn-icon:hover {
-  background: #f3f4f6;
+  background: var(--bg-tertiary);
   border-color: #9ca3af;
-  color: #374151;
+  color: var(--text-secondary);
 }
 
 .cx-btn-icon--danger {
-  color: #ef4444;
+  color: var(--danger);
 }
 
 .cx-btn-icon--danger:hover {
   background: #fee2e2;
-  border-color: #ef4444;
+  border-color: var(--danger);
   color: #dc2626;
 }
 
@@ -126,7 +126,7 @@
         margin: 0;
         font-size: 0.99rem;
         font-weight: 700;
-        color: var(--text-heading, #111827);
+        color: var(--text-heading, var(--text-primary));
         line-height: 1.2;
         display: flex;
         align-items: center;
@@ -204,11 +204,11 @@
     }
 
     .cx-treasury-card-balance--positive .cx-treasury-card-balance-value {
-        color: #10b981;
+        color: var(--success);
     }
 
     .cx-treasury-card-balance--negative .cx-treasury-card-balance-value {
-        color: #ef4444;
+        color: var(--danger);
     }
 
     .cx-treasury-card-actions {

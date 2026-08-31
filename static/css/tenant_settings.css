@@ -13,7 +13,7 @@
     position: relative;
     border-radius: 20px;
     overflow: hidden;
-    background: linear-gradient(135deg, #132539 0%, #0a1622 55%, #7c3aed 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--indigo-700) 55%, #7c3aed 100%);
     box-shadow: 0 8px 32px rgba(19,37,57, 0.28), 0 2px 8px rgba(10,22,34, 0.15);
     padding: 1.75rem 2rem;
 }
@@ -156,10 +156,10 @@
     flex-shrink: 0;
 }
 
-.ts-stat__icon--indigo { background: rgba(19,37,57,.12); color: #132539; }
+.ts-stat__icon--indigo { background: rgba(19,37,57,.12); color: var(--primary); }
 .ts-stat__icon--violet { background: rgba(124,58,237,.12); color: #7c3aed; }
 .ts-stat__icon--teal   { background: rgba(20,184,166,.12); color: #14b8a6; }
-.ts-stat__icon--amber  { background: rgba(245,158,11,.12); color: #f59e0b; }
+.ts-stat__icon--amber  { background: rgba(245,158,11,.12); color: var(--warning); }
 
 .ts-stat__label {
     font-size: 0.7rem;
@@ -188,8 +188,8 @@
     flex-direction: column;
 }
 
-.ts-card--business { border-top: 3px solid #132539; }
-.ts-card--system   { border-top: 3px solid #10b981; }
+.ts-card--business { border-top: 3px solid var(--primary); }
+.ts-card--system   { border-top: 3px solid var(--success); }
 
 .ts-card__header {
     display: flex;
@@ -211,9 +211,9 @@
     flex-shrink: 0;
 }
 
-.ts-card__icon--blue   { background: rgba(19,37,57,.12); color: #132539; }
-.ts-card__icon--green  { background: rgba(16,185,129,.12); color: #10b981; }
-.ts-card__icon--violet { background: rgba(250,167,29,.12); color: #faa71d; }
+.ts-card__icon--blue   { background: rgba(19,37,57,.12); color: var(--primary); }
+.ts-card__icon--green  { background: rgba(16,185,129,.12); color: var(--success); }
+.ts-card__icon--violet { background: rgba(250,167,29,.12); color: var(--secondary); }
 
 /* ── Logo Upload ── */
 .ts-logo-upload-wrap {
@@ -237,7 +237,7 @@
     transition: border-color 0.2s;
 }
 
-.ts-logo-preview:hover { border-color: #faa71d; }
+.ts-logo-preview:hover { border-color: var(--secondary); }
 
 .ts-logo-preview img {
     max-width: 100%;
@@ -489,7 +489,7 @@ select.ts-input {
     display: flex;
     align-items: center;
     gap: .75rem;
-    background: linear-gradient(135deg, #eaf0f5 0%, #f5f3ff 100%);
+    background: linear-gradient(135deg, var(--indigo-50) 0%, #f5f3ff 100%);
     border: 1px solid #afc4d2;
     border-radius: 12px;
     padding: .85rem 1.1rem;
@@ -497,7 +497,7 @@ select.ts-input {
     font-size: .84rem;
     color: #3730a3;
 }
-.bk-plan-banner i { font-size: 1.1rem; flex-shrink: 0; color: #132539; }
+.bk-plan-banner i { font-size: 1.1rem; flex-shrink: 0; color: var(--primary); }
 
 /* ── Create button row ──────────────────────────────────── */
 .bk-action-row {
@@ -512,15 +512,15 @@ select.ts-input {
     align-items: center;
     gap: .4rem;
     font-size: .82rem;
-    color: #132539;
+    color: var(--primary);
 }
 .bk-msg { font-size: .82rem; width: 100%; }
 
 /* ── Table (desktop) ────────────────────────────────────── */
 .ts-table { width: 100%; border-collapse: collapse; font-size: .84rem; }
-.ts-table thead { background: #f8fafc; }
+.ts-table thead { background: var(--table-head-bg); }
 .ts-table th {
-    color: #64748b;
+    color: var(--text-muted);
     font-weight: 600;
     padding: .65rem .9rem;
     text-align: right;
@@ -529,7 +529,7 @@ select.ts-input {
 }
 .ts-table td {
     padding: .65rem .9rem;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--hover-bg);
     color: #334155;
     vertical-align: middle;
 }
@@ -552,8 +552,8 @@ select.ts-input {
 .ts-btn--sm { padding: .35rem .9rem; font-size: .78rem; }
 .ts-btn--outline {
     background: transparent;
-    border: 1.5px solid #132539;
-    color: #132539;
+    border: 1.5px solid var(--primary);
+    color: var(--primary);
     cursor: pointer;
     border-radius: 40px;
     display: inline-flex;
@@ -561,7 +561,7 @@ select.ts-input {
     gap: .35rem;
     transition: background .18s, color .18s;
 }
-.ts-btn--outline:hover { background: #132539; color: #fff; }
+.ts-btn--outline:hover { background: var(--primary); color: var(--text-inverse); }
 
 /* ── Empty state ─────────────────────────────────────────── */
 .bk-empty {
@@ -580,7 +580,7 @@ select.ts-input {
     .ts-table thead { display: none; }
 
     .ts-table tr {
-        background: #fff;
+        background: var(--surface);
         border: 1px solid #e2e8f0;
         border-radius: 12px;
         margin-bottom: .8rem;
@@ -599,12 +599,12 @@ select.ts-input {
     .ts-table td::before {
         content: attr(data-label);
         font-weight: 600;
-        color: #64748b;
+        color: var(--text-muted);
         font-size: .76rem;
         flex-shrink: 0;
         margin-left: .5rem;
     }
-    .ts-table td:last-child { padding-top: .6rem; border-top: 1px solid #f1f5f9; margin-top: .3rem; }
+    .ts-table td:last-child { padding-top: .6rem; border-top: 1px solid var(--hover-bg); margin-top: .3rem; }
     .ts-table td:last-child .ts-btn--outline { width: 100%; justify-content: center; }
 }
 
@@ -623,12 +623,12 @@ select.ts-input {
 }
 
 .ts-btn--primary {
-    background: #132539;
+    background: var(--primary);
     color: white;
     box-shadow: 0 3px 10px rgba(19,37,57, 0.3);
 }
 .ts-btn--primary:hover {
-    background: #1d3a56;
+    background: var(--primary-hover);
     box-shadow: 0 5px 16px rgba(19,37,57, 0.4);
     transform: translateY(-1px);
 }
@@ -639,7 +639,7 @@ select.ts-input {
 }
 
 .ts-btn--success {
-    background: #10b981;
+    background: var(--success);
     color: white;
     box-shadow: 0 3px 10px rgba(16, 185, 129, 0.3);
 }
@@ -656,13 +656,13 @@ select.ts-input {
 
 /* ── Additional Icon Colors ──────────────────────────────── */
 .ts-card__icon--rose  { background: rgba(244,63,94,.12);  color: #f43f5e; }
-.ts-card__icon--amber { background: rgba(245,158,11,.12); color: #f59e0b; }
+.ts-card__icon--amber { background: rgba(245,158,11,.12); color: var(--warning); }
 .ts-card__icon--sky   { background: rgba(14,165,233,.12); color: #0ea5e9; }
 
 /* ── Danger soft btn ─────────────────────────────────────── */
 .ts-btn--danger-soft {
     background: rgba(239,68,68,.1);
-    color: #ef4444;
+    color: var(--danger);
     border: 1px solid rgba(239,68,68,.25);
 }
 .ts-btn--danger-soft:hover {
@@ -707,12 +707,12 @@ select.ts-input {
     color: var(--text-primary);
 }
 .ts-tab--active {
-    background: #132539;
+    background: var(--primary);
     color: white;
     box-shadow: 0 3px 12px rgba(19,37,57,.35);
 }
 .ts-tab--active:hover {
-    background: #1d3a56;
+    background: var(--primary-hover);
     color: white;
 }
 
@@ -736,7 +736,7 @@ select.ts-input {
 }
 .ts-logo-zone:hover,
 .ts-logo-zone--drag {
-    border-color: #faa71d;
+    border-color: var(--secondary);
     background: rgba(250,167,29,.04);
 }
 
@@ -801,7 +801,7 @@ select.ts-input {
     align-items: center;
     justify-content: center;
     font-size: 1.8rem;
-    color: #faa71d;
+    color: var(--secondary);
     margin-bottom: 0.25rem;
 }
 
@@ -842,7 +842,7 @@ select.ts-input {
 }
 
 .ts-logo-zone__hints i {
-    color: #10b981;
+    color: var(--success);
     font-size: 0.65rem;
 }
 

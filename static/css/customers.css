@@ -154,7 +154,7 @@
     flex-shrink: 0;
 }
 
-.cx-file-icon i  { font-size: 1.25rem; color: #10b981; }
+.cx-file-icon i  { font-size: 1.25rem; color: var(--success); }
 .cx-file-details { flex: 1; }
 
 .cx-file-name {
@@ -172,7 +172,7 @@
     border-radius: 8px;
     border: none;
     background: rgba(239,68,68,0.1);
-    color: #ef4444;
+    color: var(--danger);
     cursor: pointer;
     transition: all 0.15s ease;
     display: flex;
@@ -202,7 +202,7 @@
     gap: 0.4rem;
 }
 
-.cx-instructions-title i { color: #10b981; font-size: 0.8rem; }
+.cx-instructions-title i { color: var(--success); font-size: 0.8rem; }
 
 .cx-instructions-list {
     margin: 0;
@@ -341,7 +341,7 @@
         grid-template-columns: 1fr;
         gap: 0.75rem;
         padding: 0.9rem;
-        background: var(--bg-card, #ffffff);
+        background: var(--bg-card, var(--surface));
         border: 1px solid var(--border-color);
         border-radius: 18px;
         box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
@@ -368,13 +368,13 @@
         margin: 0;
         font-size: 0.99rem;
         font-weight: 700;
-        color: var(--text-heading, #111827);
+        color: var(--text-heading, var(--text-primary));
         line-height: 1.2;
     }
     .cx-customer-card-code {
         margin: 0;
         font-size: 0.76rem;
-        color: var(--text-secondary, #6b7280);
+        color: var(--text-secondary, var(--text-tertiary));
     }
     .cx-customer-card-code code {
         background: rgba(19,37,57, 0.09);
@@ -399,18 +399,18 @@
     .cx-customer-card-meta-label {
         font-size: 0.68rem;
         font-weight: 700;
-        color: var(--text-tertiary, #6b7280);
+        color: var(--text-tertiary, var(--text-tertiary));
         letter-spacing: 0.36px;
         text-transform: uppercase;
     }
     .cx-customer-card-meta-value {
         font-size: 0.92rem;
-        color: var(--text-heading, #111827);
+        color: var(--text-heading, var(--text-primary));
         font-weight: 700;
     }
-    .cx-customer-card-meta-value.cxr-bal--pos { color: #10b981; }
-    .cx-customer-card-meta-value.cxr-bal--neg { color: #ef4444; }
-    .cx-customer-card-meta-value.cxr-bal--zero { color: var(--text-secondary, #6b7280); }
+    .cx-customer-card-meta-value.cxr-bal--pos { color: var(--success); }
+    .cx-customer-card-meta-value.cxr-bal--neg { color: var(--danger); }
+    .cx-customer-card-meta-value.cxr-bal--zero { color: var(--text-secondary, var(--text-tertiary)); }
     .cx-customer-card-actions {
         display: flex;
         flex-wrap: wrap;

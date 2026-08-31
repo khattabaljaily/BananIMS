@@ -250,7 +250,7 @@ select.cx-input {
 }
 
 .cx-btn-add {
-  background: linear-gradient(135deg, var(--primary) 0%, #1d3a56 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
   color: white;
   box-shadow: 0 2px 6px rgba(19,37,57, 0.3);
 }
@@ -261,7 +261,7 @@ select.cx-input {
 }
 
 .cx-btn-warning {
-  background: #f59e0b;
+  background: var(--warning);
   color: white;
 }
 
@@ -285,21 +285,21 @@ select.cx-input {
 }
 
 .cx-btn-icon--danger {
-  color: #ef4444;
+  color: var(--danger);
 }
 
 .cx-btn-icon--danger:hover {
   background: #fee2e2;
-  border-color: #ef4444;
+  border-color: var(--danger);
 }
 
 .cx-btn-icon--success {
-  color: #10b981;
+  color: var(--success);
 }
 
 .cx-btn-icon--success:hover {
   background: rgba(16, 185, 129, 0.1);
-  border-color: #10b981;
+  border-color: var(--success);
 }
 
 /* Inline Actions */
@@ -345,13 +345,13 @@ select.cx-input {
   white-space: nowrap;
 }
 
-.cx-badge--success  { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); }
+.cx-badge--success  { background: rgba(16, 185, 129, 0.1); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.2); }
 .cx-badge--pending  { background: rgba(234, 179, 8, 0.1);  color: #a16207; border: 1px solid rgba(234, 179, 8, 0.2); }
-.cx-badge--warning  { background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.2); }
-.cx-badge--danger   { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); }
+.cx-badge--warning  { background: rgba(245, 158, 11, 0.1); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.2); }
+.cx-badge--danger   { background: rgba(239, 68, 68, 0.1); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.2); }
 .cx-badge--primary  { background: rgba(19,37,57, 0.1); color: var(--primary); border: 1px solid rgba(19,37,57, 0.2); }
 .cx-badge--muted    { background: var(--bg-secondary); color: var(--text-secondary); border: 1px solid var(--border-light); }
-.cx-badge--info     { background: rgba(59, 130, 246, 0.1); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.2); }
+.cx-badge--info     { background: rgba(59, 130, 246, 0.1); color: var(--info); border: 1px solid rgba(59, 130, 246, 0.2); }
 
 /* Toast Notifications */
 .cx-toast-container {
@@ -763,7 +763,7 @@ select.cx-input {
         grid-template-columns: 1fr;
         gap: 0.75rem;
         padding: 0.9rem;
-        background: var(--bg-card, #ffffff);
+        background: var(--bg-card, var(--surface));
         border: 1px solid var(--border-color);
         border-radius: 18px;
         box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
@@ -794,7 +794,7 @@ select.cx-input {
         margin: 0;
         font-size: 0.99rem;
         font-weight: 700;
-        color: var(--text-heading, #111827);
+        color: var(--text-heading, var(--text-primary));
         line-height: 1.2;
         display: flex;
         align-items: center;
@@ -803,7 +803,7 @@ select.cx-input {
     .cx-order-card-code {
         margin: 0;
         font-size: 0.76rem;
-        color: var(--text-secondary, #6b7280);
+        color: var(--text-secondary, var(--text-tertiary));
     }
 
     .cx-order-card-code code {
@@ -832,14 +832,14 @@ select.cx-input {
     .cx-order-card-meta-label {
         font-size: 0.68rem;
         font-weight: 700;
-        color: var(--text-tertiary, #6b7280);
+        color: var(--text-tertiary);
         letter-spacing: 0.36px;
         text-transform: uppercase;
     }
 
     .cx-order-card-meta-value {
         font-size: 0.92rem;
-        color: var(--text-heading, #111827);
+        color: var(--text-heading, var(--text-primary));
         font-weight: 700;
     }
 
@@ -910,7 +910,7 @@ select.cx-input {
         grid-template-columns: 1fr;
         gap: 0.75rem;
         padding: 0.9rem;
-        background: var(--bg-card, #ffffff);
+        background: var(--bg-card, var(--surface));
         border: 1px solid var(--border-color);
         border-radius: 18px;
         box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
@@ -941,7 +941,7 @@ select.cx-input {
         margin: 0;
         font-size: 0.99rem;
         font-weight: 700;
-        color: var(--text-heading, #111827);
+        color: var(--text-heading, var(--text-primary));
         line-height: 1.2;
         display: flex;
         align-items: center;
@@ -950,7 +950,7 @@ select.cx-input {
     .cx-invoice-card-code {
         margin: 0;
         font-size: 0.76rem;
-        color: var(--text-secondary, #6b7280);
+        color: var(--text-secondary, var(--text-tertiary));
     }
 
     .cx-invoice-card-code code {
@@ -979,14 +979,14 @@ select.cx-input {
     .cx-invoice-card-meta-label {
         font-size: 0.68rem;
         font-weight: 700;
-        color: var(--text-tertiary, #6b7280);
+        color: var(--text-tertiary);
         letter-spacing: 0.36px;
         text-transform: uppercase;
     }
 
     .cx-invoice-card-meta-value {
         font-size: 0.92rem;
-        color: var(--text-heading, #111827);
+        color: var(--text-heading, var(--text-primary));
         font-weight: 700;
     }
 
@@ -1053,7 +1053,7 @@ select.cx-input {
         grid-template-columns: 1fr auto;
         gap: 0.85rem;
         padding: 1rem;
-        background: var(--bg-card, #ffffff);
+        background: var(--bg-card, var(--surface));
         border: 1px solid rgba(148, 163, 184, 0.18);
         border-radius: 18px;
         box-shadow: 0 18px 36px rgba(15, 23, 42, 0.06);
@@ -1073,7 +1073,7 @@ select.cx-input {
 
     .mobile-compact-items tbody td.line-product small {
         display: block;
-        color: #64748b;
+        color: var(--text-muted);
         font-size: 0.82rem;
         margin-top: 0.15rem;
     }
@@ -1092,7 +1092,7 @@ select.cx-input {
         content: attr(data-label);
         display: block;
         font-size: 0.72rem;
-        color: #64748b;
+        color: var(--text-muted);
         font-weight: 600;
         margin-bottom: 0.25rem;
         letter-spacing: 0.02em;

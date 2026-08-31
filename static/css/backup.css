@@ -14,9 +14,9 @@
     font-family: 'Cairo', sans-serif;
     white-space: nowrap;
 }
-.bk-type--manual      { background: rgba(59,130,246,0.1);  color: #3b82f6; }
-.bk-type--auto        { background: rgba(16,185,129,0.1);  color: #10b981; }
-.bk-type--pre_restore { background: rgba(245,158,11,0.12); color: #f59e0b; }
+.bk-type--manual      { background: rgba(59,130,246,0.1);  color: var(--info); }
+.bk-type--auto        { background: rgba(16,185,129,0.1);  color: var(--success); }
+.bk-type--pre_restore { background: rgba(245,158,11,0.12); color: var(--warning); }
 
 /* ══ STATUS BADGES ═══════════════════════════════════════════ */
 .bk-status {
@@ -30,9 +30,9 @@
     font-family: 'Cairo', sans-serif;
     white-space: nowrap;
 }
-.bk-status--completed   { background: rgba(16,185,129,0.1);  color: #10b981; }
-.bk-status--failed      { background: rgba(239,68,68,0.1);   color: #ef4444; }
-.bk-status--in_progress { background: rgba(19,37,57,0.12); color: #132539; }
+.bk-status--completed   { background: rgba(16,185,129,0.1);  color: var(--success); }
+.bk-status--failed      { background: rgba(239,68,68,0.1);   color: var(--danger); }
+.bk-status--in_progress { background: rgba(19,37,57,0.12); color: var(--primary); }
 
 /* ══ ICON ACTION BUTTONS (table rows) ═══════════════════════ */
 .bk-icon-btn {
@@ -63,23 +63,23 @@
 }
 .bk-icon-btn--primary {
     background: var(--primary);
-    color: #fff;
+    color: var(--text-inverse);
 }
-.bk-icon-btn--primary:hover { background: var(--primary-hover); color: #fff; }
+.bk-icon-btn--primary:hover { background: var(--primary-hover); color: var(--text-inverse); }
 
 .bk-icon-btn--warning {
     background: rgba(245,158,11,0.1);
     border-color: rgba(245,158,11,0.25);
-    color: #f59e0b;
+    color: var(--warning);
 }
-.bk-icon-btn--warning:hover { background: #f59e0b; color: #fff; }
+.bk-icon-btn--warning:hover { background: var(--warning); color: var(--text-inverse); }
 
 .bk-icon-btn--danger {
     background: rgba(239,68,68,0.08);
     border-color: rgba(239,68,68,0.2);
-    color: #ef4444;
+    color: var(--danger);
 }
-.bk-icon-btn--danger:hover { background: #ef4444; color: #fff; }
+.bk-icon-btn--danger:hover { background: var(--danger); color: var(--text-inverse); }
 
 /* ══ TENANT ROW CARD ══════════════════════════════════════════ */
 .bk-tenant-row {
@@ -104,11 +104,11 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #fff;
+    color: var(--text-inverse);
     font-weight: 800;
     font-size: 1.1rem;
     flex-shrink: 0;
-    background: linear-gradient(135deg, #132539, #faa71d);
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
     font-family: 'Cairo', sans-serif;
 }
 
@@ -137,7 +137,7 @@
     white-space: nowrap;
     font-family: 'Cairo', sans-serif;
 }
-.bk-last-backup--none { color: #ef4444; }
+.bk-last-backup--none { color: var(--danger); }
 
 .bk-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
 
@@ -159,10 +159,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #fff;
+    color: var(--text-inverse);
     font-weight: 800;
     font-size: 1.35rem;
-    background: linear-gradient(135deg, #132539, #faa71d);
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
     flex-shrink: 0;
     font-family: 'Cairo', sans-serif;
 }
@@ -208,7 +208,7 @@
     align-items: center;
     justify-content: center;
     font-size: 1.5rem;
-    color: #132539;
+    color: var(--primary);
     margin-bottom: 1rem;
 }
 .bk-empty__title { font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.3rem; font-family: 'Cairo', sans-serif; }
@@ -230,7 +230,7 @@
     margin-top: 0.35rem;
     font-family: 'Courier New', monospace;
     font-size: 0.78rem;
-    color: #132539;
+    color: var(--primary);
     background: rgba(19,37,57,0.08);
     padding: 0.25rem 0.6rem;
     border-radius: 6px;
@@ -359,7 +359,7 @@
         position: absolute;
         inset: 0 0 auto 0;
         height: 3px;
-        background: linear-gradient(90deg, var(--primary), #faa71d);
+        background: linear-gradient(90deg, var(--primary), var(--secondary));
         border-radius: 16px 16px 0 0;
     }
 

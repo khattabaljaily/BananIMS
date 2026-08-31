@@ -75,7 +75,7 @@
 }
 
 .opening-help i {
-    color: #3b82f6;
+    color: var(--info);
 }
 
 .opening-help--unit-note {
@@ -106,7 +106,7 @@
 }
 
 .opening-qty-input:focus {
-    border-color: #3b82f6 !important;
+    border-color: var(--info) !important;
     box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.16) !important;
 }
 
@@ -234,7 +234,7 @@
         margin: 0;
         font-size: 0.99rem;
         font-weight: 700;
-        color: var(--text-heading, #111827);
+        color: var(--text-heading, var(--text-primary));
         line-height: 1.2;
     }
 
@@ -289,7 +289,7 @@
 
     .cx-opening-card-meta-value {
         font-size: 0.92rem;
-        color: var(--text-heading, #111827);
+        color: var(--text-heading, var(--text-primary));
         font-weight: 700;
     }
 
