@@ -1,0 +1,131 @@
+{% extends "layouts/dashboard.html" %}
+{% load static %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=4.0">
+{% endblock %}
+
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<div class="cx-scene printable-scene">
+
+    <div class="rpt-hero rpt-hero--purchases">
+        <div class="rpt-hero-inner">
+            <div class="rpt-hero-left">
+                <div class="rpt-hero-icon"><i class="fas fa-money-bill-transfer"></i></div>
+                <div>
+                    <h1 class="rpt-hero-title">مدفوعات الموردين</h1>
+                    <p class="rpt-hero-desc">سجل دفعات المشتريات النقدية والبنكية</p>
+                </div>
+            </div>
+            <div class="rpt-hero-actions">
+                <button onclick="window.print()" class="rpt-hero-btn"><i class="fas fa-print"></i> طباعة</button>
+                <a href="{% url 'purchases:reports:payments_report_export' %}?start_date={{ start_date }}&end_date={{ end_date }}" class="rpt-hero-btn"><i class="fas fa-download"></i> تصدير</a>
+                <a href="{% url 'purchases:order_list' %}" class="rpt-hero-btn"><i class="fas fa-arrow-left"></i> عودة</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="rpt-filters">
+        <form method="get" class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">المورد</label>
+                <select name="supplier_id" class="form-select">
+                    <option value="">-- الكل --</option>
+                    {% for s in suppliers %}
+                    <option value="{{ s.id }}" {% if selected_supplier_id == s.id|stringformat:"s" %}selected{% endif %}>{{ s.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">من تاريخ</label>
+                <input type="date" name="start_date" class="form-control" value="{{ start_date }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">إلى تاريخ</label>
+                <input type="date" name="end_date" class="form-control" value="{{ end_date }}">
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="rpt-filter-btn rpt-filter-btn--purchases"><i class="fas fa-search me-1"></i>بحث</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="rpt-kpi-grid" style="grid-auto-flow: column; grid-auto-columns: 1fr;">
+        {% for cs in report.summary.currency_summaries %}
+        <div class="rpt-kpi-card rpt-kpi--green">
+            <div class="rpt-kpi-icon"><i class="fas fa-money-bill"></i></div>
+            <div class="rpt-kpi-value">{{ cs.cash }}{% if cs.currency %} <span style="font-size:.7rem;opacity:.7;">{{ cs.currency }}</span>{% endif %}</div>
+            <div class="rpt-kpi-label">نقداً{% if cs.currency %} ({{ cs.currency }}){% endif %}</div>
+        </div>
+        <div class="rpt-kpi-card rpt-kpi--cyan">
+            <div class="rpt-kpi-icon"><i class="fas fa-building-columns"></i></div>
+            <div class="rpt-kpi-value">{{ cs.bank }}{% if cs.currency %} <span style="font-size:.7rem;opacity:.7;">{{ cs.currency }}</span>{% endif %}</div>
+            <div class="rpt-kpi-label">بنكي{% if cs.currency %} ({{ cs.currency }}){% endif %}</div>
+        </div>
+        <div class="rpt-kpi-card rpt-kpi--purple">
+            <div class="rpt-kpi-icon"><i class="fas fa-coins"></i></div>
+            <div class="rpt-kpi-value">{{ cs.total }}{% if cs.currency %} <span style="font-size:.7rem;opacity:.7;">{{ cs.currency }}</span>{% endif %}</div>
+            <div class="rpt-kpi-label">الإجمالي{% if cs.currency %} ({{ cs.currency }}){% endif %}</div>
+        </div>
+        {% empty %}
+        <div class="rpt-kpi-card rpt-kpi--green"><div class="rpt-kpi-icon"><i class="fas fa-money-bill"></i></div><div class="rpt-kpi-value">0.00</div><div class="rpt-kpi-label">نقداً</div></div>
+        <div class="rpt-kpi-card rpt-kpi--cyan"><div class="rpt-kpi-icon"><i class="fas fa-building-columns"></i></div><div class="rpt-kpi-value">0.00</div><div class="rpt-kpi-label">بنكي</div></div>
+        <div class="rpt-kpi-card rpt-kpi--purple"><div class="rpt-kpi-icon"><i class="fas fa-coins"></i></div><div class="rpt-kpi-value">0.00</div><div class="rpt-kpi-label">الإجمالي</div></div>
+        {% endfor %}
+    </div>
+
+    <div class="rpt-panel">
+        <div class="rpt-panel-header rpt-panel-header--purchases">
+            <h3 class="rpt-panel-title"><i class="fas fa-table me-2"></i>تفاصيل المدفوعات</h3>
+        </div>
+        <div class="rpt-panel-body">
+            {% if report.data %}
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>التاريخ</th>
+                            <th>المورد</th>
+                            <th class="text-center">طريقة الدفع</th>
+                            <th>أمر الشراء</th>
+                            <th class="text-end">المبلغ المدفوع</th>
+                            <th>ملاحظات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in report.data %}
+                        <tr>
+                            <td class="text-muted" style="white-space:nowrap;">{{ row.payment_date }}</td>
+                            <td class="fw-bold">{{ row.supplier_name }}</td>
+                            <td class="text-center">
+                                {% if row.payment_method_key == 'cash' %}
+                                <span class="badge" style="background:rgba(17,153,142,.12); color:#11998e; font-size:.75rem; border-radius:6px; padding:.25rem .6rem;"><i class="fas fa-money-bill me-1"></i>{{ row.payment_method }}</span>
+                                {% elif row.payment_method_key == 'bank' %}
+                                <span class="badge" style="background:rgba(79,172,254,.12); color:#4facfe; font-size:.75rem; border-radius:6px; padding:.25rem .6rem;"><i class="fas fa-building-columns me-1"></i>{{ row.payment_method }}</span>
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td style="font-size:.82rem; color:#6366f1; font-weight:600;">{{ row.invoice_number|default:"—" }}</td>
+                            <td class="text-end fw-bold" style="color:#10b981;">
+                                {{ row.amount }}{% if row.currency_label %} <span style="font-size:.7rem;opacity:.7;">{{ row.currency_label }}</span>{% endif %}
+                            </td>
+                            <td class="text-muted" style="font-size:.8rem; max-width:180px;">{{ row.notes|default:"—"|truncatechars:60 }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="rpt-empty">
+                <i class="fas fa-money-bill-slash"></i>
+                <p>لا توجد دفعات في هذه الفترة</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+{% endblock %}

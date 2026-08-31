@@ -1,0 +1,142 @@
+{% extends "layouts/dashboard.html" %}
+{% load static %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=4.0">
+{% endblock %}
+
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<div class="cx-scene printable-scene">
+
+    <!-- ══ HERO ════════════════════════════════════════════════ -->
+    <div class="rpt-hero rpt-hero--stocks">
+        <div class="rpt-hero-inner">
+            <div class="rpt-hero-left">
+                <div class="rpt-hero-icon"><i class="fas fa-box"></i></div>
+                <div>
+                    <h1 class="rpt-hero-title">المخزن حسب المنتج</h1>
+                    <p class="rpt-hero-desc">كميات ومستويات المخزون لكل منتج</p>
+                </div>
+            </div>
+            <div class="rpt-hero-actions">
+                <button onclick="window.print()" class="rpt-hero-btn">
+                    <i class="fas fa-print"></i> طباعة
+                </button>
+                <a href="{% url 'stocks:reports:by_item_report_export' %}" class="rpt-hero-btn">
+                    <i class="fas fa-download"></i> تصدير
+                </a>
+                <a href="{% url 'stocks:quantities_list' %}" class="rpt-hero-btn">
+                    <i class="fas fa-arrow-left"></i> عودة
+                </a>
+            </div>
+        </div>
+    </div>
+
+    {% if report.data %}
+    <!-- ══ CHART — Top 10 by quantity ══════════════════════════ -->
+    <div class="rpt-panel">
+        <div class="rpt-panel-header rpt-panel-header--stocks">
+            <h3 class="rpt-panel-title"><i class="fas fa-chart-bar me-2"></i>أعلى 10 منتجات بالكمية المتاحة</h3>
+        </div>
+        <div class="rpt-chart-wrap">
+            <canvas id="stocksItemChart" class="rpt-chart-canvas"></canvas>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ══ DATA TABLE ══════════════════════════════════════════ -->
+    <div class="rpt-panel">
+        <div class="rpt-panel-header rpt-panel-header--stocks">
+            <h3 class="rpt-panel-title"><i class="fas fa-table me-2"></i>تفاصيل المخزن حسب المنتج</h3>
+        </div>
+        <div class="rpt-panel-body">
+            {% if report.data %}
+            <div class="table-responsive">
+<p class="rpt-unit-note m-0 p-2"><i class="fas fa-ruler me-1"></i>الكميات بالوحدة الأساسية (الأصغر) للصنف</p>
+                                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>المنتج</th>
+                            <th class="text-center">الوحدة</th>
+                            <th class="text-center">المتاح</th>
+                            <th class="text-center">المحجوز</th>
+                            <th class="text-center">الإجمالي</th>
+                            <th class="text-end">القيمة</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in report.data %}
+                        <tr {% if item.low_stock %}style="background:rgba(239,68,68,0.04);"{% endif %}>
+                            <td class="fw-bold">
+                                {{ item.item_name }}
+                                {% if item.low_stock %}
+                                <span class="ms-1" style="color:#ef4444; font-size:0.75rem;" title="مخزون منخفض">
+                                    <i class="fas fa-triangle-exclamation"></i>
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center text-muted">{{ item.item_unit }}</td>
+                            <td class="text-center fw-bold" style="color:#11998e">{{ item.total_available|floatformat:0 }}</td>
+                            <td class="text-center" style="color:#f59e0b">{{ item.total_reserved|floatformat:0 }}</td>
+                            <td class="text-center">{{ item.total_quantity|floatformat:0 }}</td>
+                            <td class="text-end text-muted">{{ item.total_value|money }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="rpt-empty">
+                <i class="fas fa-box-open"></i>
+                <p>لا توجد بيانات مخزن</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if report.data %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    const top10 = [{% for item in report.data|slice:":10" %}{ name: "{{ item.item_name|truncatechars:20 }}", qty: parseFloat("{{ item.total_available }}") || 0 }{% if not forloop.last %},{% endif %}{% endfor %}];
+    const isDark    = document.documentElement.getAttribute('data-theme') === 'dark';
+    const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+    const textColor = isDark ? '#9ca3af' : '#6b7280';
+
+    new Chart(document.getElementById('stocksItemChart'), {
+        type: 'bar',
+        data: {
+            labels: top10.map(r => r.name),
+            datasets: [{
+                label: 'الكمية المتاحة',
+                data: top10.map(r => r.qty),
+                backgroundColor: 'rgba(17,153,142,0.75)',
+                borderColor: '#11998e',
+                borderWidth: 1,
+                borderRadius: 6,
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: ctx => ' ' + Number(ctx.raw).toLocaleString('en') + ' وحدة' } }
+            },
+            scales: {
+                x: { ticks: { color: textColor, callback: v => Number(v).toLocaleString('en') }, grid: { color: gridColor } },
+                y: { ticks: { color: textColor }, grid: { display: false } }
+            }
+        }
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}

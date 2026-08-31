@@ -1,0 +1,220 @@
+/* =========================================================
+   SALES MODULE — نموذج الفاتورة (إنشاء / تعديل)
+   ========================================================= */
+
+/* Invoice line-item numeric text fields */
+.inv-num-field {
+  text-align: center;
+  direction: ltr;
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+}
+
+/* Form stats section */
+.sales-form-stats {
+  border-top: 1px solid var(--border-light);
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+/* Lines Table Wrapper */
+.sales-lines-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sales-lines-table {
+  min-width: 800px;
+}
+
+/* Column widths */
+.sales-th-product  { min-width: 160px; width: 25%; }
+.sales-th-qty      { width: 155px; }
+.sales-th-unit     { width: 175px; }
+.sales-th-price    { width: 140px; }
+.sales-th-discount { width: 110px; }
+.sales-th-tax      { width: 110px; }
+.sales-th-total    { width: 120px; }
+.sales-th-actions  { width: 60px; text-align: center; }
+
+/* Unit cell in invoice lines */
+.inv-unit-cell {
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+/* Line item cells */
+.sales-line-item-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  margin-bottom: 0.15rem;
+}
+
+.sales-line-item-sku {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+/* Large item search modal */
+.sales-modal-md {
+  max-width: 700px;
+}
+
+/* =========================================================
+   Search Results (Item Picker Modal)
+   ========================================================= */
+
+.sales-search-wrap {
+  position: relative;
+  margin-bottom: 1.25rem;
+}
+
+.sales-search-icon {
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-tertiary);
+}
+
+.sales-search-wrap .cx-input {
+  padding-right: 2.5rem;
+}
+
+.sales-search-results {
+  max-height: 380px;
+  overflow-y: auto;
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
+  background: var(--bg-primary);
+}
+
+.sale-item-result {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid var(--border-light);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.sale-item-result:last-child {
+  border-bottom: none;
+}
+
+.sale-item-result:hover {
+  background: rgba(99, 102, 241, 0.05);
+  transform: translateX(-4px);
+}
+
+.sale-item-result__name {
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.2rem;
+}
+
+.sale-item-result__sku {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.sale-item-result__meta {
+  text-align: left;
+}
+
+.sale-item-result__price {
+  font-weight: 800;
+  color: var(--primary);
+  font-size: 1rem;
+}
+
+.sale-item-result__qty {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.sale-item-result__qty--ok {
+  color: #10b981;
+}
+
+.sale-item-result__qty--empty {
+  color: #ef4444;
+}
+
+/* Empty State (no line items) */
+.sales-empty-lines {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--text-tertiary);
+}
+
+.sales-empty-lines i {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+/* Notes Panel */
+.sales-panel-note {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.04), rgba(59, 130, 246, 0.02));
+  border-radius: 14px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  border-right: 3px solid var(--primary);
+}
+
+/* Mobile overrides: keep lines table as horizontal scroll */
+@media (max-width: 767.98px) {
+  .sales-lines-table-wrap {
+    overflow-x: auto;
+  }
+
+  .sales-lines-table {
+    min-width: 800px;
+  }
+
+  .sales-modal-md { max-width: calc(100% - 1rem); }
+}
+
+@media (max-width: 480px) {
+  .sales-search-results { max-height: 260px; }
+  .sales-panel-note { padding: 0.55rem 0.875rem; font-size: 0.75rem; }
+  .sales-empty-lines { padding: 2rem 0.875rem; }
+  .sales-empty-lines i { font-size: 2rem; }
+  .sale-item-result { padding: 0.75rem 0.875rem; gap: 0.75rem; }
+}
+
+/* ── Unit selector inline with qty ───────────────────────── */
+.inv-qty-unit {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    flex-wrap: nowrap;
+}
+.inv-unit-sel {
+    width: 100%;
+    padding: .3rem .5rem !important;
+    font-size: .75rem !important;
+    height: auto !important;
+}
+.inv-unit-badge {
+    display: inline-block;
+    width: 100%;
+    background: var(--surface-alt, #f3f4f6);
+    color: var(--text-secondary, #6b7280);
+    border-radius: 6px;
+    padding: .25rem .6rem;
+    font-size: .72rem;
+    font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+[data-theme="dark"] .inv-unit-badge {
+    background: rgba(255,255,255,.08);
+    color: #9ca3af;
+}

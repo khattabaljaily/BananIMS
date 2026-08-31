@@ -1,0 +1,249 @@
+{% extends "layouts/dashboard.html" %}
+{% load static %}
+{% load humanize %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/stocks.css' %}?v=1.2">
+<link rel="stylesheet" href="{% static 'css/stocks_quantities.css' %}?v=1.1">
+{% endblock %}
+
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<div class="cx-scene">
+
+<!-- HERO -->
+<div class="cx-hero">
+    <div class="cx-hero-inner">
+        <div class="cx-hero-left">
+            <div class="cx-hero-icon-wrap">
+                <i class="fas fa-cubes"></i>
+            </div>
+            <div>
+                <h1 class="cx-hero-title">أرصدة المخزون</h1>
+                <p class="cx-hero-desc">عرض الكميات الحالية والمتاحة لكل منتج في كل مخزن</p>
+            </div>
+        </div>
+        <div class="cx-hero-right">
+            <div class="cx-hero-actions">
+                <a href="{% url 'stocks:opening_balance_list' %}" class="cx-btn-secondary">
+                    <i class="fas fa-pen-to-square"></i>
+                    <span>تعديل الكميات الافتتاحية</span>
+                </a>
+                <a href="{% url 'stocks:list' %}" class="cx-btn-secondary">
+                    <i class="fas fa-arrow-right"></i>
+                    <span>العودة للمخازن</span>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="cx-stats-inline">
+        <span class="cx-stat-badge cx-stat-badge--primary">
+            <i class="fas fa-boxes-stacked"></i>
+            <strong id="kpiTotal">—</strong>
+            <span>صنف</span>
+        </span>
+        <span class="cx-stat-badge cx-stat-badge--danger">
+            <i class="fas fa-triangle-exclamation"></i>
+            <strong id="kpiLow">—</strong>
+            <span>تحت الحد الأدنى</span>
+        </span>
+        <span class="cx-stat-badge cx-stat-badge--muted">
+            <i class="fas fa-circle-xmark"></i>
+            <strong id="kpiZero">—</strong>
+            <span>نفدت</span>
+        </span>
+    </div>
+</div>
+
+<!-- PANEL -->
+<div class="cx-panel">
+    <div class="cx-toolbar">
+        <div class="cx-toolbar-search">
+            <i class="fas fa-search cx-toolbar-search-icon"></i>
+            <input type="text" id="qtySearchInput" class="cx-search-input" placeholder="ابحث باسم المنتج أو SKU أو الباركود...">
+        </div>
+        <div class="cx-toolbar-end">
+            <label class="opening-stock-label">
+                <i class="fas fa-warehouse"></i>
+                <span>المخزن:</span>
+            </label>
+            <select id="qtyStockSelect" class="cx-select-sm">
+                <option value="">كل المخازن</option>
+                {% for s in stocks %}
+                <option value="{{ s.id }}" {% if default_stock and default_stock.id == s.id %}selected{% endif %}>{{ s.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+
+    <div class="opening-help opening-help--unit-note ps-3">
+        <i class="fas fa-ruler"></i>
+        <span>جميع الكميات تُعرض بـ <strong>الوحدة الأساسية</strong> (الأصغر) للصنف.</span>
+    </div>
+
+    <div class="table-responsive cx-table-wrap">
+        <table id="qtyTable" class="cx-table">
+            <thead>
+                <tr>
+                    <th>المنتج</th>
+                    <th>SKU</th>
+                    <th>الباركود</th>
+                    <th>المخزن</th>
+                    <th class="text-center">الوحدة</th>
+                    <th class="text-end">الكمية الإجمالية</th>
+                    <th class="text-end">المحجوزة</th>
+                    <th class="text-end">المتاحة</th>
+                    <th class="text-center">الحالة</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+    <div id="qtyCardsMobile" class="stocks-quantities-mobile-card-list d-none p-3" aria-live="polite"></div>
+</div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    'use strict';
+
+    const TABLE_API = "{% url 'stocks:quantities_table_api' %}";
+    const stockSelect = document.getElementById('qtyStockSelect');
+
+    let totalRows = 0, lowRows = 0, zeroRows = 0;
+
+    /* ── Mobile card renderer ───────────────────────────────── */
+    function renderMobileQtyCards(rows) {
+        const $cards = $('#qtyCardsMobile');
+        if (!$cards.length) return;
+
+        if (!rows || !rows.length) {
+            $cards.html('<div class="cx-empty-state">لا توجد أصناف للعرض</div>');
+            return;
+        }
+
+        const cardsHtml = rows.map(function (r) {
+            const qty = EnjazIMS.formatQuantity(r.quantity);
+            const reserved = EnjazIMS.formatQuantity(r.reserved);
+            const available = EnjazIMS.formatQuantity(r.available);
+            const statusClass = r.is_zero ? 'danger' : r.is_low ? 'warning' : 'success';
+            const statusIcon = r.is_zero ? 'fa-circle-xmark' : r.is_low ? 'fa-triangle-exclamation' : 'fa-circle-check';
+            const statusText = r.is_zero ? 'نفدت' : r.is_low ? 'منخفضة' : 'متوفرة';
+            const availableBadge = r.is_zero
+                ? `<span class="cx-qty-card-badge cx-qty-card-badge--zero">${available}</span>`
+                : r.is_low
+                ? `<span class="cx-qty-card-badge cx-qty-card-badge--low">${available}</span>`
+                : `<span class="cx-qty-card-badge cx-qty-card-badge--ok">${available}</span>`;
+
+            return `<article class="cx-qty-card">
+                <div class="cx-qty-card-head">
+                    <div class="cx-qty-card-title-wrap">
+                        <h2 class="cx-qty-card-title">${r.item_name || '—'}</h2>
+                        <div class="cx-qty-card-codes">
+                            <code class="cx-qty-card-code">${r.sku || '—'}</code>
+                            ${r.barcode ? `<code class="cx-qty-card-code">${r.barcode}</code>` : ''}
+                        </div>
+                    </div>
+                    <span class="cx-badge cx-badge--${statusClass}"><i class="fas ${statusIcon}"></i> ${statusText}</span>
+                </div>
+                <div class="cx-qty-card-meta">
+                    <div>
+                        <span class="cx-qty-card-meta-label">المخزن</span>
+                        <strong class="cx-qty-card-meta-value">${r.stock_name || '—'}</strong>
+                    </div>
+                    <div>
+                        <span class="cx-qty-card-meta-label">الوحدة</span>
+                        <strong class="cx-qty-card-meta-value">${r.unit || '—'}</strong>
+                    </div>
+                    <div>
+                        <span class="cx-qty-card-meta-label">الكمية الإجمالية</span>
+                        <strong class="cx-qty-card-meta-value">${qty}</strong>
+                    </div>
+                    <div>
+                        <span class="cx-qty-card-meta-label">المحجوزة</span>
+                        <strong class="cx-qty-card-meta-value">${reserved}</strong>
+                    </div>
+                    <div>
+                        <span class="cx-qty-card-meta-label">المتاحة</span>
+                        <strong class="cx-qty-card-meta-value">${availableBadge}</strong>
+                    </div>
+                </div>
+            </article>`;
+        }).join('');
+
+        $cards.html(cardsHtml);
+    }
+
+    const dt = $('#qtyTable').DataTable({
+        processing: true,
+        serverSide: true,
+        pageLength: 25,
+        dom: '<"d-none"f>rt<"cx-dt-bottom"ip>',
+        language: {
+            emptyTable: 'لا توجد أصناف',
+            info: 'عرض _START_ إلى _END_ من _TOTAL_',
+            infoEmpty: 'لا توجد بيانات',
+            zeroRecords: 'لا توجد نتائج مطابقة',
+            paginate: { next: 'التالي', previous: 'السابق' },
+            processing: 'جاري التحميل...'
+        },
+        ajax: {
+            url: TABLE_API,
+            data: function (d) {
+                d.stock_id = stockSelect.value;
+            },
+            dataSrc: function (json) {
+                // count stats from current page (approx using recordsFiltered)
+                document.getElementById('kpiTotal').textContent = json.recordsFiltered ?? '—';
+                return json.data;
+            }
+        },
+        columns: [
+            { data: 'item_name' },
+            { data: 'sku',      render: v => `<code class="cxr-code">${v}</code>` },
+            { data: 'barcode',  render: v => `<code class="cxr-code">${v}</code>` },
+            { data: 'stock_name' },
+            { data: 'unit', className: 'text-center', render: v => `<span class="inv-unit-badge">${v || '—'}</span>` },
+            { data: 'quantity',  className: 'text-end qty-num', render: v => EnjazIMS.formatQuantity(v) },
+            { data: 'reserved',  className: 'text-end qty-num qty-reserved', render: v => EnjazIMS.formatQuantity(v) },
+            { data: 'available', className: 'text-end qty-num', render: function(v, _, row) {
+                const amount = EnjazIMS.formatQuantity(v);
+                if (row.is_zero)  return `<span class="qty-badge qty-badge--zero">${amount}</span>`;
+                if (row.is_low)   return `<span class="qty-badge qty-badge--low">${amount}</span>`;
+                return `<span class="qty-badge qty-badge--ok">${amount}</span>`;
+            }},
+            { data: null, className: 'text-center', orderable: false, render: function(_, __, row) {
+                if (row.is_zero) return `<span class="cx-badge cx-badge--danger"><i class="fas fa-circle-xmark"></i> نفدت</span>`;
+                if (row.is_low)  return `<span class="cx-badge cx-badge--warning"><i class="fas fa-triangle-exclamation"></i> منخفضة</span>`;
+                return `<span class="cx-badge cx-badge--success"><i class="fas fa-circle-check"></i> متوفرة</span>`;
+            }}
+        ],
+        drawCallback: function () {
+            // update low/zero KPIs from rendered rows
+            let low = 0, zero = 0;
+            dt.rows({ page: 'current' }).data().each(function (row) {
+                if (row.is_zero) zero++;
+                else if (row.is_low) low++;
+            });
+            document.getElementById('kpiLow').textContent  = low;
+            document.getElementById('kpiZero').textContent = zero;
+
+            renderMobileQtyCards(dt.rows({ page: 'current' }).data().toArray());
+        }
+    });
+
+    $('#qtySearchInput').on('input', function () {
+        dt.search($(this).val()).draw();
+    });
+
+    stockSelect.addEventListener('change', function () {
+        dt.ajax.reload();
+    });
+})();
+</script>
+{% endblock %}

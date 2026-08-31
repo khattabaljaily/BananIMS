@@ -1,0 +1,802 @@
+/* =============================================================
+   Reports Base CSS — EnjazIMS  v4.0
+   All report templates share this stylesheet.
+   Uses CSS variables from main.css → adapts to dark & light mode.
+   ============================================================= */
+
+/* Print letterhead elements hidden on screen */
+.printable-scene::before,
+.printable-scene::after { display: none; }
+
+/* ── Hero Banner ─────────────────────────────────────────────── */
+.rpt-hero {
+    margin-bottom: 1.5rem;
+    border-radius: 18px;
+    padding: 1.5rem 1.75rem;
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(135deg, #6366f1 0%, #4338ca 60%, #3730a3 100%);
+    box-shadow: 0 8px 32px rgba(99, 102, 241, 0.28), 0 2px 8px rgba(67, 56, 202, 0.15);
+}
+.rpt-hero::before {
+    content: '';
+    position: absolute;
+    top: -40%;
+    right: -2%;
+    width: 220px;
+    height: 220px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 50%;
+    pointer-events: none;
+}
+.rpt-hero::after {
+    content: '';
+    position: absolute;
+    bottom: -60%;
+    left: 5%;
+    width: 160px;
+    height: 160px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 50%;
+    pointer-events: none;
+}
+.rpt-hero--sales,
+.rpt-hero--purchases,
+.rpt-hero--stocks,
+.rpt-hero--expenses,
+.rpt-hero--treasury,
+.rpt-hero--accounting {
+    background: linear-gradient(135deg, #6366f1 0%, #4338ca 60%, #3730a3 100%);
+}
+
+.rpt-hero-inner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    position: relative;
+    z-index: 1;
+}
+.rpt-hero-left {
+    display: flex;
+    align-items: center;
+    gap: 1.1rem;
+}
+.rpt-hero-icon {
+    width: 58px;
+    height: 58px;
+    flex-shrink: 0;
+    background: rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    color: white;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(8px);
+}
+.rpt-hero-title {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: white;
+    margin: 0 0 0.2rem;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.rpt-hero-desc {
+    font-size: 0.83rem;
+    color: rgba(255, 255, 255, 0.82);
+    margin: 0;
+}
+.rpt-hero-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+.rpt-hero-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 1.1rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: white;
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 10px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+    white-space: nowrap;
+    line-height: 1.4;
+    backdrop-filter: blur(6px);
+}
+.rpt-hero-btn:hover {
+    background: rgba(255, 255, 255, 0.28);
+    color: white;
+    text-decoration: none;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+}
+.rpt-hero-btn:active { transform: translateY(0); }
+
+/* ── Filter Bar ──────────────────────────────────────────────── */
+.rpt-filters {
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: var(--shadow-sm);
+}
+.rpt-filters .form-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    margin-bottom: 0.35rem;
+    display: block;
+}
+.rpt-filters .form-control,
+.rpt-filters .form-select {
+    font-size: 0.875rem;
+    border: 1.5px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    padding: 0.5rem 0.9rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.rpt-filters .form-control:focus,
+.rpt-filters .form-select:focus {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+    outline: none;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+.rpt-filter-btn {
+    width: 100%;
+    padding: 0.58rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
+    letter-spacing: 0.02em;
+}
+.rpt-filter-btn:hover {
+    opacity: 0.9;
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+}
+.rpt-filter-btn--sales,
+.rpt-filter-btn--purchases,
+.rpt-filter-btn--stocks,
+.rpt-filter-btn--expenses,
+.rpt-filter-btn--treasury,
+.rpt-filter-btn--accounting {
+    background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%);
+}
+
+/* ── KPI Cards Grid ──────────────────────────────────────────── */
+.rpt-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+.rpt-kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 1.35rem 1.1rem;
+    text-align: center;
+    box-shadow: var(--shadow-sm);
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    position: relative;
+    overflow: hidden;
+}
+.rpt-kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    border-radius: 16px 16px 0 0;
+}
+.rpt-kpi-card:hover {
+    transform: translateY(-5px);
+    box-shadow: var(--shadow-md);
+}
+.rpt-kpi-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    margin-bottom: 0.85rem;
+}
+.rpt-kpi-value {
+    font-size: 1.6rem;
+    font-weight: 800;
+    line-height: 1.15;
+    margin-bottom: 0.35rem;
+    direction: ltr;
+    letter-spacing: -0.03em;
+}
+.rpt-kpi-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    line-height: 1.4;
+}
+
+/* KPI accent colors */
+.rpt-kpi--purple::before { background: linear-gradient(90deg, #667eea, #764ba2); }
+.rpt-kpi--purple .rpt-kpi-icon  { background: rgba(102, 126, 234, .12); color: #667eea; }
+.rpt-kpi--purple .rpt-kpi-value { color: #667eea; }
+
+.rpt-kpi--violet::before { background: linear-gradient(90deg, #764ba2, #6366f1); }
+.rpt-kpi--violet .rpt-kpi-icon  { background: rgba(118, 75, 162, .12); color: #764ba2; }
+.rpt-kpi--violet .rpt-kpi-value { color: #764ba2; }
+
+.rpt-kpi--blue::before { background: linear-gradient(90deg, #4facfe, #00f2fe); }
+.rpt-kpi--blue .rpt-kpi-icon  { background: rgba(79, 172, 254, .12); color: #4facfe; }
+.rpt-kpi--blue .rpt-kpi-value { color: #4facfe; }
+
+.rpt-kpi--cyan::before { background: linear-gradient(90deg, #0575e6, #021b79); }
+.rpt-kpi--cyan .rpt-kpi-icon  { background: rgba(5, 117, 230, .12); color: #0575e6; }
+.rpt-kpi--cyan .rpt-kpi-value { color: #0575e6; }
+
+.rpt-kpi--green::before { background: linear-gradient(90deg, #11998e, #38ef7d); }
+.rpt-kpi--green .rpt-kpi-icon  { background: rgba(17, 153, 142, .12); color: #11998e; }
+.rpt-kpi--green .rpt-kpi-value { color: #11998e; }
+
+.rpt-kpi--emerald::before { background: linear-gradient(90deg, #10b981, #34d399); }
+.rpt-kpi--emerald .rpt-kpi-icon  { background: rgba(16, 185, 129, .12); color: #10b981; }
+.rpt-kpi--emerald .rpt-kpi-value { color: #10b981; }
+
+.rpt-kpi--orange::before { background: linear-gradient(90deg, #fa709a, #fee140); }
+.rpt-kpi--orange .rpt-kpi-icon  { background: rgba(250, 112, 154, .12); color: #fa709a; }
+.rpt-kpi--orange .rpt-kpi-value { color: #fa709a; }
+
+.rpt-kpi--amber::before { background: linear-gradient(90deg, #f59e0b, #f97316); }
+.rpt-kpi--amber .rpt-kpi-icon  { background: rgba(245, 158, 11, .12); color: #f59e0b; }
+.rpt-kpi--amber .rpt-kpi-value { color: #f59e0b; }
+
+.rpt-kpi--red::before { background: linear-gradient(90deg, #ef4444, #f97316); }
+.rpt-kpi--red .rpt-kpi-icon  { background: rgba(239, 68, 68, .12); color: #ef4444; }
+.rpt-kpi--red .rpt-kpi-value { color: #ef4444; }
+
+.rpt-kpi--teal::before { background: linear-gradient(90deg, #14b8a6, #06b6d4); }
+.rpt-kpi--teal .rpt-kpi-icon  { background: rgba(20, 184, 166, .12); color: #14b8a6; }
+.rpt-kpi--teal .rpt-kpi-value { color: #14b8a6; }
+
+/* ── Content Panels ──────────────────────────────────────────── */
+.rpt-panel {
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 1.5rem;
+}
+.rpt-panel-header {
+    padding: 1rem 1.4rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+}
+/* RTL accent — border on the start (right) side of the header */
+.rpt-panel-header--sales,
+.rpt-panel-header--purchases,
+.rpt-panel-header--stocks,
+.rpt-panel-header--expenses,
+.rpt-panel-header--treasury,
+.rpt-panel-header--accounting {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    border-right: 4px solid #6366f1;
+}
+.rpt-panel-title {
+    font-size: 0.93rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.rpt-panel-title i { color: #6366f1; }
+.rpt-panel-body { padding: 0; }
+
+/* ── Tables ──────────────────────────────────────────────────── */
+.rpt-panel .table { margin: 0; }
+.rpt-panel .table thead tr {
+    background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%);
+}
+.rpt-panel .table thead th {
+    background: transparent;
+    color: white;
+    font-weight: 700;
+    font-size: 0.78rem;
+    padding: 0.8rem 1.1rem;
+    border: none;
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+.rpt-panel .table tbody td {
+    padding: 0.7rem 1.1rem;
+    font-size: 0.855rem;
+    border-bottom: 1px solid var(--border-light);
+    color: var(--text-primary);
+    vertical-align: middle;
+}
+.rpt-panel .table tbody tr:last-child td { border-bottom: none; }
+.rpt-panel .table tbody tr:nth-child(even) { background: var(--bg-secondary); }
+.rpt-panel .table tbody tr:hover { background: rgba(99, 102, 241, 0.05); }
+.rpt-panel .table tbody tr.rpt-total-row td {
+    background: linear-gradient(90deg, rgba(99,102,241,.07) 0%, rgba(67,56,202,.04) 100%) !important;
+    font-weight: 800;
+    font-size: 0.9rem;
+    border-top: 2px solid #6366f1 !important;
+    border-bottom: none;
+    color: var(--text-primary) !important;
+}
+
+/* ── Utility Classes ─────────────────────────────────────────── */
+
+/* Semantic type badges */
+.rpt-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.22rem 0.65rem;
+    border-radius: 7px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+.rpt-badge--invoice  { background: rgba(99,102,241,.12);  color: #6366f1; }
+.rpt-badge--payment  { background: rgba(17,153,142,.12);  color: #11998e; }
+.rpt-badge--return   { background: rgba(239,68,68,.12);   color: #ef4444; }
+.rpt-badge--receipt  { background: rgba(16,185,129,.12);  color: #10b981; }
+.rpt-badge--transfer { background: rgba(79,172,254,.12);  color: #4facfe; }
+.rpt-badge--expense  { background: rgba(245,158,11,.12);  color: #f59e0b; }
+.rpt-badge--other    { background: rgba(107,114,128,.12); color: #6b7280; }
+
+/* Colored amounts */
+.rpt-pos { color: #11998e !important; font-weight: 700; }
+.rpt-neg { color: #ef4444 !important; font-weight: 700; }
+.rpt-bal { color: #6366f1 !important; font-weight: 700; }
+.rpt-dim { color: var(--text-tertiary) !important; font-size: 0.82rem; }
+
+/* Alert row backgrounds */
+.rpt-row--danger  { background: rgba(239, 68, 68, .04)  !important; }
+.rpt-row--warning { background: rgba(245, 158, 11, .04) !important; }
+.rpt-row--success { background: rgba(16, 185, 129, .04) !important; }
+
+/* ── Chart Wrapper ───────────────────────────────────────────── */
+.rpt-chart-wrap { padding: 1.4rem 1.4rem 1rem; }
+.rpt-chart-canvas { max-height: 300px; }
+
+/* ── Summary Table (2-column) ────────────────────────────────── */
+.rpt-summary-table { width: 100%; }
+.rpt-summary-table tbody tr:nth-child(even) { background: var(--bg-secondary); }
+
+/* ── Empty State ─────────────────────────────────────────────── */
+.rpt-empty {
+    padding: 3.5rem 1.5rem;
+    text-align: center;
+    color: var(--text-tertiary);
+}
+.rpt-empty i {
+    font-size: 3rem;
+    display: block;
+    margin-bottom: 1rem;
+    opacity: 0.2;
+}
+.rpt-empty p { font-size: 0.93rem; margin: 0; font-weight: 500; }
+
+/* ── Rank Badge ──────────────────────────────────────────────── */
+.rpt-rank {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    flex-shrink: 0;
+}
+.rpt-rank--1     { background: #fef3c7; color: #92400e; }
+.rpt-rank--2     { background: #f3f4f6; color: #374151; }
+.rpt-rank--3     { background: #fde8d8; color: #9a3412; }
+.rpt-rank--other { background: var(--bg-tertiary); color: var(--text-tertiary); }
+
+/* ── Dark Mode Overrides ─────────────────────────────────────── */
+[data-theme="dark"] .rpt-rank--1     { background:rgba(217,119,6,.15);  color:#fcd34d; }
+[data-theme="dark"] .rpt-rank--2     { background:rgba(100,116,139,.12); color:#94a3b8; }
+[data-theme="dark"] .rpt-rank--3     { background:rgba(234,88,12,.15);  color:#fdba74; }
+
+/* ── Responsive ──────────────────────────────────────────────── */
+@media (max-width: 768px) {
+    .rpt-kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 0.75rem; }
+    .rpt-hero-inner { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
+    .rpt-hero-actions { width: 100%; flex-direction: row; flex-wrap: wrap; gap: 0.4rem; }
+    .rpt-hero-title { font-size: 1.25rem; }
+    .rpt-hero { padding: 1.1rem; border-radius: 14px; }
+    .rpt-hero-icon { width: 48px; height: 48px; font-size: 1.2rem; }
+    .rpt-hero-btn { padding: 0.4rem 0.85rem; font-size: 0.78rem; }
+    .rpt-filters { padding: 0.875rem 1rem; }
+    .rpt-panel-header { padding: 0.75rem 1rem; }
+    .rpt-panel .table thead th,
+    .rpt-panel .table tbody td { padding: 0.5rem 0.75rem; font-size: 0.78rem; }
+}
+@media (max-width: 480px) {
+    .rpt-hero { padding: 0.875rem; border-radius: 12px; }
+    .rpt-hero-title { font-size: 1.05rem; }
+    .rpt-hero-desc { font-size: 0.78rem; }
+    .rpt-hero-icon { width: 40px; height: 40px; font-size: 1rem; border-radius: 12px; }
+    .rpt-hero-btn { width: 100%; justify-content: center; font-size: 0.78rem; }
+    .rpt-hero-actions { flex-direction: column; }
+
+    .rpt-kpi-grid { grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+    .rpt-kpi-card { padding: 0.875rem 0.75rem; }
+    .rpt-kpi-icon { width: 38px; height: 38px; font-size: 0.95rem; margin-bottom: 0.6rem; }
+    .rpt-kpi-value { font-size: 1.25rem; }
+
+    .rpt-filters { padding: 0.75rem 0.875rem; }
+    .rpt-panel-header { padding: 0.6rem 0.875rem; }
+    .rpt-chart-canvas { max-height: 220px; }
+}
+
+/* =============================================================
+   PRINT STYLES — Professional A4 Layout
+   Clean, elegant output for paper. data-print-date injected by
+   the inline script in base.html (beforeprint listener).
+   ============================================================= */
+@page {
+    size: A4 portrait;
+    margin: 14mm 14mm 18mm;
+}
+
+@media print {
+    /* ── 1. Hide chrome & interactive elements ──────────────── */
+    .navbar,
+    .sidebar,
+    .sidebar-overlay,
+    footer,
+    .rpt-filters,
+    .rpt-hero-actions,
+    .rpt-chart-wrap,
+    .rpt-hero::before,
+    .rpt-hero::after,
+    .no-print { display: none !important; }
+
+    /* ── 2. Reset page layout ───────────────────────────────── */
+    html, body {
+        background: #fff !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+        height: auto !important;
+        min-height: 0 !important;
+        font-size: 10pt;
+        color: #1a1a2e;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    .dashboard-shell,
+    .dashboard-body,
+    .dashboard-main,
+    .content,
+    .cx-scene {
+        background: #fff !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        min-height: 0 !important;
+        height: auto !important;
+        overflow: visible !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        display: block !important;
+    }
+
+    /* ── 3. Document letterhead ─────────────────────────────────
+       Appears above the report title. Shows system name and the
+       date the report was printed (set via data-print-date attr). */
+    .printable-scene::before {
+        content: 'EnjazIMS — نظام إدارة المخزون   ·   ' attr(data-print-date);
+        display: block !important;
+        text-align: center;
+        font-size: 8pt;
+        color: #555;
+        letter-spacing: 0.05em;
+        padding-bottom: 7pt;
+        margin-bottom: 0;
+        border-bottom: 0.5pt solid #c8c8d0;
+    }
+
+    /* ── 4. Hero → elegant title block ─────────────────────── */
+    .rpt-hero {
+        background: none !important;
+        box-shadow: none !important;
+        border: none !important;
+        border-bottom: 2pt solid #6366f1 !important;
+        border-radius: 0 !important;
+        padding: 0.7rem 0 1rem !important;
+        margin-bottom: 1.25rem !important;
+        margin-top: 8pt !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    .rpt-hero-icon { display: none !important; }
+    .rpt-hero-inner {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 0.2rem !important;
+    }
+    .rpt-hero-title {
+        color: #1a1a2e !important;
+        font-size: 18pt !important;
+        font-weight: 800 !important;
+        letter-spacing: -0.02em;
+        line-height: 1.2;
+        text-shadow: none !important;
+    }
+    .rpt-hero-desc {
+        color: #555 !important;
+        font-size: 9pt !important;
+    }
+
+    /* ── 5. KPI cards → compact info boxes ─────────────────── */
+    .rpt-kpi-grid {
+        gap: 6pt !important;
+        margin-bottom: 1rem !important;
+        grid-template-columns: repeat(auto-fit, minmax(90pt, 1fr)) !important;
+    }
+    .rpt-kpi-card {
+        background: #fff !important;
+        border: 1pt solid #d1d5db !important;
+        box-shadow: none !important;
+        border-radius: 4pt !important;
+        padding: 6pt 8pt !important;
+        break-inside: avoid;
+        text-align: right !important;
+    }
+    .rpt-kpi-card::before {
+        height: 2.5pt !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    .rpt-kpi-icon { display: none !important; }
+    .rpt-kpi-value {
+        font-size: 13pt !important;
+        font-weight: 800 !important;
+        letter-spacing: -0.02em;
+        margin-bottom: 2pt !important;
+    }
+    .rpt-kpi-label {
+        font-size: 7pt !important;
+        color: #666 !important;
+        letter-spacing: 0.04em;
+    }
+    /* Preserve semantic KPI colors in print (print-friendly shades) */
+    .rpt-kpi--purple .rpt-kpi-value  { color: #5b5bd6 !important; }
+    .rpt-kpi--violet .rpt-kpi-value  { color: #6d28d9 !important; }
+    .rpt-kpi--blue .rpt-kpi-value    { color: #2563eb !important; }
+    .rpt-kpi--cyan .rpt-kpi-value    { color: #1d4ed8 !important; }
+    .rpt-kpi--green .rpt-kpi-value   { color: #047857 !important; }
+    .rpt-kpi--emerald .rpt-kpi-value { color: #059669 !important; }
+    .rpt-kpi--orange .rpt-kpi-value  { color: #be185d !important; }
+    .rpt-kpi--amber .rpt-kpi-value   { color: #b45309 !important; }
+    .rpt-kpi--red .rpt-kpi-value     { color: #dc2626 !important; }
+    .rpt-kpi--teal .rpt-kpi-value    { color: #0f766e !important; }
+
+    /* ── 6. Panels → clean bordered sections ────────────────── */
+    .rpt-panel {
+        background: #fff !important;
+        border: 1pt solid #d1d5db !important;
+        box-shadow: none !important;
+        overflow: visible !important;
+        break-inside: avoid;
+        page-break-inside: avoid;
+        margin-bottom: 1.1rem !important;
+        border-radius: 4pt !important;
+    }
+    .rpt-panel-header,
+    .rpt-panel-header--sales,
+    .rpt-panel-header--purchases,
+    .rpt-panel-header--stocks,
+    .rpt-panel-header--expenses,
+    .rpt-panel-header--treasury,
+    .rpt-panel-header--accounting {
+        background: #f6f6f9 !important;
+        border-bottom: 1pt solid #d1d5db !important;
+        border-right: 3pt solid #6366f1 !important;
+        border-left: none !important;
+        padding: 5pt 10pt !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    .rpt-panel-title {
+        color: #1a1a2e !important;
+        font-size: 9.5pt !important;
+        font-weight: 700 !important;
+    }
+    .rpt-panel-title i { color: #5b5bd6 !important; }
+
+    /* ── 7. Tables → crisp, color-accurate ─────────────────── */
+    .rpt-panel .table thead tr {
+        background: #6366f1 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    .rpt-panel .table thead th {
+        color: #fff !important;
+        background: transparent !important;
+        border: none !important;
+        font-size: 7.5pt !important;
+        font-weight: 700 !important;
+        padding: 5pt 8pt !important;
+        letter-spacing: 0.04em;
+    }
+    .rpt-panel .table tbody td {
+        color: #1a1a2e !important;
+        border-bottom: 0.5pt solid #e5e7eb !important;
+        font-size: 8.5pt !important;
+        padding: 4.5pt 8pt !important;
+    }
+    .rpt-panel .table tbody td * { color: inherit !important; }
+    .rpt-panel .table tbody tr:nth-child(even) {
+        background: #f9fafb !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    .rpt-panel .table tbody tr:hover { background: transparent !important; }
+    .rpt-panel .table tbody tr:last-child td {
+        border-bottom: 0.5pt solid #d1d5db !important;
+    }
+    .rpt-panel .table tbody tr.rpt-total-row td {
+        background: #eef0ff !important;
+        color: #1a1a2e !important;
+        font-size: 10pt !important;
+        font-weight: 800 !important;
+        border-top: 1.5pt solid #6366f1 !important;
+        border-bottom: none !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    .table-responsive { overflow: visible !important; }
+
+    /* ── 8. Badges in print ─────────────────────────────────── */
+    .badge {
+        background: none !important;
+        border: 0.5pt solid #aaa !important;
+        color: #444 !important;
+        font-size: 7pt !important;
+        border-radius: 3pt !important;
+        padding: 1pt 5pt !important;
+    }
+    .rpt-badge {
+        font-size: 7pt !important;
+        border-radius: 3pt !important;
+        padding: 1pt 5pt !important;
+        border: 0.5pt solid currentColor !important;
+        opacity: 0.9;
+    }
+    .rpt-badge--invoice  { color: #5b5bd6 !important; background: rgba(99,102,241,.07) !important; }
+    .rpt-badge--payment  { color: #059669 !important; background: rgba(16,185,129,.07) !important; }
+    .rpt-badge--return   { color: #dc2626 !important; background: rgba(239,68,68,.07)  !important; }
+    .rpt-badge--receipt  { color: #059669 !important; background: rgba(16,185,129,.07) !important; }
+    .rpt-badge--expense  { color: #b45309 !important; background: rgba(245,158,11,.07) !important; }
+
+    /* ── 9. Colored amounts → print-safe palette ────────────── */
+    .rpt-pos { color: #047857 !important; }
+    .rpt-neg { color: #dc2626 !important; }
+    .rpt-bal { color: #5b5bd6 !important; }
+
+    td[style*="color:#667eea"], td[style*="color: #667eea"] { color: #5b5bd6 !important; font-weight: 700 !important; }
+    td[style*="color:#11998e"], td[style*="color: #11998e"] { color: #047857 !important; }
+    td[style*="color:#ef4444"], td[style*="color: #ef4444"] { color: #dc2626 !important; }
+    td[style*="color:#fa709a"], td[style*="color: #fa709a"] { color: #be185d !important; }
+    td[style*="color:#4facfe"], td[style*="color: #4facfe"] { color: #2563eb !important; }
+    td[style*="color:#f59e0b"], td[style*="color: #f59e0b"] { color: #b45309 !important; }
+    td[style*="color:#10b981"], td[style*="color: #10b981"] { color: #059669 !important; }
+    td[style*="color:#6366f1"], td[style*="color: #6366f1"] { color: #5b5bd6 !important; }
+
+    /* ── 10. Section row backgrounds ────────────────────────── */
+    tr[style*="rgba(99,102,241"] {
+        background: #f0f0ff !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    tr[style*="rgba(239,68,68"],
+    .rpt-row--danger {
+        background: #fff5f5 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    tr[style*="background:var(--bg-secondary)"],
+    tr[style*="background: var(--bg-secondary)"] {
+        background: #f9fafb !important;
+    }
+
+    /* ── 11. Rank badges ────────────────────────────────────── */
+    .rpt-rank, .rpt-rank--1, .rpt-rank--2, .rpt-rank--3, .rpt-rank--other {
+        background: #f3f4f6 !important;
+        color: #374151 !important;
+        border: 0.5pt solid #d1d5db !important;
+    }
+
+    /* ── 12. Empty state ────────────────────────────────────── */
+    .rpt-empty { color: #777 !important; padding: 1.5rem !important; }
+
+    /* ── 13. Page break helpers ─────────────────────────────── */
+    .rpt-panel { page-break-inside: avoid; }
+    .rpt-kpi-grid { page-break-inside: avoid; }
+    h1, h2, h3 { page-break-after: avoid; }
+    table { page-break-inside: auto; }
+    tr { page-break-inside: avoid; page-break-after: auto; }
+    thead { display: table-header-group; }
+
+    /* ── 14. Print footer ───────────────────────────────────── */
+    .printable-scene::after {
+        display: block !important;
+        text-align: center;
+        font-size: 7.5pt;
+        color: #888;
+        border-top: 0.5pt solid #c8c8d0;
+        padding-top: 7pt;
+        margin-top: 1.5rem;
+        letter-spacing: 0.04em;
+    }
+}
+
+/* ── Unit note ─────────────────────────────────────────────── */
+.rpt-unit-note {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    margin-bottom: .75rem;
+    padding: .35rem .75rem;
+    background: rgba(16, 185, 129, 0.08);
+    color: #065f46;
+    border-radius: 8px;
+    font-size: .78rem;
+    font-weight: 600;
+}
+
+.rpt-unit-note i {
+    color: #059669;
+    font-size: .75rem;
+}
+
+.rpt-unit-note--mixed {
+    background: rgba(245, 158, 11, 0.08);
+    color: #92400e;
+}
+
+.rpt-unit-note--mixed i {
+    color: #d97706;
+}

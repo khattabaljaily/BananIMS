@@ -1,0 +1,741 @@
+{% extends "layouts/dashboard.html" %}
+{% load static %}
+{% load humanize %}
+{% load capabilities_tags %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/sales.css' %}?v=3.1">
+<link rel="stylesheet" href="{% static 'css/sales_invoice_form.css' %}?v=1.1">
+<style>
+.cx-searchable-select { position: relative; }
+.cx-searchable-select-dropdown {
+  position: absolute; z-index: 9500; width: 100%;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border-light, #e5e7eb);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15,23,42,.12);
+  max-height: 220px; overflow-y: auto;
+  top: calc(100% + 4px);
+}
+.cx-searchable-option {
+  padding: .55rem 1rem; cursor: pointer; font-size: .875rem;
+  color: var(--text-primary, #111827);
+}
+.cx-searchable-option:hover { background: var(--surface-alt, #f3f4f6); }
+.cx-searchable-no-results { padding: .75rem 1rem; font-size: .8rem; color: var(--text-muted, #9ca3af); }
+.cx-hc-hint { display:block; font-size:.68rem; font-weight:700; color:#e05c2a; margin-top:2px; }
+.cx-hc-hint-inline { font-size:.72rem; font-weight:700; color:#e05c2a; margin-right:.35rem; }
+</style>
+{% endblock %}
+
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<div class="cx-scene">
+    <div class="cx-hero">
+        <div class="cx-hero-inner">
+            <div class="cx-hero-left">
+                <div class="cx-hero-icon-wrap"><i class="fas fa-file-invoice-dollar"></i></div>
+                <div>
+                    <h1 class="cx-hero-title">{% if action == 'edit' %}تعديل أمر شراء{% else %}أمر شراء جديد{% endif %}</h1>
+                    <p class="cx-hero-desc">نفس تخطيط فاتورة المبيعات مع بيانات الشراء</p>
+                </div>
+            </div>
+        </div>
+        <div class="cx-stats-inline sales-form-stats">
+            <span class="cx-stat-badge cx-stat-badge--primary"><i class="fas fa-layer-group"></i><strong id="lineCount">0</strong><span>بند</span></span>
+            <span class="cx-stat-badge cx-stat-badge--info" id="paymentMethodBadge"><i class="fas fa-money-check-dollar"></i><strong>نقداً</strong></span>
+            <span class="cx-stat-badge cx-stat-badge--info"><i class="fas fa-file-circle-check"></i><strong>مسودة</strong></span>
+        </div>
+    </div>
+
+    <form id="purchaseForm">
+        {% csrf_token %}
+        <div class="row g-3">
+            <div class="col-lg-8">
+                <div class="cx-panel mb-3 p-4">
+                    <div class="cx-panel-header">
+                        <h3 class="cx-panel-title"><i class="fas fa-info-circle me-2"></i>بيانات الأمر</h3>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-12 col-md-6">
+                            <label class="cx-label">المورد</label>
+                            <div class="cx-searchable-select" id="supplierSelectWrap">
+                                <input type="text" id="supplierSearch" class="cx-input" placeholder="ابحث عن مورد..." autocomplete="off">
+                                <input type="hidden" id="supplierId" name="supplier_id" value="{% if invoice and invoice.supplier_id %}{{ invoice.supplier_id }}{% endif %}">
+                                <div id="supplierDropdown" class="cx-searchable-select-dropdown" style="display:none;"></div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-3">
+                            <label class="cx-label">المخزن <span class="text-danger">*</span></label>
+                            <select id="stockId" class="cx-input" required>
+                                {% for s in stocks %}
+                                <option value="{{ s.id }}" {% if invoice and invoice.stock_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-12 col-md-3">
+                            <label class="cx-label">التاريخ <span class="text-danger">*</span></label>
+                            <input type="date" id="invoiceDate" class="cx-input" value="{{ invoice.invoice_date|date:'Y-m-d'|default:today }}" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="cx-label">ملاحظات</label>
+                            <textarea id="notes" class="cx-input" rows="2">{{ invoice.notes|default:'' }}</textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="cx-panel p-4">
+                    <div class="cx-panel-header">
+                        <h3 class="cx-panel-title"><i class="fas fa-list me-2"></i>بنود أمر الشراء</h3>
+                        <button type="button" class="cx-btn-secondary" onclick="openItemSearch()"><i class="fas fa-plus"></i> إضافة منتج</button>
+                    </div>
+                    <div class="table-responsive sales-lines-table-wrap">
+                        <table class="cx-table sales-lines-table">
+                            <thead>
+                                <tr>
+                                    <th class="sales-th-product">المنتج</th>
+                                    <th class="sales-th-qty">الكمية</th>
+                                    <th class="sales-th-unit">الوحدة</th>
+                                    <th class="sales-th-price">سعر الشراء</th>
+                                    <th class="sales-th-tax">ضريبة %</th>
+                                    <th class="sales-th-total">الإجمالي</th>
+                                    <th class="sales-th-actions"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="linesBody"></tbody>
+                        </table>
+                    </div>
+                    <div id="emptyLinesMsg" class="sales-empty-lines">
+                        <i class="fas fa-box-open"></i>
+                        <p>لم تتم إضافة منتجات بعد.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <div class="cx-panel sticky-top sales-sticky-panel sales-summary-panel p-4">
+                    <div class="cx-panel-header">
+                        <h3 class="cx-panel-title"><i class="fas fa-calculator me-2"></i>الإجماليات</h3>
+                    </div>
+                    <div class="cx-totals-block">
+                        <div class="cx-totals-row"><span>المجموع الفرعي</span><strong id="displaySubtotal">0.00</strong></div>
+                        <div class="cx-totals-row"><span>الضريبة</span><strong id="displayTax">0.00</strong></div>
+                        <div class="cx-totals-row cx-totals-row--grand"><span>الإجمالي</span><strong id="displayGrand">0.00</strong></div>
+                    </div>
+
+                    <!-- طريقة الدفع وحقول الدفع -->
+                    <hr style="margin:1rem 0;border-color:var(--border-color,#e5e7eb);">
+                    <div class="row g-2">
+                        <div class="col-12">
+                            <label class="cx-label">طريقة الدفع</label>
+                            <select id="paymentMethod" class="cx-input" onchange="handlePaymentMethodChange()">
+                                <option value="cash" {% if invoice and invoice.payment_method == 'cash' %}selected{% endif %}>نقداً</option>
+                                <option value="bank" {% if invoice and invoice.payment_method == 'bank' %}selected{% endif %}>تحويل بنكي</option>
+                                <option value="credit" {% if invoice and invoice.payment_method == 'credit' %}selected{% endif %}>آجل</option>
+                                <option value="mixed" {% if invoice and invoice.payment_method == 'mixed' %}selected{% endif %}>مختلط</option>
+                            </select>
+                        </div>
+                        <div id="mixedPaymentWrap" class="col-12 sales-field-hidden">
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label class="cx-label">نقداً</label>
+                                    <input type="number" id="cashAmount" class="cx-input" min="0" step="0.01" value="{{ invoice.cash_amount|default:'' }}" oninput="recalc()">
+                                </div>
+                                <div class="col-6">
+                                    <label class="cx-label">بنكياً</label>
+                                    <input type="number" id="bankAmount" class="cx-input" min="0" step="0.01" value="{{ invoice.bank_amount|default:'' }}" oninput="recalc()">
+                                </div>
+                                <div class="col-12">
+                                    <label class="cx-label">الآجل (محسوب)</label>
+                                    <input type="text" id="creditAmount" class="cx-input sales-readonly-input" readonly>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12 sales-field-hidden" id="bankRefWrap">
+                            <label class="cx-label">مرجع التحويل البنكي</label>
+                            <input type="text" id="bankReference" class="cx-input" value="{{ invoice.bank_reference|default:'' }}">
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2 mt-3">
+                        <button type="button" class="cx-btn-secondary" onclick="submitOrder('save_draft')"><i class="fas fa-save me-1"></i>حفظ كمسودة</button>
+                        <button type="button" class="cx-btn-add" onclick="submitOrder('confirm')"><i class="fas fa-check me-1"></i>حفظ وتأكيد</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    <div class="cx-modal-backdrop sales-field-hidden" id="itemSearchBackdrop">
+        <div class="cx-modal sales-modal-md">
+            <div class="cx-modal-header">
+                <h3 class="cx-modal-title">بحث وإضافة منتج</h3>
+                <button type="button" class="cx-modal-close" onclick="closeItemSearch()"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="cx-modal-body">
+                <div class="sales-search-wrap">
+                    <i class="fas fa-search sales-search-icon"></i>
+                    <input type="text" id="itemSearchQuery" class="cx-input" placeholder="اسم المنتج، SKU، باركود..." oninput="searchItems()">
+                </div>
+                <div id="itemSearchResults" class="sales-search-results">
+                    <div class="text-muted text-center py-3">ابدأ الكتابة للبحث...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ITEM_SEARCH_URL = "{% url 'items:search_api' %}";
+const FORM_ACTION = "{{ action|default:'create' }}";
+const INVOICE_ID = "{{ invoice.id|default:'' }}";
+const EXISTING_LINES = {{ existing_lines|default:'[]'|safe }};
+const SUPPLIERS_DATA = [
+    { id: '', name: '— بدون مورد —' },
+    {% for s in suppliers %}{ id: '{{ s.id }}', name: '{{ s.name|escapejs }}' },{% endfor %}
+];
+const CAP = {
+    hasExpiryDates:  {{ tenant_capabilities.has_expiry_dates|yesno:"true,false" }},
+    hasBatchNumbers: {{ tenant_capabilities.has_batch_numbers|yesno:"true,false" }},
+    hasSerialNumbers:{{ tenant_capabilities.has_serial_numbers|yesno:"true,false" }},
+};
+let lineCounter = 0;
+
+(function () {
+    const searchInput = document.getElementById('supplierSearch');
+    const hiddenInput = document.getElementById('supplierId');
+    const dropdown = document.getElementById('supplierDropdown');
+
+    function renderOptions(list) {
+        if (!list.length) {
+            dropdown.innerHTML = '<div class="cx-searchable-no-results">لا توجد نتائج</div>';
+        } else {
+            dropdown.innerHTML = list.map(s => `<div class="cx-searchable-option" data-id="${s.id}">${s.name}</div>`).join('');
+        }
+        dropdown.querySelectorAll('.cx-searchable-option').forEach(el => {
+            el.addEventListener('mousedown', function (e) {
+                e.preventDefault();
+                hiddenInput.value = this.dataset.id;
+                searchInput.value = this.textContent;
+                dropdown.style.display = 'none';
+            });
+        });
+    }
+
+    function openDropdown() {
+        const q = searchInput.value.toLowerCase();
+        const filtered = SUPPLIERS_DATA.filter(s => s.name.toLowerCase().includes(q));
+        renderOptions(filtered);
+        dropdown.style.display = 'block';
+    }
+
+    searchInput.addEventListener('focus', function () {
+        this.value = '';
+        hiddenInput.value = '';
+        openDropdown();
+    });
+    searchInput.addEventListener('input', openDropdown);
+    searchInput.addEventListener('blur', function () {
+        setTimeout(() => { dropdown.style.display = 'none'; }, 150);
+    });
+
+    const preSelected = SUPPLIERS_DATA.find(s => String(s.id) === String(hiddenInput.value));
+    if (preSelected) searchInput.value = preSelected.name;
+})();
+
+function toggleHidden(id, hidden) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.toggle('sales-field-hidden', hidden);
+}
+
+function updatePaymentMethodBadge(method) {
+    const labels = { cash: 'نقداً', bank: 'بنكي', credit: 'آجل', mixed: 'مختلط' };
+    const badge = document.getElementById('paymentMethodBadge');
+    if (!badge) return;
+    const strong = badge.querySelector('strong');
+    if (strong) strong.textContent = labels[method] || '—';
+}
+
+function handlePaymentMethodChange() {
+    const pm = document.getElementById('paymentMethod').value;
+    toggleHidden('mixedPaymentWrap', pm !== 'mixed');
+    toggleHidden('bankRefWrap', !(pm === 'bank' || pm === 'mixed'));
+    updatePaymentMethodBadge(pm);
+    recalc();
+}
+
+function getCookie(name) {
+    const v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
+    return v ? v[2] : null;
+}
+
+function openItemSearch() {
+    document.getElementById('itemSearchBackdrop').classList.remove('sales-field-hidden');
+    document.getElementById('itemSearchQuery').focus();
+    searchItems();
+}
+
+function closeItemSearch() {
+    document.getElementById('itemSearchBackdrop').classList.add('sales-field-hidden');
+    document.getElementById('itemSearchQuery').value = '';
+}
+
+let searchTimer;
+function searchItems() {
+    clearTimeout(searchTimer);
+    const q = document.getElementById('itemSearchQuery').value.trim();
+    document.getElementById('itemSearchResults').innerHTML = '<div class="text-muted text-center py-3">جاري التحميل...</div>';
+
+    searchTimer = setTimeout(() => {
+        fetch(`${ITEM_SEARCH_URL}?q=${encodeURIComponent(q)}&min_chars=0`)
+            .then(r => r.json())
+            .then(data => {
+                const items = data.results || [];
+                const html = items.length ? items.map(item => `
+                    <div class="sale-item-result js-add-item"
+                         data-id="${item.id}"
+                         data-name="${item.name || ''}"
+                         data-sku="${item.sku || ''}"
+                         data-cost="${parseFloat(item.cost_price || 0)}"
+                         data-units='${JSON.stringify(item.units || [])}'
+                         data-unit-id="${item.unit_id || ''}"
+                         data-unit-factor="${item.unit_factor || '1'}"
+                         data-track-batch="${item.track_batch ? '1' : ''}"
+                         data-track-serial="${item.track_serial ? '1' : ''}"
+                         data-track-expiry="${item.track_expiry ? '1' : ''}">
+                        <div>
+                            <div class="sale-item-result__name">${item.name}</div>
+                            <div class="sale-item-result__sku">${item.sku || '—'}</div>
+                        </div>
+                        <div class="sale-item-result__meta">
+                            <div class="sale-item-result__price">${EnjazIMS.formatMoney(item.cost_price || 0)}</div>
+                            ${item.unit_name ? `<div style="font-size:.72rem;color:var(--text-tertiary)">${item.unit_name}</div>` : ''}
+                        </div>
+                    </div>
+                `).join('') : '<div class="text-muted text-center py-3">لا توجد نتائج</div>';
+                document.getElementById('itemSearchResults').innerHTML = html;
+            });
+    }, 250);
+}
+
+function addLine(itemId, itemName, itemSku, suggestedCost, opts = {}) {
+    const id = ++lineCounter;
+    const tbody = document.getElementById('linesBody');
+    document.getElementById('emptyLinesMsg').style.display = 'none';
+
+    // Unit selector
+    const units = opts.units || [];
+    const defaultUnitId = opts.unit_id || '';
+    const defaultFactor  = parseFloat(opts.unit_factor || 1);
+    let unitHtml = '';
+    if (units.length > 1) {
+        const opts_html = units.map(u =>
+            `<option value="${u.id}" data-factor="${u.factor}" ${String(u.id) === String(defaultUnitId) ? 'selected' : ''}>${u.name}</option>`
+        ).join('');
+        unitHtml = `<select class="cx-input cx-input--xs inv-unit-sel" id="unit-sel-${id}" onchange="onUnitChange(${id})">${opts_html}</select>`;
+    } else if (units.length === 1) {
+        unitHtml = `<span class="inv-unit-badge">${units[0].name}</span>`;
+    }
+
+    // Per-item tracking (uses item flags when available, falls back to tenant CAP)
+    const trkBatch  = opts.track_batch  || CAP.hasBatchNumbers;
+    const trkSerial = opts.track_serial || CAP.hasSerialNumbers;
+    const trkExpiry = opts.track_expiry || CAP.hasExpiryDates;
+    const trackingHtml = [
+        trkBatch  ? `<div class="mt-1"><input type="text" class="cx-input cx-input--xs" id="batch-${id}" value="${(opts.batch_number || '').replace(/"/g, '&quot;')}" placeholder="رقم الدفعة"></div>` : '',
+        trkSerial ? `<div class="mt-1"><input type="text" class="cx-input cx-input--xs" id="serial-${id}" value="${(opts.serial_number || '').replace(/"/g, '&quot;')}" placeholder="الرقم التسلسلي"></div>` : '',
+        trkExpiry ? `<div class="mt-1"><input type="date" class="cx-input cx-input--xs" id="expiry-${id}" value="${opts.expiry_date || ''}"></div>` : '',
+    ].join('');
+
+    const row = document.createElement('tr');
+    row.id = `line-${id}`;
+    row.dataset.itemId = itemId;
+    row.dataset.unitFactor = defaultFactor;
+    row.dataset.unitId = defaultUnitId;
+    row.dataset.trackBatch  = trkBatch  ? '1' : '';
+    row.dataset.trackSerial = trkSerial ? '1' : '';
+    row.dataset.trackExpiry = trkExpiry ? '1' : '';
+
+    row.innerHTML = `
+        <td><div class="sales-line-item-name">${itemName}</div><div class="sales-line-item-sku">${itemSku || ''}</div>${trackingHtml}</td>
+        <td>
+            <input type="text" inputmode="decimal" value="${EnjazIMS.parseNumber(opts.qty || 1)}" class="cx-input cx-input--sm inv-num-field" id="qty-${id}" oninput="recalc()">
+        </td>
+        <td class="inv-unit-cell" id="unit-cell-${id}">${unitHtml}</td>
+        <td><input type="text" inputmode="decimal" value="${suggestedCost || ''}" class="cx-input cx-input--sm inv-num-field" id="cost-${id}" oninput="recalc()"></td>
+        <td><input type="text" inputmode="decimal" value="${EnjazIMS.parseNumber(opts.tax_rate) || ''}" class="cx-input cx-input--sm inv-num-field" id="tax-${id}" oninput="recalc()"></td>
+        <td class="text-end" id="total-${id}">${EnjazIMS.formatMoney(0)}</td>
+        <td><button type="button" class="cx-btn-icon cx-btn-icon--danger" onclick="removeLine(${id})"><i class="fas fa-trash"></i></button></td>
+    `;
+    tbody.appendChild(row);
+
+    closeItemSearch();
+    recalc();
+}
+
+function onUnitChange(id) {
+    const sel = document.getElementById(`unit-sel-${id}`);
+    if (!sel) return;
+    const opt = sel.options[sel.selectedIndex];
+    const row = document.getElementById(`line-${id}`);
+    const oldFactor = parseFloat(row.dataset.unitFactor) || 1;
+    const newFactor = parseFloat(opt.dataset.factor) || 1;
+    if (oldFactor !== newFactor) {
+        const costInput = document.getElementById(`cost-${id}`);
+        if (costInput) {
+            const currentCost = EnjazIMS.parseNumber(costInput.value) || 0;
+            if (currentCost > 0) costInput.value = ((currentCost / oldFactor) * newFactor).toFixed(2);
+        }
+    }
+    row.dataset.unitFactor = newFactor;
+    row.dataset.unitId = sel.value;
+    recalc();
+}
+
+function removeLine(id) {
+    const row = document.getElementById(`line-${id}`);
+    if (row) row.remove();
+    if (!document.querySelectorAll('#linesBody tr').length) {
+        document.getElementById('emptyLinesMsg').style.display = '';
+    }
+    recalc();
+}
+
+function recalc() {
+    let subtotal = 0;
+    let taxTotal = 0;
+
+    document.querySelectorAll('#linesBody tr').forEach((row) => {
+        const id = row.id.replace('line-', '');
+        const qty = EnjazIMS.parseNumber(document.getElementById(`qty-${id}`).value);
+        const cost = EnjazIMS.parseNumber(document.getElementById(`cost-${id}`).value);
+        const tax = EnjazIMS.parseNumber(document.getElementById(`tax-${id}`).value);
+
+        const lineSub = qty * cost;
+        const lineTax = lineSub * (tax / 100);
+        const total = lineSub + lineTax;
+
+        subtotal += lineSub;
+        taxTotal += lineTax;
+        document.getElementById(`total-${id}`).textContent = EnjazIMS.formatMoney(total);
+    });
+
+    const grand = subtotal + taxTotal;
+    document.getElementById('lineCount').textContent = String(document.querySelectorAll('#linesBody tr').length);
+    document.getElementById('displaySubtotal').textContent = EnjazIMS.formatMoney(subtotal);
+    document.getElementById('displayTax').textContent = EnjazIMS.formatMoney(taxTotal);
+    document.getElementById('displayGrand').textContent = EnjazIMS.formatMoney(grand);
+
+    const pm = document.getElementById('paymentMethod').value;
+    if (pm === 'mixed') {
+        const cash = EnjazIMS.parseNumber(document.getElementById('cashAmount')?.value || 0);
+        const bank = EnjazIMS.parseNumber(document.getElementById('bankAmount')?.value || 0);
+        const credit = Math.max(0, grand - cash - bank);
+        const creditInput = document.getElementById('creditAmount');
+        if (creditInput) creditInput.value = EnjazIMS.formatMoney(credit);
+    }
+}
+
+function collectLines() {
+    const lines = [];
+    document.querySelectorAll('#linesBody tr').forEach((row) => {
+        const id = row.id.replace('line-', '');
+        lines.push({
+            item_id: row.dataset.itemId,
+            quantity: document.getElementById(`qty-${id}`).value,
+            unit_cost: document.getElementById(`cost-${id}`).value,
+            tax_rate: document.getElementById(`tax-${id}`).value,
+            unit_id: row.dataset.unitId || null,
+            unit_factor: parseFloat(row.dataset.unitFactor || 1),
+            batch_number: row.dataset.trackBatch  ? (document.getElementById(`batch-${id}`)?.value || '') : '',
+            serial_number: row.dataset.trackSerial ? (document.getElementById(`serial-${id}`)?.value || '') : '',
+            expiry_date:  row.dataset.trackExpiry  ? (document.getElementById(`expiry-${id}`)?.value || null) : null,
+        });
+    });
+    return lines;
+}
+
+function submitOrder(action) {
+    const lines = collectLines();
+    if (!lines.length) {
+        EnjazIMS.toast('أضف منتجاً واحداً على الأقل', 'warning');
+        return;
+    }
+
+    const header = {
+        supplier_id: document.getElementById('supplierId').value || null,
+        stock_id: document.getElementById('stockId').value,
+        invoice_date: document.getElementById('invoiceDate').value,
+        payment_method: document.getElementById('paymentMethod').value,
+        cash_amount: document.getElementById('cashAmount')?.value || '0',
+        bank_amount: document.getElementById('bankAmount')?.value || '0',
+        bank_reference: document.getElementById('bankReference')?.value || '',
+        notes: document.getElementById('notes').value,
+    };
+
+    const pm = header.payment_method;
+    const grandText = document.getElementById('displayGrand').textContent || '0';
+    const grandTotal = EnjazIMS.parseNumber(grandText.replace(/,/g, ''));
+    const cashAmount = EnjazIMS.parseNumber(header.cash_amount || 0);
+    const bankAmount = EnjazIMS.parseNumber(header.bank_amount || 0);
+
+    if (pm === 'credit' && !header.supplier_id && action === 'confirm') {
+        EnjazIMS.toast('الشراء الآجل يتطلب اختيار مورد', 'warning');
+        return;
+    }
+
+    if (pm === 'mixed') {
+        if (cashAmount < 0 || bankAmount < 0) {
+            EnjazIMS.toast('مبالغ الدفع المختلط يجب أن تكون أكبر من أو تساوي صفر', 'warning');
+            return;
+        }
+        if ((cashAmount + bankAmount) > (grandTotal + 0.01)) {
+            EnjazIMS.toast('مجموع النقدي والبنكي لا يمكن أن يتجاوز إجمالي أمر الشراء', 'warning');
+            return;
+        }
+        const creditPart = Math.max(0, grandTotal - cashAmount - bankAmount);
+        if (creditPart > 0.01 && !header.supplier_id && action === 'confirm') {
+            EnjazIMS.toast('الجزء الآجل في الدفع المختلط يتطلب اختيار مورد', 'warning');
+            return;
+        }
+    }
+
+    if ((pm === 'bank' || pm === 'mixed') && bankAmount > 0 && !header.bank_reference.trim() && action === 'confirm') {
+        EnjazIMS.toast('يرجى إدخال مرجع التحويل البنكي', 'warning');
+        return;
+    }
+
+    const submitUrl = (FORM_ACTION === 'edit' && INVOICE_ID)
+        ? `/purchases/${INVOICE_ID}/edit/`
+        : "{% url 'purchases:order_create' %}";
+
+    fetch(submitUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken'),
+        },
+        body: JSON.stringify({ header, lines, action }),
+    })
+    .then(async (resp) => {
+        const data = await resp.json();
+        if (!resp.ok || !data.success) {
+            EnjazIMS.toast(data.message || 'تعذر حفظ أمر الشراء', 'error');
+            return;
+        }
+        window.location.href = data.redirect;
+    })
+    .catch(() => EnjazIMS.toast('تعذر الاتصال بالخادم', 'error'));
+}
+
+(function bindModalBackdrop() {
+    handlePaymentMethodChange();
+
+    const backdrop = document.getElementById('itemSearchBackdrop');
+    backdrop.addEventListener('click', function(event) {
+        if (event.target === backdrop) closeItemSearch();
+    });
+
+    document.getElementById('itemSearchResults').addEventListener('click', function(event) {
+        const card = event.target.closest('.js-add-item');
+        if (!card) return;
+        let units = [];
+        try { units = JSON.parse(card.dataset.units || '[]'); } catch(e) {}
+        addLine(
+            Number(card.dataset.id || 0),
+            card.dataset.name || '',
+            card.dataset.sku || '',
+            Number(card.dataset.cost || 0),
+            {
+                units,
+                unit_id: card.dataset.unitId || '',
+                unit_factor: parseFloat(card.dataset.unitFactor || 1),
+                track_batch:  card.dataset.trackBatch  === '1',
+                track_serial: card.dataset.trackSerial === '1',
+                track_expiry: card.dataset.trackExpiry === '1',
+            }
+        );
+    });
+
+    if (Array.isArray(EXISTING_LINES) && EXISTING_LINES.length) {
+        EXISTING_LINES.forEach(function(line) {
+            addLine(
+                Number(line.item_id || 0),
+                line.item_name || '',
+                line.item_sku || '',
+                EnjazIMS.parseNumber(line.unit_cost || 0),
+                {
+                    qty: line.quantity,
+                    tax_rate: line.tax_rate,
+                    units: line.units || [],
+                    unit_id: line.unit_id || '',
+                    unit_factor: line.unit_factor || '1',
+                    batch_number: line.batch_number || '',
+                    serial_number: line.serial_number || '',
+                    expiry_date: line.expiry_date || '',
+                }
+            );
+        });
+        recalc();
+    }
+})();
+</script>
+
+{% if hc_mode and hc_rate %}
+<script>
+(function () {
+    var HC_RATE_V = {{ hc_rate }};
+    var HC_CUR_MAP = {};
+    {% for s in suppliers %}{% if s.currency %}HC_CUR_MAP['{{ s.id }}'] = '{{ s.currency|escapejs }}';{% endif %}{% endfor %}
+    var TENANT_CUR = '{{ tenant_currency|escapejs }}';
+
+    function getHCCur() {
+        var sid = (document.getElementById('supplierId') || {}).value || '';
+        var cur = HC_CUR_MAP[sid] || '';
+        return (cur && cur !== TENANT_CUR) ? cur : '';
+    }
+
+    function fmt(amount, cur) {
+        return (amount / HC_RATE_V).toFixed(2) + ' ' + cur;
+    }
+
+    function setHint(el, val) {
+        if (!el) return;
+        if (val) { el.textContent = val; el.style.display = ''; }
+        else { el.style.display = 'none'; }
+    }
+
+    function refreshHints() {
+        var cur = getHCCur();
+        // grand total hint
+        var grandEl = document.getElementById('cx-hc-grand');
+        if (grandEl) {
+            if (cur) {
+                var g = EnjazIMS.parseNumber((document.getElementById('displayGrand') || {}).textContent || '0');
+                setHint(grandEl, fmt(g, cur));
+            } else { setHint(grandEl, ''); }
+        }
+        // per-line hints
+        document.querySelectorAll('#linesBody tr').forEach(function (row) {
+            var id = row.id.replace('line-', '');
+            var costHint = document.getElementById('cx-hc-cost-' + id);
+            var totalHint = document.getElementById('cx-hc-total-' + id);
+            if (!cur) { setHint(costHint, ''); setHint(totalHint, ''); return; }
+            var cost  = EnjazIMS.parseNumber((document.getElementById('cost-' + id) || {}).value || '0');
+            var qty   = EnjazIMS.parseNumber((document.getElementById('qty-' + id) || {}).value || '1');
+            var tax   = EnjazIMS.parseNumber((document.getElementById('tax-' + id) || {}).value || '0');
+            var sub   = qty * cost;
+            var total = sub + sub * (tax / 100);
+            setHint(costHint,  fmt(cost, cur));
+            setHint(totalHint, fmt(total, cur));
+        });
+    }
+
+    // Inject hint spans into DOM without touching any existing JS
+    function injectSpans() {
+        // Grand total hint — sibling of displayGrand strong
+        if (!document.getElementById('cx-hc-grand')) {
+            var grandStrong = document.getElementById('displayGrand');
+            if (grandStrong) {
+                var sp = document.createElement('span');
+                sp.id = 'cx-hc-grand';
+                sp.className = 'cx-hc-hint-inline';
+                sp.style.display = 'none';
+                grandStrong.parentNode.insertBefore(sp, grandStrong.nextSibling);
+            }
+        }
+        // Per-line hints — appended to cost/total cells
+        document.querySelectorAll('#linesBody tr').forEach(function (row) {
+            var id = row.id.replace('line-', '');
+            var costInput = document.getElementById('cost-' + id);
+            if (costInput && !document.getElementById('cx-hc-cost-' + id)) {
+                var sp = document.createElement('span');
+                sp.id = 'cx-hc-cost-' + id;
+                sp.className = 'cx-hc-hint';
+                sp.style.display = 'none';
+                costInput.parentNode.appendChild(sp);
+            }
+            var totalEl = document.getElementById('total-' + id);
+            if (totalEl && !document.getElementById('cx-hc-total-' + id)) {
+                var sp2 = document.createElement('span');
+                sp2.id = 'cx-hc-total-' + id;
+                sp2.className = 'cx-hc-hint';
+                sp2.style.display = 'none';
+                totalEl.parentNode.appendChild(sp2);
+            }
+        });
+    }
+
+    // Patch recalc to also refresh hints
+    var _origRecalc = recalc;
+    recalc = function () { _origRecalc(); injectSpans(); refreshHints(); };
+
+    // Patch addLine to inject spans after each new line
+    var _origAddLine = addLine;
+    addLine = function (a, b, c, d, e) { _origAddLine(a, b, c, d, e); injectSpans(); refreshHints(); };
+
+    // Initial injection for edit mode
+    injectSpans();
+    refreshHints();
+})();
+</script>
+{% endif %}
+
+<script>
+// Portal the supplier dropdown to <body> so it's never clipped by ancestor stacking contexts
+(function () {
+    var input   = document.getElementById('supplierSearch');
+    var origDrop = document.getElementById('supplierDropdown');
+    if (!input || !origDrop) return;
+
+    // Create a floating clone anchored to <body>
+    var portal = document.createElement('div');
+    portal.id = 'supplierDropdownPortal';
+    portal.className = origDrop.className;
+    portal.style.cssText = 'position:fixed; z-index:9999; display:none; overflow-y:auto; max-height:220px;';
+    document.body.appendChild(portal);
+
+    function reposition() {
+        var r = input.getBoundingClientRect();
+        portal.style.top  = (r.bottom + 4) + 'px';
+        portal.style.left = r.left + 'px';
+        portal.style.width = r.width + 'px';
+    }
+
+    // Mirror mutations from origDrop → portal
+    var mo = new MutationObserver(function () {
+        portal.innerHTML = origDrop.innerHTML;
+        // Re-bind mousedown on portal items to also close portal
+        portal.querySelectorAll('.cx-searchable-option').forEach(function (el) {
+            el.addEventListener('mousedown', function (e) {
+                e.preventDefault();
+                document.getElementById('supplierId').value = this.dataset.id;
+                input.value = this.textContent;
+                portal.style.display = 'none';
+                origDrop.style.display = 'none';
+                if (typeof recalc === 'function') recalc();
+            });
+        });
+    });
+    mo.observe(origDrop, { childList: true, subtree: false });
+
+    // Mirror display changes
+    var displayObs = new MutationObserver(function () {
+        if (origDrop.style.display === 'none') {
+            portal.style.display = 'none';
+        } else {
+            reposition();
+            portal.style.display = origDrop.style.display;
+        }
+    });
+    displayObs.observe(origDrop, { attributes: true, attributeFilter: ['style'] });
+
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
+})();
+</script>
+{% endblock %}

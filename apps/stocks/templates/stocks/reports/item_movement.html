@@ -1,0 +1,221 @@
+{% extends "layouts/dashboard.html" %}
+{% load static %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=4.0">
+<style>
+.cx-searchable-select { position: relative; }
+.cx-searchable-select-dropdown {
+  position: absolute; z-index: 1050; width: 100%;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border-light, #e5e7eb);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15,23,42,.12);
+  max-height: 220px; overflow-y: auto;
+  top: calc(100% + 4px);
+}
+.cx-searchable-option {
+  padding: .55rem 1rem; cursor: pointer; font-size: .875rem;
+  color: var(--text-primary, #111827);
+}
+.cx-searchable-option:hover { background: var(--surface-alt, #f3f4f6); }
+.cx-searchable-no-results { padding: .75rem 1rem; font-size: .8rem; color: var(--text-muted, #9ca3af); }
+</style>
+{% endblock %}
+
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<div class="cx-scene printable-scene">
+
+    <div class="rpt-hero rpt-hero--stocks">
+        <div class="rpt-hero-inner">
+            <div class="rpt-hero-left">
+                <div class="rpt-hero-icon"><i class="fas fa-arrows-up-down"></i></div>
+                <div>
+                    <h1 class="rpt-hero-title">حركة الأصناف</h1>
+                    <p class="rpt-hero-desc">سجل دخول وخروج المخزون خلال الفترة</p>
+                </div>
+            </div>
+            <div class="rpt-hero-actions">
+                <button onclick="window.print()" class="rpt-hero-btn"><i class="fas fa-print"></i> طباعة</button>
+                <a href="{% url 'stocks:reports:item_movement_report_export' %}?start_date={{ start_date }}&end_date={{ end_date }}{% if selected_item_id %}&item_id={{ selected_item_id }}{% endif %}{% if selected_stock_id %}&stock_id={{ selected_stock_id }}{% endif %}" class="rpt-hero-btn"><i class="fas fa-download"></i> تصدير</a>
+                <a href="{% url 'stocks:quantities_list' %}" class="rpt-hero-btn"><i class="fas fa-arrow-left"></i> عودة</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="rpt-filters">
+        <form method="get" class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">المنتج</label>
+                <div class="cx-searchable-select" id="itemSelectWrap">
+                    <input type="text" id="itemSearch" class="form-control" placeholder="كل المنتجات" autocomplete="off" value="{{ selected_item_name }}">
+                    <input type="hidden" id="itemId" name="item_id" value="{{ selected_item_id|default:'' }}">
+                    <div id="itemDropdown" class="cx-searchable-select-dropdown" style="display:none;"></div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">المخزن</label>
+                <select name="stock_id" class="form-select">
+                    <option value="">كل المخازن</option>
+                    {% for s in report.stocks %}
+                    <option value="{{ s.id }}" {% if s.id|stringformat:"s" == selected_stock_id %}selected{% endif %}>{{ s.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">من تاريخ</label>
+                <input type="date" name="start_date" class="form-control" value="{{ start_date }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">إلى تاريخ</label>
+                <input type="date" name="end_date" class="form-control" value="{{ end_date }}">
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="rpt-filter-btn rpt-filter-btn--stocks"><i class="fas fa-search me-1"></i>بحث</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="rpt-kpi-grid" style="grid-template-columns: repeat({% if report.summary.opening_qty %}5{% else %}4{% endif %}, 1fr);">
+        {% if report.summary.opening_qty %}
+        <div class="rpt-kpi-card rpt-kpi--blue">
+            <div class="rpt-kpi-icon"><i class="fas fa-clock-rotate-left"></i></div>
+            <div class="rpt-kpi-value">{{ report.summary.opening_qty }}</div>
+            <div class="rpt-kpi-label">رصيد أول المدة</div>
+        </div>
+        {% endif %}
+        <div class="rpt-kpi-card rpt-kpi--purple">
+            <div class="rpt-kpi-icon"><i class="fas fa-list"></i></div>
+            <div class="rpt-kpi-value">{{ report.summary.movement_count }}</div>
+            <div class="rpt-kpi-label">عدد الحركات</div>
+        </div>
+        <div class="rpt-kpi-card rpt-kpi--green">
+            <div class="rpt-kpi-icon"><i class="fas fa-arrow-down"></i></div>
+            <div class="rpt-kpi-value">{{ report.summary.total_in }}</div>
+            <div class="rpt-kpi-label">إجمالي الدخول</div>
+        </div>
+        <div class="rpt-kpi-card rpt-kpi--red">
+            <div class="rpt-kpi-icon"><i class="fas fa-arrow-up"></i></div>
+            <div class="rpt-kpi-value">{{ report.summary.total_out }}</div>
+            <div class="rpt-kpi-label">إجمالي الخروج</div>
+        </div>
+        <div class="rpt-kpi-card rpt-kpi--teal">
+            <div class="rpt-kpi-icon"><i class="fas fa-balance-scale"></i></div>
+            <div class="rpt-kpi-value">{{ report.summary.net }}</div>
+            <div class="rpt-kpi-label">الصافي</div>
+        </div>
+    </div>
+
+    <div class="rpt-panel">
+        <div class="rpt-panel-header rpt-panel-header--stocks">
+            <h3 class="rpt-panel-title"><i class="fas fa-table me-2"></i>تفاصيل الحركات</h3>
+        </div>
+        <div class="rpt-panel-body">
+            {% if report.data %}
+            <div class="table-responsive">
+<p class="rpt-unit-note m-0 p-2"><i class="fas fa-ruler me-1"></i>الكميات بالوحدة الأساسية (الأصغر) للصنف</p>
+                                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>التاريخ</th>
+                            <th>المنتج</th>
+                            <th class="d-none d-md-table-cell text-center">الوحدة</th>
+                            <th class="d-none d-lg-table-cell">المخزن</th>
+                            <th>رقم المستند</th>
+                            <th>نوع الحركة</th>
+                            <th class="text-center" style="color:#11998e;">دخول +</th>
+                            <th class="text-center" style="color:#ef4444;">خروج −</th>
+                            <th class="d-none d-md-table-cell text-end">الرصيد بعد</th>
+                            <th class="d-none d-lg-table-cell">ملاحظات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in report.data %}
+                        <tr{% if row.is_reversal %} style="opacity:.75;"{% endif %}>
+                            <td class="text-muted" style="font-size:.8rem;">{{ row.movement_date }}</td>
+                            <td class="fw-bold">{{ row.item_name }}</td>
+                            <td class="d-none d-md-table-cell text-center text-muted">{{ row.item_unit|default:"—" }}</td>
+                            <td class="d-none d-lg-table-cell text-muted">{{ row.stock_name }}</td>
+                            <td>
+                                {% if row.source_ref %}
+                                <code style="background:rgba(99,102,241,.08);color:#6366f1;border-radius:5px;padding:.15rem .45rem;font-size:.78rem;">{{ row.source_ref }}</code>
+                                {% else %}—{% endif %}
+                            </td>
+                            <td>
+                                <span class="badge" style="background:{% if row.direction == 'in' %}rgba(17,153,142,.12){% else %}rgba(239,68,68,.12){% endif %}; color:{% if row.direction == 'in' %}#11998e{% else %}#ef4444{% endif %}; font-size:.72rem; border-radius:6px; padding:.2rem .5rem;">
+                                    {% if row.direction == 'in' %}دخول{% else %}خروج{% endif %}
+                                </span>
+                                {% if row.is_reversal %}<span class="badge ms-1" style="background:rgba(100,116,139,.12);color:#64748b;font-size:.68rem;border-radius:6px;padding:.2rem .4rem;">↺ إلغاء</span>{% endif %}
+                            </td>
+                            <td class="text-center fw-bold" style="color:#11998e;">{% if row.direction == 'in' %}{{ row.quantity_in }}{% else %}—{% endif %}</td>
+                            <td class="text-center fw-bold" style="color:#ef4444;">{% if row.direction == 'out' %}{{ row.quantity_out }}{% else %}—{% endif %}</td>
+                            <td class="d-none d-md-table-cell text-end text-muted">{{ row.balance_after }}</td>
+                            <td class="d-none d-lg-table-cell text-muted" style="font-size:.78rem;">{{ row.notes|default:"—" }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="rpt-empty">
+                <i class="fas fa-arrows-up-down"></i>
+                <p>لا توجد حركات في هذه الفترة</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+
+<script>
+const ITEMS_DATA = [
+    {% for item in report.items %}{ id: '{{ item.id }}', name: '{{ item.name|escapejs }}' },{% endfor %}
+];
+
+(function () {
+    const searchInput = document.getElementById('itemSearch');
+    const hiddenInput = document.getElementById('itemId');
+    const dropdown = document.getElementById('itemDropdown');
+
+    function renderOptions(list) {
+        if (!list.length) {
+            dropdown.innerHTML = '<div class="cx-searchable-no-results">لا توجد نتائج</div>';
+        } else {
+            dropdown.innerHTML = list.map(i =>
+                `<div class="cx-searchable-option" data-id="${i.id}">${i.name}</div>`
+            ).join('');
+        }
+        dropdown.querySelectorAll('.cx-searchable-option').forEach(el => {
+            el.addEventListener('mousedown', function (e) {
+                e.preventDefault();
+                hiddenInput.value = this.dataset.id;
+                searchInput.value = this.textContent;
+                dropdown.style.display = 'none';
+            });
+        });
+    }
+
+    function openDropdown() {
+        const q = searchInput.value.toLowerCase();
+        const filtered = ITEMS_DATA.filter(i => i.name.toLowerCase().includes(q));
+        renderOptions(filtered);
+        dropdown.style.display = 'block';
+    }
+
+    searchInput.addEventListener('focus', function () {
+        this.value = '';
+        hiddenInput.value = '';
+        openDropdown();
+    });
+    searchInput.addEventListener('input', openDropdown);
+    searchInput.addEventListener('blur', function () {
+        setTimeout(() => {
+            dropdown.style.display = 'none';
+            if (!hiddenInput.value) searchInput.value = '';
+        }, 150);
+    });
+})();
+</script>
+{% endblock %}

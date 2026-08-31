@@ -1,0 +1,364 @@
+/* ══════════════════════════ PROFILE PAGE ══════════════════════════ */
+
+/* ── Shell & Hero ── */
+.subscription-shell {
+    background: var(--surface-alt, #f9fafb);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    padding: 0.75rem;
+}
+
+.subscription-hero {
+    display: flex;
+    justify-content: space-between;
+    align-items: stretch;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.subscription-hero__main,
+.subscription-hero__status {
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 1rem 1.1rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+
+.subscription-hero__main { flex: 1; }
+
+.subscription-kicker {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 0.3rem;
+}
+
+.subscription-title {
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    margin: 0 0 0.3rem;
+}
+
+.subscription-desc {
+    color: var(--text-secondary);
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+/* ── Plan / Status badges ── */
+.subscription-plan-badge,
+.subscription-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border-radius: 999px;
+    padding: 0.35rem 0.8rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.subscription-plan-badge {
+    color: var(--primary, #6366f1);
+    background: rgba(99,102,241,0.1);
+    border: 1px solid rgba(99,102,241,0.2);
+}
+
+.subscription-status-badge { margin-bottom: 0.8rem; }
+
+.subscription-status-badge--success { color: #10b981; background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); }
+.subscription-status-badge--warning { color: #f59e0b; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); }
+.subscription-status-badge--danger  { color: #ef4444; background: rgba(239,68,68,0.1);  border: 1px solid rgba(239,68,68,0.2);  }
+.subscription-status-badge--info    { color: #0ea5e9; background: rgba(14,165,233,0.1); border: 1px solid rgba(14,165,233,0.2); }
+
+.subscription-status-number {
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    line-height: 1;
+}
+
+.subscription-status-caption {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    margin-top: 0.35rem;
+}
+
+/* ── Panels ── */
+.subscription-panel {
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    overflow: hidden;
+}
+
+.subscription-panel__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.8rem 1rem;
+    border-bottom: 1px solid var(--border-light);
+    background: var(--surface);
+}
+
+.subscription-panel__title {
+    margin: 0;
+    font-size: 0.92rem;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+
+.subscription-panel__body { padding: 1rem; }
+
+/* ── Profile Layout ── */
+.profile-content { display: grid; gap: 1rem; }
+
+/* ── Info Grid ── */
+.profile-info-grid  { display: grid; gap: 0.65rem; }
+.profile-info-row   { display: grid; grid-template-columns: repeat(3,1fr); gap: 0.65rem; }
+
+.profile-info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding: 0.75rem 0.9rem;
+    background: var(--surface-alt, var(--surface));
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    transition: box-shadow 0.18s, transform 0.18s;
+}
+
+.profile-info-item:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.07);
+}
+
+.profile-info-label {
+    font-size: 0.71rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.profile-info-value {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+/* ── Activity ── */
+.profile-activity-grid  { display: grid; gap: 0.65rem; }
+
+.profile-activity-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.65rem 0.8rem;
+    background: var(--surface-alt, var(--surface));
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    transition: box-shadow 0.18s, transform 0.18s;
+}
+
+.profile-activity-item:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+}
+
+.activity-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.95rem;
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.activity-content { flex: 1; min-width: 0; }
+
+.activity-title {
+    font-size: 0.73rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.15rem;
+}
+
+.activity-value {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+/* ── Action Buttons ── */
+.profile-actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px,1fr));
+    gap: 0.75rem;
+}
+
+.profile-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.55rem;
+    padding: 0.8rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--surface);
+    color: var(--text-primary);
+    text-decoration: none;
+    font-size: 0.84rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.18s;
+}
+
+.profile-action-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.1);
+    text-decoration: none;
+    color: var(--text-primary);
+}
+
+.profile-action-btn i { font-size: 1rem; }
+
+/* Colour variants — semi-transparent so they adapt to dark mode */
+.profile-action-btn--primary {
+    border-color: rgba(59,130,246,0.35);
+    background: rgba(59,130,246,0.08);
+    color: #3b82f6;
+}
+.profile-action-btn--primary:hover {
+    background: rgba(59,130,246,0.15);
+    border-color: #3b82f6;
+    color: #3b82f6;
+}
+
+.profile-action-btn--success {
+    border-color: rgba(16,185,129,0.35);
+    background: rgba(16,185,129,0.08);
+    color: #10b981;
+}
+.profile-action-btn--success:hover {
+    background: rgba(16,185,129,0.15);
+    border-color: #10b981;
+    color: #10b981;
+}
+
+.profile-action-btn--warning {
+    border-color: rgba(245,158,11,0.35);
+    background: rgba(245,158,11,0.08);
+    color: #d97706;
+}
+.profile-action-btn--warning:hover {
+    background: rgba(245,158,11,0.15);
+    border-color: #f59e0b;
+    color: #d97706;
+}
+
+.profile-action-btn--danger {
+    border-color: rgba(239,68,68,0.35);
+    background: rgba(239,68,68,0.08);
+    color: #ef4444;
+}
+.profile-action-btn--danger:hover {
+    background: rgba(239,68,68,0.15);
+    border-color: #ef4444;
+    color: #ef4444;
+}
+
+/* ── Notes ── */
+.profile-notes-list {
+    display: grid;
+    gap: 0.55rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.profile-note-item {
+    display: flex;
+    gap: 0.65rem;
+    align-items: flex-start;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--surface-alt, var(--surface));
+    padding: 0.7rem 0.85rem;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    line-height: 1.5;
+    transition: box-shadow 0.18s, transform 0.18s;
+}
+
+.profile-note-item:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+}
+
+.profile-note-item i {
+    color: #f59e0b;
+    margin-top: 0.1rem;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+}
+
+/* ── Dark mode ── */
+[data-theme="dark"] .subscription-shell {
+    background: var(--surface-alt, #1e2a3a);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .subscription-hero__main,
+[data-theme="dark"] .subscription-hero__status,
+[data-theme="dark"] .subscription-panel {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+[data-theme="dark"] .profile-info-item,
+[data-theme="dark"] .profile-activity-item,
+[data-theme="dark"] .profile-note-item {
+    background: var(--surface-hover);
+}
+
+[data-theme="dark"] .profile-action-btn {
+    background: var(--surface-hover);
+}
+
+[data-theme="dark"] .activity-icon {
+    background: var(--surface-hover);
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .subscription-hero    { flex-direction: column; }
+    .profile-info-row     { grid-template-columns: 1fr; }
+    .profile-actions-grid { grid-template-columns: 1fr; }
+    .subscription-shell   { border-radius: 16px; }
+    .profile-action-btn   { padding: 0.7rem; font-size: 0.81rem; }
+}
+
+@media (max-width: 480px) {
+    .subscription-shell           { padding: 0.6rem; border-radius: 14px; }
+    .subscription-hero__main,
+    .subscription-hero__status    { padding: 0.7rem 0.8rem; }
+    .subscription-title           { font-size: 1.1rem; }
+    .subscription-panel__header   { padding: 0.65rem 0.8rem; }
+    .subscription-panel__body     { padding: 0.8rem; }
+    .profile-info-item            { padding: 0.55rem 0.7rem; }
+    .profile-info-label           { font-size: 0.69rem; }
+    .profile-info-value           { font-size: 0.83rem; }
+}

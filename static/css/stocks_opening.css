@@ -1,0 +1,344 @@
+/* ============================================================
+   EnjazIMS - Opening Stock Quantities Page
+   ============================================================ */
+
+#openingTable thead th,
+#openingTable tbody td {
+    text-align: right !important;
+}
+
+/* ── Stock Selector ────────────────────────────────────────── */
+.opening-stock-label {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.opening-stock-label i {
+    color: var(--primary);
+}
+
+.cx-select-sm {
+    height: 42px;
+    padding: 0 0.9rem 0 2.2rem;
+    border: 1.5px solid var(--border-color);
+    border-radius: 10px;
+    font-size: 0.85rem;
+    font-family: 'Cairo', sans-serif;
+    font-weight: 600;
+    background-color: var(--bg-primary);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: left 0.6rem center;
+    background-size: 1rem;
+    -webkit-appearance: none;
+    appearance: none;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    min-width: 200px;
+}
+
+.cx-select-sm:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.14);
+}
+
+.cx-select-sm:hover {
+    border-color: var(--primary);
+}
+
+#openingTable tbody td:nth-child(4),
+#openingTable tbody td:nth-child(5) {
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+}
+
+#openingTable tbody td:nth-child(6) {
+    min-width: 220px;
+}
+
+.opening-help {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 0.9rem;
+    padding: 0.7rem 0.9rem;
+    background: rgba(59, 130, 246, 0.08);
+    color: #1e3a8a;
+    font-size: 0.82rem;
+}
+
+.opening-help i {
+    color: #3b82f6;
+}
+
+.opening-help--unit-note {
+    background: rgba(16, 185, 129, 0.08);
+    color: #065f46;
+    margin-top: -.4rem;
+}
+
+.opening-help--unit-note i {
+    color: #059669;
+}
+
+.opening-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    justify-content: flex-end;
+}
+
+.opening-qty-input {
+    width: 120px !important;
+    text-align: center;
+    direction: ltr;
+    border: 2px solid #d7dfed !important;
+    border-radius: 12px !important;
+    background: var(--surface) !important;
+    font-weight: 700;
+}
+
+.opening-qty-input:focus {
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.16) !important;
+}
+
+.opening-qty-input--changed {
+    border-color: var(--warning) !important;
+    background: rgba(245, 158, 11, 0.12) !important;
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.16);
+}
+
+.opening-savebar {
+    position: sticky;
+    bottom: 0.75rem;
+    z-index: 20;
+    margin-top: 1rem;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid var(--border-light);
+    border-radius: 14px;
+    background: var(--bg-primary);
+    box-shadow: var(--shadow-md);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.opening-savebar__text {
+    font-size: 0.84rem;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.opening-savebar__text strong {
+    color: var(--primary);
+}
+
+.opening-savebar {
+    opacity: 0.85;
+    transition: all 150ms ease;
+}
+
+.opening-savebar--active {
+    opacity: 1;
+    border-color: rgba(99, 102, 241, 0.3);
+}
+
+@media (max-width: 768px) {
+    .opening-qty-input {
+        max-width: 100%;
+    }
+
+    .opening-input-wrap {
+        max-width: 100%;
+    }
+
+    .opening-savebar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .cx-select-sm { min-width: 160px; }
+    .opening-stock-label { flex-wrap: wrap; }
+}
+
+@media (max-width: 480px) {
+    .cx-select-sm { width: 100%; min-width: 0; }
+}
+
+/* Dark mode */
+[data-theme="dark"] .cx-opening-card {
+    background: var(--surface);
+    border-color: var(--border-color);
+}
+[data-theme="dark"] .cx-opening-card-meta div {
+    background: rgba(255,255,255,0.04);
+}
+
+@media (max-width: 360px) {
+    .cx-opening-card-meta { grid-template-columns: 1fr; }
+}
+
+/* ══════════════════════════ MOBILE CARDS ══════════════════════════ */
+@media (max-width: 768px) {
+    #openingTable { display: none !important; }
+    .stocks-opening-mobile-card-list {
+        display: grid !important;
+        gap: 0.9rem;
+        margin-top: 1rem;
+    }
+
+    .cx-opening-card {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+        padding: 0.9rem;
+        background: var(--bg-card, #ffffff);
+        border: 1px solid var(--border-color);
+        border-radius: 18px;
+        box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
+        transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+    }
+
+    .cx-opening-card:hover {
+        transform: translateY(-1px);
+        border-color: rgba(99, 102, 241, 0.24);
+        box-shadow: 0 16px 34px rgba(15, 23, 42, 0.12);
+    }
+
+    .cx-opening-card-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.65rem;
+        align-items: flex-start;
+    }
+
+    .cx-opening-card-title-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 0.18rem;
+        min-width: 0;
+    }
+
+    .cx-opening-card-title {
+        margin: 0;
+        font-size: 0.99rem;
+        font-weight: 700;
+        color: var(--text-heading, #111827);
+        line-height: 1.2;
+    }
+
+    .cx-opening-card-codes {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .cx-opening-card-code {
+        background: rgba(99, 102, 241, 0.09);
+        padding: 0.2rem 0.4rem;
+        border-radius: 6px;
+        font-family: 'Courier New', monospace;
+        font-size: 0.7rem;
+        color: var(--text-secondary, #6b7280);
+        direction: ltr;
+        unicode-bidi: plaintext;
+    }
+
+    .cx-opening-card-changed {
+        background: var(--warning);
+        color: white;
+        padding: 0.2rem 0.5rem;
+        border-radius: 12px;
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+
+    .cx-opening-card-meta {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.5rem;
+    }
+
+    .cx-opening-card-meta div {
+        display: flex;
+        flex-direction: column;
+        gap: 0.16rem;
+        padding: 0.65rem 0.75rem;
+        background: rgba(15, 23, 42, 0.03);
+        border-radius: 14px;
+    }
+
+    .cx-opening-card-meta-label {
+        font-size: 0.68rem;
+        font-weight: 700;
+        color: var(--text-tertiary, #6b7280);
+        letter-spacing: 0.36px;
+        text-transform: uppercase;
+    }
+
+    .cx-opening-card-meta-value {
+        font-size: 0.92rem;
+        color: var(--text-heading, #111827);
+        font-weight: 700;
+    }
+
+    .cx-opening-card-input {
+        border-top: 1px solid rgba(15, 23, 42, 0.08);
+        padding-top: 0.75rem;
+    }
+
+    .cx-opening-card-input-label {
+        display: block;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: var(--text-secondary, #6b7280);
+        margin-bottom: 0.5rem;
+    }
+
+    .cx-opening-card-input-wrap {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .cx-opening-card-input-wrap .cx-input {
+        flex: 1;
+        border-radius: 10px;
+        border: 1.5px solid var(--border-color);
+        padding: 0.5rem 0.75rem;
+        font-size: 0.9rem;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .cx-opening-card-input-wrap .cx-input:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.14);
+    }
+
+    .cx-opening-card-input-unit {
+        font-size: 0.8rem;
+        color: var(--text-tertiary, #6b7280);
+        font-weight: 500;
+    }
+}
+
+.opening-qty-input--changed {
+    border-color: var(--warning) !important;
+    background: rgba(245, 158, 11, 0.08) !important;
+}
+
+#openingTable .inv-unit-badge {
+    font-size: .72rem;
+}

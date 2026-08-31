@@ -1,0 +1,227 @@
+{% extends "layouts/auth.html" %}
+{% load humanize %}
+
+{% block auth_content %}
+<div class="text-center mb-4">
+    <h1 class="auth-title">إعدادات النظام</h1>
+    <p class="auth-subtitle">الخطوة الأخيرة: اضبط بيئة العمل قبل البدء</p>
+</div>
+
+<!-- Progress Steps -->
+<div class="progress-steps mb-4">
+    <div class="progress-step completed">
+        <div class="progress-step-circle">
+            <i class="fas fa-check"></i>
+        </div>
+        <span class="progress-step-label">معلومات المستخدم</span>
+    </div>
+    <div class="progress-step completed">
+        <div class="progress-step-circle">
+            <i class="fas fa-check"></i>
+        </div>
+        <span class="progress-step-label">النشاط التجاري</span>
+    </div>
+    <div class="progress-step active">
+        <div class="progress-step-circle">
+            <i class="fas fa-cog"></i>
+        </div>
+        <span class="progress-step-label">الإعدادات</span>
+    </div>
+</div>
+
+<!-- Form -->
+<form method="post" action="{% url 'accounts:register_step3_api' %}" class="animate-fade-in js-auth-ajax" autocomplete="off" data-lpignore="true" novalidate>
+    {% csrf_token %}
+    <div class="alert alert-danger auth-alert js-form-errors d-none mb-3"></div>
+
+    <div class="mb-3 field-span-2">
+        {{ form.subscription_plan.label_tag }}
+        {{ form.subscription_plan }}
+        {% if form.subscription_plan.errors %}
+        <div class="text-danger small js-field-errors" data-field="subscription_plan">{{ form.subscription_plan.errors }}</div>
+        {% endif %}
+    </div>
+
+    <div class="mb-3 field-span-2">
+        {{ form.version_type.label_tag }}
+        {{ form.version_type }}
+        {% if form.version_type.errors %}
+        <div class="text-danger small js-field-errors" data-field="version_type">{{ form.version_type.errors }}</div>
+        {% endif %}
+    </div>
+
+    <div class="mb-3 field-span-2 js-num-stocks-field" style="display: none;">
+        {{ form.num_stocks.label_tag }}
+        {{ form.num_stocks }}
+        {% if form.num_stocks.help_text %}
+        <small class="text-muted">{{ form.num_stocks.help_text }}</small>
+        {% endif %}
+        {% if form.num_stocks.errors %}
+        <div class="text-danger small js-field-errors" data-field="num_stocks">{{ form.num_stocks.errors }}</div>
+        {% endif %}
+    </div>
+
+    <div class="auth-form-grid">
+        <div class="mb-3">
+            {{ form.timezone.label_tag }}
+            {{ form.timezone }}
+            {% if form.timezone.errors %}
+            <div class="text-danger small js-field-errors" data-field="timezone">{{ form.timezone.errors }}</div>
+            {% endif %}
+        </div>
+        
+        <div class="mb-3">
+            <label class="form-label">العملة <small class="text-muted fw-normal">(تُضبط تلقائياً)</small></label>
+            <input id="currencyDisplay" class="form-control" readonly
+                   value="{{ suggested_currency }}"
+                   style="background:var(--bs-secondary-bg,#f8f9fa);cursor:default;">
+            <input type="hidden" name="currency" id="currencyCode" value="{{ suggested_currency }}">
+            {% if form.currency.errors %}
+            <div class="text-danger small js-field-errors" data-field="currency">{{ form.currency.errors }}</div>
+            {% endif %}
+        </div>
+        
+        <div class="mb-3 field-span-2">
+            <hr>
+            <div class="form-check">
+                {{ form.tax_enabled }}
+                <label class="form-check-label" for="{{ form.tax_enabled.id_for_label }}">
+                    {{ form.tax_enabled.label }}
+                </label>
+            </div>
+        </div>
+
+        <div class="mb-3 field-span-2">
+            {{ form.tax_value.label_tag }}
+            {{ form.tax_value }}
+            {% if form.tax_value.errors %}
+            <div class="text-danger small js-field-errors" data-field="tax_value">{{ form.tax_value.errors }}</div>
+            {% endif %}
+            <small class="text-muted">يمكنك تغيير هذه القيمة لاحقاً من الإعدادات</small>
+        </div>
+
+        <!-- Hard Currency Mode -->
+        <div class="mb-3 field-span-2">
+            <hr>
+            <div class="form-check mb-2">
+                {{ form.hard_currency_mode }}
+                <label class="form-check-label fw-semibold" for="{{ form.hard_currency_mode.id_for_label }}">
+                    وضع العملة الصعبة
+                </label>
+            </div>
+            <small class="text-muted d-block mb-2">
+                أسعار منتجاتك مرتبطة بعملة صعبة (دولار/يورو...)؟ فعّل هذا الوضع ليتولى النظام تحديث جميع أسعارك تلقائياً عند تغيير سعر الصرف.
+            </small>
+        </div>
+
+        <div class="js-hc-fields field-span-2" style="display:none;">
+            <div class="auth-form-grid">
+                <div class="mb-3">
+                    {{ form.hard_currency.label_tag }}
+                    {{ form.hard_currency }}
+                    {% if form.hard_currency.errors %}
+                    <div class="text-danger small">{{ form.hard_currency.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="mb-3">
+                    {{ form.exchange_rate.label_tag }}
+                    {{ form.exchange_rate }}
+                    {% if form.exchange_rate.help_text %}
+                    <small class="text-muted">{{ form.exchange_rate.help_text }}</small>
+                    {% endif %}
+                    {% if form.exchange_rate.errors %}
+                    <div class="text-danger small">{{ form.exchange_rate.errors }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="d-flex gap-2 auth-form-actions field-span-2">
+        <a href="{% url 'accounts:register_step2' %}" class="btn btn-outline-secondary flex-fill">
+            <i class="fas fa-arrow-right me-2"></i> السابق
+        </a>
+        <button type="submit" class="btn btn-success flex-fill">
+            <i class="fas fa-check me-2"></i> إنشاء الحساب
+        </button>
+    </div>
+</form>
+{% endblock %}
+
+{% block auth_links %}
+<p class="text-muted">
+    لديك حساب بالفعل؟ <a href="{% url 'accounts:login' %}">تسجيل الدخول</a>
+</p>
+<p class="text-muted mt-2">
+  <a href="{% url 'core:terms_of_service' %}">اتفاقية الاستخدام</a>
+</p>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // ── num_stocks toggle ─────────────────────────────────────
+    const versionTypeField = document.querySelector('#{{ form.version_type.id_for_label }}');
+    const numStocksField = document.querySelector('.js-num-stocks-field');
+    const numStocksInput = document.querySelector('#{{ form.num_stocks.id_for_label }}');
+
+    function toggleNumStocksField() {
+        const selectedValue = versionTypeField.value;
+        if (selectedValue === 'multi_stock' || selectedValue === 'multi_branch') {
+            numStocksField.style.display = 'block';
+            numStocksInput.required = true;
+        } else {
+            numStocksField.style.display = 'none';
+            numStocksInput.required = false;
+            numStocksInput.value = '1';
+        }
+    }
+    toggleNumStocksField();
+    versionTypeField.addEventListener('change', toggleNumStocksField);
+
+    // ── Hard Currency Mode toggle ─────────────────────────────
+    const hcCheckbox = document.querySelector('#{{ form.hard_currency_mode.id_for_label }}');
+    const hcFields   = document.querySelector('.js-hc-fields');
+
+    function toggleHcFields() {
+        if (hcCheckbox.checked) {
+            hcFields.style.display = 'block';
+            hcFields.querySelector('select[name="hard_currency"]').required = true;
+            hcFields.querySelector('input[name="exchange_rate"]').required = true;
+        } else {
+            hcFields.style.display = 'none';
+            hcFields.querySelector('select[name="hard_currency"]').required = false;
+            hcFields.querySelector('input[name="exchange_rate"]').required = false;
+        }
+    }
+    if (hcCheckbox) {
+        toggleHcFields();
+        hcCheckbox.addEventListener('change', toggleHcFields);
+    }
+
+    // ── Auto-select currency ──────────────────────────────────
+    const TZ_CURRENCY = {{ timezone_currency_map_json|safe }};
+    const CURRENCY_AR = {{ currency_ar_json|safe }};
+    const tzSel         = document.querySelector('select[name="timezone"]');
+    const curDisplay    = document.getElementById('currencyDisplay');
+    const curCode       = document.getElementById('currencyCode');
+
+    function applyCurrency(code) {
+        if (!code) return;
+        if (curDisplay) curDisplay.value = (CURRENCY_AR[code] || code) + ' — ' + code;
+        if (curCode)    curCode.value    = code;
+    }
+
+    // Pre-select based on country chosen in step 2 (stored in sessionStorage)
+    const suggested = sessionStorage.getItem('reg_suggested_currency') || '{{ suggested_currency }}';
+    applyCurrency(suggested);
+
+    // Update when timezone changes
+    if (tzSel) {
+        tzSel.addEventListener('change', function () {
+            applyCurrency(TZ_CURRENCY[this.value]);
+        });
+    }
+});
+</script>
+{% endblock %}

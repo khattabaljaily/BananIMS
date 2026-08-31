@@ -1,0 +1,839 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>الكاشير — EnjazIMS</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{% static 'css/main.css' %}?v=8.1">
+    <link rel="stylesheet" href="{% static 'css/pos.css' %}?v=3.1">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <script>(function(){ document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'light'); })();</script>
+</head>
+<body>
+
+<div class="pos-root" id="posRoot">
+
+    <!-- ══ MOBILE TABS (hidden on desktop) ═════════════════ -->
+    <nav class="pos-mobile-tabs" id="posMobileTabs">
+        <button class="pos-tab-btn active" data-tab="products" id="tabProductsBtn">
+            <i class="fas fa-th-large"></i>
+            <span>المنتجات</span>
+        </button>
+        <button class="pos-tab-btn" data-tab="cart" id="tabCartBtn">
+            <i class="fas fa-shopping-cart"></i>
+            <span>السلة</span>
+            <span class="pos-tab-badge zero" id="tabCartBadge">0</span>
+        </button>
+    </nav>
+
+    <!-- ══ LEFT: PRODUCTS ══════════════════════════════════ -->
+    <div class="pos-products">
+
+        <div class="pos-topbar">
+            <div class="pos-topbar-brand">
+                <i class="fas fa-cash-register"></i>
+                <span>الكاشير</span>
+            </div>
+            <div class="pos-topbar-divider"></div>
+
+            <div class="pos-search">
+                <i class="fas fa-search pos-search-icon"></i>
+                <input type="text" id="posSearch" placeholder="ابحث بالاسم، SKU، باركود…" autocomplete="off" spellcheck="false">
+            </div>
+
+            <select id="posStock" class="pos-stock-select">
+                {% for s in stocks %}
+                <option value="{{ s.id }}" {% if s == default_stock %}selected{% endif %}>{{ s.name }}</option>
+                {% endfor %}
+            </select>
+
+            <a href="{% url 'sales:invoice_list' %}" class="pos-home-btn">
+                <i class="fas fa-arrow-right"></i>
+                <span>خروج</span>
+            </a>
+        </div>
+
+        <div class="pos-cats" id="posCats">
+            <button class="pos-cat-btn active" data-cat="">الكل</button>
+            {% for cat in categories %}
+            <button class="pos-cat-btn" data-cat="{{ cat.id }}">{{ cat.name }}</button>
+            {% endfor %}
+            <button class="pos-cat-btn pos-cat-btn--service" data-cat="__services__">
+                <i class="fas fa-concierge-bell"></i> خدمات
+            </button>
+        </div>
+
+        <div class="pos-grid-wrap">
+            <div class="pos-grid" id="posGrid">
+                <div class="pos-loading"><div class="pos-spinner"></div> جار التحميل…</div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ══ RIGHT: CART ══════════════════════════════════════ -->
+    <div class="pos-cart">
+
+        <div class="pos-cart-head">
+            <div class="pos-cart-head-row">
+                <span class="pos-cart-title">
+                    <i class="fas fa-shopping-cart"></i>
+                    السلة
+                    <span class="pos-cart-badge zero" id="cartBadge">0</span>
+                </span>
+                <button class="pos-cart-clear" id="clearCartBtn">
+                    <i class="fas fa-trash-alt"></i>مسح
+                </button>
+            </div>
+            <div class="pos-customer-row" style="position:relative;">
+                <div class="pos-cust-wrap" id="posCustomerWrap">
+                    <span class="pos-cust-icon"><i class="fas fa-user"></i></span>
+                    <input type="text" id="posCustomerSearch" class="pos-cust-input"
+                           placeholder="زبون عابر..." autocomplete="off">
+                    <button type="button" class="pos-cust-clear" id="posCustomerClearBtn" title="إلغاء الاختيار">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <input type="hidden" id="posCustomerId" value="">
+                <div id="posCustomerDrop" class="pos-cust-drop" style="display:none"></div>
+            </div>
+        </div>
+
+        <div class="pos-cart-items" id="cartItems">
+            <div class="pos-cart-empty" id="cartEmpty">
+                <i class="fas fa-shopping-basket"></i>
+                <span>السلة فارغة</span>
+            </div>
+        </div>
+
+        <!-- Totals -->
+        <div class="pos-totals">
+            <div class="pos-total-row">
+                <span>المجموع الجزئي</span>
+                <span class="pos-total-val" id="totSubtotal">0.00</span>
+            </div>
+            <div class="pos-discount-row">
+                <select id="discountType" class="pos-discount-type">
+                    <option value="fixed">خصم ثابت</option>
+                    <option value="percent">خصم %</option>
+                </select>
+                <input type="number" id="discountValue" class="pos-discount-input" min="0" step="1">
+            </div>
+            <div class="pos-total-row" id="discountRow" style="display:none;">
+                <span>الخصم</span>
+                <span class="pos-total-val" id="totDiscount" style="color:var(--danger)">-0.00</span>
+            </div>
+            <div class="pos-total-row">
+                <span>الضريبة</span>
+                <span class="pos-total-val" id="totTax">0.00</span>
+            </div>
+            <div class="pos-total-row grand">
+                <span>الإجمالي</span>
+                <span class="pos-total-val" id="totGrand">0.00</span>
+            </div>
+        </div>
+
+        <!-- Notes -->
+        <div class="pos-notes-wrap">
+            <textarea id="orderNotes" class="pos-notes-input" placeholder="ملاحظات الطلب… (اختياري)" rows="1"></textarea>
+        </div>
+
+        <!-- Payment -->
+        <div class="pos-payment">
+            <div class="pos-pay-methods">
+                <button class="pos-pay-btn active" data-method="cash">
+                    <i class="fas fa-money-bill-wave"></i>نقدي
+                </button>
+                <button class="pos-pay-btn" data-method="bank">
+                    <i class="fas fa-building-columns"></i>بنك
+                </button>
+                <button class="pos-pay-btn" data-method="split">
+                    <i class="fas fa-code-branch"></i>مختلط
+                </button>
+                <button class="pos-pay-btn" data-method="credit">
+                    <i class="fas fa-clock"></i>آجل
+                </button>
+            </div>
+
+            <!-- Cash: received + change -->
+            <div class="pos-cash-row" id="cashRow">
+                <input type="number" id="cashReceived" class="pos-cash-received" placeholder="المبلغ المستلم" min="0" step="1">
+                <div class="pos-change-box" id="changeBox">
+                    <div class="pos-change-label">الباقي</div>
+                    <div class="pos-change-val" id="changeVal">—</div>
+                </div>
+            </div>
+            <div class="pos-quick-cash" id="quickCashBtns"></div>
+
+            <!-- Split -->
+            <div class="pos-split-fields" id="splitFields">
+                <input type="number" id="splitCash" class="pos-split-input" placeholder="نقدي" min="0" step="1">
+                <input type="number" id="splitBank" class="pos-split-input" placeholder="بنك" min="0" step="1">
+            </div>
+
+            <!-- Bank ref -->
+            <input type="text" id="bankRef" class="pos-bank-ref" placeholder="رقم المرجع / التحويل (اختياري)">
+
+            <!-- Error -->
+            <div class="pos-error-banner" id="posError">
+                <i class="fas fa-circle-exclamation"></i>
+                <span id="posErrorMsg"></span>
+            </div>
+
+            <button class="pos-checkout-btn" id="checkoutBtn" disabled>
+                <i class="fas fa-check-circle"></i>
+                <span>إتمام البيع</span>
+                <span id="checkoutTotal" style="font-size:.85rem;opacity:.85;margin-right:.25rem;direction:ltr;"></span>
+            </button>
+        </div>
+
+    </div>
+
+</div>
+
+<!-- ══ SUCCESS OVERLAY ══════════════════════════════════════ -->
+<div class="pos-success-overlay" id="successOverlay">
+    <div class="pos-success-box">
+        <div class="pos-success-icon"><i class="fas fa-check"></i></div>
+        <div class="pos-success-title">تم البيع بنجاح!</div>
+        <div class="pos-success-num" id="successNum"></div>
+        <div class="pos-success-total" id="successTotal"></div>
+        <div class="pos-success-change" id="successChange" style="display:none;">
+            <i class="fas fa-coins"></i>
+            <span>الباقي: <strong id="successChangeVal"></strong></span>
+        </div>
+        <div class="pos-success-btns">
+            <button class="pos-success-btn" id="successPrint">
+                <i class="fas fa-print me-1"></i>طباعة
+            </button>
+            <button class="pos-success-btn primary" id="successNew">
+                <i class="fas fa-plus me-1"></i>بيعة جديدة
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+'use strict';
+
+const CSRF         = document.querySelector('meta[name="csrf-token"]').content;
+const ITEMS_URL    = '{% url "sales:pos_items_api" %}';
+const CHECKOUT_URL = '{% url "sales:pos_checkout_api" %}';
+
+/* ── State ───────────────────────────────────────────── */
+let cart = [];
+let allItems = [];
+let activeCat = '';
+let currentMethod = 'cash';
+let lastInvoiceId = null;
+let searchTimer;
+
+/* ── DOM refs ────────────────────────────────────────── */
+const $grid       = document.getElementById('posGrid');
+const $cartItems  = document.getElementById('cartItems');
+const $cartEmpty  = document.getElementById('cartEmpty');
+const $cartBadge  = document.getElementById('cartBadge');
+const $search     = document.getElementById('posSearch');
+const $stock      = document.getElementById('posStock');
+const $customer   = document.getElementById('posCustomerId');
+
+/* ── POS customer searchable widget ──────────────────────── */
+(function () {
+    const POS_CUSTOMERS = [
+        { id: '', name: 'زبون عابر' },
+        {% for c in customers %}{ id: '{{ c.id }}', name: '{{ c.name|escapejs }}' },{% endfor %}
+    ];
+    const inp      = document.getElementById('posCustomerSearch');
+    const hid      = document.getElementById('posCustomerId');
+    const drop     = document.getElementById('posCustomerDrop');
+    const wrap     = document.getElementById('posCustomerWrap');
+    const clearBtn = document.getElementById('posCustomerClearBtn');
+    let picking    = false;
+
+    function setCustomer(id, name) {
+        hid.value = id;
+        if (id) {
+            inp.value = name;
+            wrap.classList.add('has-customer');
+            clearBtn.style.display = 'flex';
+        } else {
+            inp.value = '';
+            inp.placeholder = 'زبون عابر...';
+            wrap.classList.remove('has-customer');
+            clearBtn.style.display = 'none';
+        }
+        drop.style.display = 'none';
+    }
+
+    function renderDrop(list) {
+        drop.innerHTML = list.map(c =>
+            `<div class="pos-cust-item" data-id="${c.id}" data-name="${c.name}">` +
+            `<i class="fas ${c.id ? 'fa-user' : 'fa-store'}" style="margin-left:.5rem;font-size:.75rem;opacity:.45"></i>` +
+            `${c.name}</div>`
+        ).join('') || `<div class="pos-cust-item pos-cust-item--empty">لا توجد نتائج</div>`;
+        drop.style.display = 'block';
+    }
+
+    /* event delegation — avoids listener re-attachment on every render */
+    drop.addEventListener('mousedown', function (e) {
+        const item = e.target.closest('[data-id]');
+        if (!item) return;
+        e.preventDefault();
+        picking = true;
+        setCustomer(item.dataset.id, item.dataset.name);
+        picking = false;
+    });
+
+    inp.addEventListener('focus', function () {
+        const q = this.value.toLowerCase();
+        renderDrop(q ? POS_CUSTOMERS.filter(c => c.name.toLowerCase().includes(q)) : POS_CUSTOMERS);
+    });
+    inp.addEventListener('input', function () {
+        const q = this.value.toLowerCase();
+        renderDrop(POS_CUSTOMERS.filter(c => c.name.toLowerCase().includes(q)));
+    });
+    inp.addEventListener('blur', function () {
+        setTimeout(() => {
+            if (picking) return;
+            drop.style.display = 'none';
+            if (!hid.value) inp.value = '';
+        }, 120);
+    });
+
+    clearBtn.addEventListener('click', function () { setCustomer('', ''); inp.focus(); });
+    clearBtn.style.display = 'none';
+
+    window._posCustReset = function () { setCustomer('', ''); };
+})();
+const $discType   = document.getElementById('discountType');
+const $discVal    = document.getElementById('discountValue');
+const $bankRef    = document.getElementById('bankRef');
+const $splitCash  = document.getElementById('splitCash');
+const $splitBank  = document.getElementById('splitBank');
+const $splitFields= document.getElementById('splitFields');
+const $cashRow    = document.getElementById('cashRow');
+const $cashRcvd   = document.getElementById('cashReceived');
+const $changeBox  = document.getElementById('changeBox');
+const $changeVal  = document.getElementById('changeVal');
+const $quickCash  = document.getElementById('quickCashBtns');
+const $checkoutBtn= document.getElementById('checkoutBtn');
+const $posError   = document.getElementById('posError');
+const $posErrorMsg= document.getElementById('posErrorMsg');
+const $notes      = document.getElementById('orderNotes');
+
+/* ── Error display ───────────────────────────────────── */
+function showError(msg) {
+    $posErrorMsg.textContent = msg;
+    $posError.classList.add('visible');
+    setTimeout(() => $posError.classList.remove('visible'), 4000);
+}
+
+/* ── Fetch items ─────────────────────────────────────── */
+function loadItems(catId, query) {
+    catId = catId || '';
+    query = query || '';
+    $grid.innerHTML = '<div class="pos-loading"><div class="pos-spinner"></div> جار التحميل…</div>';
+    const params = new URLSearchParams({ stock_id: $stock.value, q: query });
+    if (catId === '__services__') {
+        params.set('item_type', 'service');
+    } else if (catId) {
+        params.set('category_id', catId);
+    }
+
+    fetch(ITEMS_URL + '?' + params)
+        .then(r => r.json())
+        .then(data => {
+            allItems = data.items || [];
+            renderGrid(allItems);
+        })
+        .catch(() => {
+            $grid.innerHTML = '<div class="pos-empty"><i class="fas fa-exclamation-circle"></i><p>تعذّر تحميل المنتجات</p></div>';
+        });
+}
+
+function renderGrid(items) {
+    if (!items.length) {
+        $grid.innerHTML = '<div class="pos-empty"><i class="fas fa-box-open"></i><p>لا توجد منتجات</p></div>';
+        return;
+    }
+
+    $grid.innerHTML = items.map(item => {
+        const oos = !item.is_service && item.available_qty !== null && item.available_qty <= 0;
+        const img = item.image_url
+            ? `<img class="pos-item-img" src="${item.image_url}" alt="" loading="lazy">`
+            : `<div class="pos-item-icon"><i class="fas fa-box"></i></div>`;
+
+        let qtyBadge = '';
+        if (!item.is_service && item.available_qty !== null) {
+            const q = item.available_qty;
+            const cls = q <= 0 ? '' : q <= 3 ? 'very-low' : q <= 10 ? 'low' : '';
+            const label = q <= 0 ? 'نفد' : `متاح: ${q}`;
+            qtyBadge = `<div class="pos-item-qty${cls ? ' ' + cls : ''}">${label}</div>`;
+        }
+
+        return `
+        <div class="pos-item-card${oos ? ' out-of-stock' : ''}"
+             data-id="${item.id}"
+             data-price="${item.selling_price}"
+             data-tax="${item.tax_rate}"
+             data-cost="${item.cost_price}"
+             data-name="${escHtml(item.name)}"
+             data-units="${escHtml(JSON.stringify(item.units || []))}"
+             data-unit-id="${item.unit_id || ''}"
+             data-unit-factor="${item.unit_factor || 1}"
+             data-unit-name="${escHtml(item.unit_name || '')}">
+            <div class="pos-item-card-add"><i class="fas fa-plus"></i></div>
+            ${img}
+            <div class="pos-item-name">${escHtml(item.name)}</div>
+            <div class="pos-item-price">${fmt(item.selling_price)}</div>
+            ${qtyBadge}
+            ${oos ? '<div class="pos-item-oos">نفد المخزون</div>' : ''}
+        </div>`;
+    }).join('');
+
+    $grid.querySelectorAll('.pos-item-card:not(.out-of-stock)').forEach(card => {
+        card.addEventListener('click', () => addToCart(card));
+    });
+}
+
+/* ── Cart operations ─────────────────────────────────── */
+function addToCart(card) {
+    const id    = parseInt(card.dataset.id);
+    const price = parseFloat(card.dataset.price) || 0;
+    const tax   = parseFloat(card.dataset.tax)   || 0;
+    const cost  = parseFloat(card.dataset.cost)  || 0;
+    const name  = card.dataset.name;
+    let units = [];
+    try { units = JSON.parse(card.dataset.units || '[]'); } catch(e) {}
+    const unit_id     = card.dataset.unitId || '';
+    const unit_factor = parseFloat(card.dataset.unitFactor) || 1;
+    const unit_name   = card.dataset.unitName || '';
+
+    const existing = cart.find(c => c.item_id === id);
+    if (existing) {
+        existing.qty += 1;
+    } else {
+        cart.push({ item_id: id, name, qty: 1, unit_price: price, discount_percent: 0, tax_rate: tax, cost_price: cost,
+                    unit_id, unit_factor, unit_name, units });
+    }
+
+    // Flash card
+    card.classList.remove('just-added');
+    void card.offsetWidth; // reflow
+    card.classList.add('just-added');
+
+    renderCart();
+}
+
+function removeFromCart(idx) {
+    cart.splice(idx, 1);
+    renderCart();
+}
+
+function updateQty(idx, delta) {
+    const newQty = cart[idx].qty + delta;
+    if (newQty <= 0) { cart.splice(idx, 1); }
+    else { cart[idx].qty = newQty; }
+    renderCart();
+}
+
+function setQty(idx, val) {
+    const q = parseFloat(val);
+    if (!isNaN(q) && q > 0) { cart[idx].qty = q; renderCart(); }
+}
+
+function clearCart() {
+    cart = [];
+    renderCart();
+}
+
+/* ── Render cart ─────────────────────────────────────── */
+function renderCart() {
+    // Badge
+    const total = cart.reduce((s, l) => s + l.qty, 0);
+    $cartBadge.textContent = total || 0;
+    $cartBadge.classList.toggle('zero', !total);
+    const $tabBadge = document.getElementById('tabCartBadge');
+    if ($tabBadge) { $tabBadge.textContent = total || 0; $tabBadge.classList.toggle('zero', !total); }
+    if (total) {
+        $cartBadge.classList.remove('bump');
+        void $cartBadge.offsetWidth;
+        $cartBadge.classList.add('bump');
+    }
+
+    if (!cart.length) {
+        $cartItems.innerHTML = '';
+        $cartItems.appendChild($cartEmpty);
+        $cartEmpty.style.display = 'flex';
+        updateTotals();
+        return;
+    }
+    $cartEmpty.style.display = 'none';
+
+    const prevIds = new Set(
+        [...$cartItems.querySelectorAll('.pos-cart-item')].map(r => r.dataset.idx)
+    );
+
+    $cartItems.innerHTML = cart.map((line, i) => {
+        const lineTotal = (line.qty * line.unit_price * (1 - line.discount_percent / 100)).toFixed(2);
+        const isNew = !prevIds.has(String(i));
+        return `
+        <div class="pos-cart-item${isNew ? ' flash' : ''}" data-idx="${i}">
+            <div class="pos-ci-info">
+                <div class="pos-ci-name">${escHtml(line.name)}</div>
+                <div class="pos-ci-price">${fmt(line.unit_price)} / ${escHtml(line.unit_name || 'وحدة')}</div>
+            </div>
+            <div class="pos-ci-controls">
+                <button class="pos-ci-qty-btn" data-action="dec" data-idx="${i}">−</button>
+                <input class="pos-ci-qty" type="number" value="${line.qty}" min="0.001" step="1" data-idx="${i}">
+                <button class="pos-ci-qty-btn" data-action="inc" data-idx="${i}">+</button>
+                ${line.units && line.units.length > 1 ? `<select class="cx-input cx-input--xs pos-unit-sel" data-idx="${i}">${line.units.map(u => `<option value="${u.id}" data-factor="${u.factor}" data-name="${escHtml(u.name)}" ${String(u.id) === String(line.unit_id) ? 'selected' : ''}>${u.name}</option>`).join('')}</select>` : ''}
+            </div>
+            <div class="pos-ci-total">${fmt(lineTotal)}</div>
+            <button class="pos-ci-remove" data-idx="${i}" title="حذف"><i class="fas fa-times"></i></button>
+        </div>`;
+    }).join('');
+
+    $cartItems.querySelectorAll('[data-action="inc"]').forEach(b =>
+        b.addEventListener('click', () => updateQty(+b.dataset.idx,  1)));
+    $cartItems.querySelectorAll('[data-action="dec"]').forEach(b =>
+        b.addEventListener('click', () => updateQty(+b.dataset.idx, -1)));
+    $cartItems.querySelectorAll('.pos-ci-qty').forEach(inp =>
+        inp.addEventListener('change', () => setQty(+inp.dataset.idx, inp.value)));
+    $cartItems.querySelectorAll('.pos-ci-remove').forEach(b =>
+        b.addEventListener('click', () => removeFromCart(+b.dataset.idx)));
+    $cartItems.querySelectorAll('.pos-unit-sel').forEach(sel =>
+        sel.addEventListener('change', function() {
+            const idx = +this.dataset.idx;
+            const opt = this.options[this.selectedIndex];
+            const newFactor = parseFloat(opt.dataset.factor) || 1;
+            const oldFactor = cart[idx].unit_factor || 1;
+            if (oldFactor !== newFactor && cart[idx].unit_price > 0) {
+                cart[idx].unit_price = (cart[idx].unit_price / oldFactor) * newFactor;
+            }
+            cart[idx].unit_id = this.value;
+            cart[idx].unit_factor = newFactor;
+            cart[idx].unit_name = opt.dataset.name || '';
+            renderCart();
+        }));
+
+    updateTotals();
+}
+
+/* ── Totals ──────────────────────────────────────────── */
+function calcTotals() {
+    let subtotal = 0, tax = 0;
+    cart.forEach(line => {
+        const base = line.qty * line.unit_price * (1 - line.discount_percent / 100);
+        subtotal += base;
+        tax += base * (line.tax_rate / 100);
+    });
+
+    const discVal = parseFloat($discVal.value) || 0;
+    let discount = 0;
+    if (discVal > 0) {
+        discount = $discType.value === 'percent'
+            ? subtotal * discVal / 100
+            : Math.min(discVal, subtotal);
+    }
+    const grand = Math.max(0, subtotal - discount + tax);
+    return { subtotal, discount, tax, grand };
+}
+
+function updateTotals() {
+    const t = calcTotals();
+    document.getElementById('totSubtotal').textContent = fmt(t.subtotal);
+    document.getElementById('totTax').textContent      = fmt(t.tax);
+    document.getElementById('totGrand').textContent    = fmt(t.grand);
+    document.getElementById('totDiscount').textContent = '−' + fmt(t.discount);
+    document.getElementById('discountRow').style.display = t.discount > 0 ? 'flex' : 'none';
+    document.getElementById('checkoutTotal').textContent = fmt(t.grand);
+    $checkoutBtn.disabled = cart.length === 0;
+
+    updateChangeCalc();
+    updateQuickCash(t.grand);
+}
+
+/* ── Change calculator ───────────────────────────────── */
+function updateChangeCalc() {
+    if (currentMethod !== 'cash') return;
+    const grand    = calcTotals().grand;
+    const received = parseFloat($cashRcvd.value) || 0;
+    if (received <= 0) {
+        $changeVal.textContent = '—';
+        $changeBox.classList.remove('negative');
+        return;
+    }
+    const change = received - grand;
+    $changeVal.textContent = fmt(Math.abs(change));
+    $changeBox.classList.toggle('negative', change < 0);
+}
+
+function updateQuickCash(grand) {
+    if (currentMethod !== 'cash' || !grand) {
+        $quickCash.innerHTML = '';
+        return;
+    }
+    // Generate round-number quick amounts >= grand
+    const amts = new Set();
+    [1, 5, 10, 20, 50, 100, 200, 500].forEach(d => {
+        const v = Math.ceil(grand / d) * d;
+        if (v >= grand && v <= grand * 3) amts.add(v);
+    });
+    amts.add(Math.ceil(grand)); // exact
+    const sorted = [...amts].sort((a, b) => a - b).slice(0, 4);
+
+    $quickCash.innerHTML = sorted.map(v =>
+        `<button class="pos-quick-btn" data-val="${v}">${fmt(v)}</button>`
+    ).join('');
+
+    $quickCash.querySelectorAll('.pos-quick-btn').forEach(btn =>
+        btn.addEventListener('click', () => {
+            $cashRcvd.value = btn.dataset.val;
+            updateChangeCalc();
+        })
+    );
+}
+
+/* ── Payment method toggle ───────────────────────────── */
+document.querySelectorAll('.pos-pay-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.pos-pay-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentMethod = btn.dataset.method;
+
+        $cashRow.classList.toggle('visible',    currentMethod === 'cash');
+        $quickCash.classList.toggle('visible',  currentMethod === 'cash');
+        $splitFields.classList.toggle('visible',currentMethod === 'split');
+
+        const needRef = currentMethod === 'bank' || currentMethod === 'split';
+        $bankRef.classList.toggle('visible', needRef);
+
+        updateTotals();
+    });
+});
+
+// Show cash row by default
+$cashRow.classList.add('visible');
+$quickCash.classList.add('visible');
+
+/* ── Checkout ────────────────────────────────────────── */
+$checkoutBtn.addEventListener('click', async () => {
+    if (!cart.length) return;
+    $posError.classList.remove('visible');
+
+    const t = calcTotals();
+    let cashAmt = 0, bankAmt = 0;
+
+    if (currentMethod === 'cash') {
+        cashAmt = t.grand;
+    } else if (currentMethod === 'bank') {
+        bankAmt = t.grand;
+    } else if (currentMethod === 'split') {
+        cashAmt = parseFloat($splitCash.value) || 0;
+        bankAmt = parseFloat($splitBank.value) || 0;
+        if (cashAmt + bankAmt < t.grand - 0.01) {
+            showError('مجموع النقدي + البنك أقل من الإجمالي');
+            return;
+        }
+    } else if (currentMethod === 'credit') {
+        if (!$customer.value) {
+            showError('الدفع الآجل يتطلب اختيار عميل');
+            return;
+        }
+    }
+
+    const received = parseFloat($cashRcvd.value) || 0;
+    const change   = currentMethod === 'cash' && received > 0
+        ? Math.max(0, received - t.grand)
+        : 0;
+
+    const payload = {
+        stock_id:       $stock.value,
+        customer_id:    $customer.value || null,
+        payment_method: currentMethod === 'split' ? 'mixed' : currentMethod,
+        cash_amount:    cashAmt,
+        bank_amount:    bankAmt,
+        bank_reference: $bankRef.value,
+        discount_type:  $discType.value,
+        discount_value: parseFloat($discVal.value) || 0,
+        notes:          $notes.value,
+        lines: cart.map(c => ({
+            item_id:          c.item_id,
+            quantity:         c.qty,
+            unit_price:       c.unit_price,
+            discount_percent: c.discount_percent,
+            tax_rate:         c.tax_rate,
+            cost_price:       c.cost_price,
+            unit_id:          c.unit_id || null,
+            unit_factor:      c.unit_factor || 1,
+        })),
+    };
+
+    $checkoutBtn.disabled = true;
+    $checkoutBtn.innerHTML = '<div class="pos-spinner"></div> جار التأكيد…';
+
+    try {
+        const resp = await fetch(CHECKOUT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+            body: JSON.stringify(payload),
+        });
+        const data = await resp.json();
+
+        if (data.success) {
+            lastInvoiceId = data.invoice_id;
+            document.getElementById('successNum').textContent   = 'فاتورة رقم: ' + data.invoice_number;
+            document.getElementById('successTotal').textContent = fmt(data.grand_total);
+
+            const $sc = document.getElementById('successChange');
+            if (change > 0) {
+                document.getElementById('successChangeVal').textContent = fmt(change);
+                $sc.style.display = 'inline-flex';
+            } else {
+                $sc.style.display = 'none';
+            }
+
+            document.getElementById('successOverlay').classList.add('show');
+        } else {
+            showError(data.message || 'حدث خطأ أثناء الحفظ');
+        }
+    } catch(e) {
+        showError('تعذّر الاتصال بالخادم');
+    } finally {
+        $checkoutBtn.disabled = cart.length === 0;
+        $checkoutBtn.innerHTML = '<i class="fas fa-check-circle"></i><span>إتمام البيع</span><span id="checkoutTotal" style="font-size:.85rem;opacity:.85;margin-right:.25rem;direction:ltr;"></span>';
+        updateTotals();
+    }
+});
+
+/* ── Success overlay actions ─────────────────────────── */
+document.getElementById('successPrint').addEventListener('click', () => {
+    if (lastInvoiceId) window.open('/sales/' + lastInvoiceId + '/', '_blank');
+});
+
+document.getElementById('successNew').addEventListener('click', () => {
+    document.getElementById('successOverlay').classList.remove('show');
+    clearCart();
+    $discVal.value   = '';
+    $cashRcvd.value  = '';
+    $notes.value     = '';
+    window._posCustReset && window._posCustReset();
+    $changeVal.textContent = '—';
+    loadItems(activeCat, '');
+    $search.value = '';
+    $search.focus();
+});
+
+/* ── Category tabs ───────────────────────────────────── */
+document.getElementById('posCats').addEventListener('click', e => {
+    const btn = e.target.closest('.pos-cat-btn');
+    if (!btn) return;
+    document.querySelectorAll('.pos-cat-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeCat = btn.dataset.cat;
+    loadItems(activeCat, $search.value);
+});
+
+/* ── Search ──────────────────────────────────────────── */
+$search.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => loadItems(activeCat, $search.value), 280);
+});
+
+$search.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+        clearTimeout(searchTimer);
+        loadItems(activeCat, $search.value);
+    }
+});
+
+/* ── Keyboard shortcuts ──────────────────────────────── */
+document.addEventListener('keydown', e => {
+    // Escape: close success overlay
+    if (e.key === 'Escape') {
+        const overlay = document.getElementById('successOverlay');
+        if (overlay.classList.contains('show')) {
+            overlay.classList.remove('show');
+            return;
+        }
+    }
+
+    // Any printable char (not in an input): focus search
+    const tag = document.activeElement.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (e.key.length === 1) {
+        $search.focus();
+        // Don't prevent default — let the char appear in search
+    }
+    if (e.key === 'F2') {
+        e.preventDefault();
+        $search.focus();
+        $search.select();
+    }
+});
+
+/* ── Stock + misc ────────────────────────────────────── */
+$stock.addEventListener('change', () => loadItems(activeCat, $search.value));
+$discVal.addEventListener('input', updateTotals);
+$discType.addEventListener('change', updateTotals);
+$cashRcvd.addEventListener('input', updateChangeCalc);
+
+document.getElementById('clearCartBtn').addEventListener('click', () => {
+    if (cart.length) clearCart();
+});
+
+/* ── Helpers ─────────────────────────────────────────── */
+function fmt(v) {
+    return (parseFloat(v) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function escHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ── Mobile tabs ─────────────────────────────────────── */
+(function() {
+    const isMobile = () => window.innerWidth <= 699;
+    const $products = document.querySelector('.pos-products');
+    const $cart     = document.querySelector('.pos-cart');
+
+    function showTab(tab) {
+        document.querySelectorAll('.pos-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+        $products.classList.toggle('pos-tab-hidden', tab !== 'products');
+        $cart.classList.toggle('pos-tab-hidden', tab !== 'cart');
+    }
+
+    document.getElementById('posMobileTabs').addEventListener('click', function(e) {
+        const btn = e.target.closest('.pos-tab-btn');
+        if (btn) showTab(btn.dataset.tab);
+    });
+
+    // Init: hide cart tab on mobile
+    if (isMobile()) showTab('products');
+
+    // Remove tab-hidden on resize to desktop
+    window.addEventListener('resize', function() {
+        if (!isMobile()) {
+            $products.classList.remove('pos-tab-hidden');
+            $cart.classList.remove('pos-tab-hidden');
+        }
+    });
+})();
+
+/* ── Init ────────────────────────────────────────────── */
+loadItems();
+renderCart();
+// Don't auto-focus on touch devices — it opens the virtual keyboard on load
+if (!('ontouchstart' in window)) $search.focus();
+
+})();
+</script>
+
+</body>
+</html>

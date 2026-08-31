@@ -1,0 +1,291 @@
+{% extends "layouts/dashboard.html" %}
+{% load static %}
+{% load humanize %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/stocks.css' %}?v=1.2">
+<link rel="stylesheet" href="{% static 'css/stocks_opening.css' %}?v=1.2">
+{% endblock %}
+
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<div class="cx-scene">
+
+<div class="cx-hero">
+    <div class="cx-hero-inner">
+        <div class="cx-hero-left">
+            <div class="cx-hero-icon-wrap">
+                <i class="fas fa-boxes-stacked"></i>
+            </div>
+            <div>
+                <h1 class="cx-hero-title">الكميات الافتتاحية للمخازن</h1>
+                <p class="cx-hero-desc">إدخال وتعديل أرصدة المنتجات لكل مخزن عبر شاشة واحدة</p>
+            </div>
+        </div>
+        <div class="cx-hero-right">
+            <div class="cx-hero-actions">
+                <a href="{% url 'stocks:list' %}" class="cx-btn-secondary">
+                    <i class="fas fa-arrow-right"></i>
+                    <span>العودة للمخازن</span>
+                </a>
+                <button type="button" class="cx-btn-add" id="btnSaveOpening">
+                    <i class="fas fa-save"></i>
+                    <span>حفظ التعديلات</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="cx-stats-inline">
+        <span class="cx-stat-badge cx-stat-badge--primary">
+            <i class="fas fa-list-check"></i>
+            <strong id="openingChangedCount">0</strong>
+            <span>بنود معدلة</span>
+        </span>
+        <span class="cx-stat-badge cx-stat-badge--info">
+            <i class="fas fa-warehouse"></i>
+            <span>اختر المخزن ثم عدل الكميات مباشرة</span>
+        </span>
+    </div>
+</div>
+
+<div class="cx-panel">
+    <div class="cx-toolbar">
+        <div class="cx-toolbar-search">
+            <i class="fas fa-search cx-toolbar-search-icon"></i>
+            <input type="text" id="openingSearchInput" class="cx-search-input" placeholder="ابحث باسم المنتج أو SKU أو الباركود...">
+        </div>
+        <div class="cx-toolbar-end">
+            <label class="opening-stock-label">
+                <i class="fas fa-warehouse"></i>
+                <span>المخزن:</span>
+            </label>
+            <select id="openingStockSelect" class="cx-select-sm">
+                {% for s in stocks %}
+                <option value="{{ s.id }}" {% if default_stock and default_stock.id == s.id %}selected{% endif %}>{{ s.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+
+    <div class="opening-help">
+        <i class="fas fa-circle-info"></i>
+        <span>الحقل يعرض الكمية الافتتاحية المحفوظة — عدّلها إن احتجت ثم اضغط <strong>حفظ التعديلات</strong> (الزر العلوي أو السفلي).</span>
+    </div>
+    <div class="rpt-unit-note m-0 p-2 p-2">
+        <i class="fas fa-ruler"></i>
+        <span>جميع الكميات تُعرض وتُحفظ بـ <strong>الوحدة الأساسية</strong> (الأصغر) للصنف.</span>
+    </div>
+
+    <div class="table-responsive cx-table-wrap">
+        <table id="openingTable" class="cx-table">
+            <thead>
+                <tr>
+                    <th>المنتج</th>
+                    <th>SKU</th>
+                    <th>الباركود</th>
+                    <th>الافتتاحية</th>
+                    <th>الحالية</th>
+                    <th>تصحيح الافتتاحية</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+    <div id="openingCardsMobile" class="stocks-opening-mobile-card-list d-none p-3" aria-live="polite"></div>
+</div>
+
+<div class="opening-savebar" id="openingSavebar">
+    <div class="opening-savebar__text">
+        <i class="fas fa-floppy-disk"></i>
+        <span>بنود غير محفوظة: <strong id="openingChangedCountBottom">0</strong></span>
+    </div>
+    <button type="button" class="cx-btn-add" id="btnSaveOpeningBottom">
+        <i class="fas fa-save"></i>
+        <span>حفظ التعديلات</span>
+    </button>
+</div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    'use strict';
+
+    const TABLE_API = "{% url 'stocks:opening_table_api' %}";
+    const SAVE_API  = "{% url 'stocks:opening_save_api' %}";
+    const changedMap = new Map(); // item_id → new base-unit qty
+
+    const stockSelect = document.getElementById('openingStockSelect');
+    const saveBtns = [
+        document.getElementById('btnSaveOpening'),
+        document.getElementById('btnSaveOpeningBottom')
+    ].filter(Boolean);
+
+    function baseUnitName(row) {
+        const units = row.units || [];
+        return units.length ? units[0].name : '—';
+    }
+
+    function fmtQty(baseQty, row) {
+        return `${EnjazIMS.formatQuantity(baseQty)} <span class="inv-unit-badge">${baseUnitName(row)}</span>`;
+    }
+
+    function buildInput(row) {
+        const openingQty = parseFloat(row.opening_qty_raw || row.opening_qty) || 0;
+        const changed    = changedMap.get(String(row.item_id));
+        const value      = changed !== undefined ? changed : openingQty;
+        const unit       = baseUnitName(row);
+        return `<div class="opening-input-wrap">
+            <input type="number" class="cx-input cx-input--sm opening-qty-input"
+                data-item-id="${row.item_id}"
+                data-original="${openingQty}"
+                value="${value || ''}" min="0" step="0.0001">
+            <span class="inv-unit-badge opening-input-unit-badge">${unit}</span>
+        </div>`;
+    }
+
+    /* ── Mobile card renderer ───────────────────────────────── */
+    function renderMobileOpeningCards(rows) {
+        const $cards = $('#openingCardsMobile');
+        if (!$cards.length) return;
+        if (!rows || !rows.length) { $cards.html('<div class="cx-empty-state">لا توجد منتجات للعرض</div>'); return; }
+        $cards.html(rows.map(r => {
+            const openingQty = parseFloat(r.opening_qty_raw || r.opening_qty) || 0;
+            const currentQty = parseFloat(r.current_qty_raw || r.current_qty) || 0;
+            const isChanged  = changedMap.has(String(r.item_id));
+            return `<article class="cx-opening-card">
+                <div class="cx-opening-card-head">
+                    <div class="cx-opening-card-title-wrap">
+                        <h2 class="cx-opening-card-title">${r.item_name || '—'}</h2>
+                        <div class="cx-opening-card-codes">
+                            <code class="cx-opening-card-code">${r.sku || '—'}</code>
+                            ${r.barcode ? `<code class="cx-opening-card-code">${r.barcode}</code>` : ''}
+                        </div>
+                    </div>
+                    ${isChanged ? '<span class="cx-opening-card-changed">معدل</span>' : ''}
+                </div>
+                <div class="cx-opening-card-meta">
+                    <div>
+                        <span class="cx-opening-card-meta-label">الافتتاحية</span>
+                        <strong class="cx-opening-card-meta-value">${fmtQty(openingQty, r)}</strong>
+                    </div>
+                    <div>
+                        <span class="cx-opening-card-meta-label">الحالية</span>
+                        <strong class="cx-opening-card-meta-value">${fmtQty(currentQty, r)}</strong>
+                    </div>
+                </div>
+                <div class="cx-opening-card-input">
+                    <label class="cx-opening-card-input-label">تصحيح الكمية الافتتاحية</label>
+                    ${buildInput(r)}
+                </div>
+            </article>`;
+        }).join(''));
+    }
+
+    const dt = $('#openingTable').DataTable({
+        processing: true, serverSide: true, pageLength: 25,
+        dom: '<"d-none"f>rt<"cx-dt-bottom"ip>',
+        language: {
+            emptyTable: 'لا توجد منتجات', info: 'عرض _START_ إلى _END_ من _TOTAL_',
+            infoEmpty: 'لا توجد بيانات', zeroRecords: 'لا توجد نتائج مطابقة',
+            paginate: { next: 'التالي', previous: 'السابق' }, processing: 'جاري التحميل...'
+        },
+        ajax: { url: TABLE_API, data: d => { d.stock_id = stockSelect.value; } },
+        columns: [
+            { data: 'item_name' },
+            { data: 'sku',     render: v => `<code class="cxr-code">${v || '—'}</code>` },
+            { data: 'barcode', render: v => `<code class="cxr-code">${v || '—'}</code>` },
+            { data: 'opening_qty', className: 'text-end',
+              render: (v, _, row) => fmtQty(parseFloat(row.opening_qty_raw || v) || 0, row) },
+            { data: 'current_qty', className: 'text-end',
+              render: (v, _, row) => fmtQty(parseFloat(row.current_qty_raw || v) || 0, row) },
+            { data: null, orderable: false, searchable: false,
+              render: (_, __, row) => buildInput(row) }
+        ],
+        drawCallback: function () {
+            renderMobileOpeningCards(dt.rows({ page: 'current' }).data().toArray());
+        }
+    });
+
+    function refreshChangedCount() {
+        const count = String(changedMap.size);
+        document.getElementById('openingChangedCount').textContent = count;
+        const bottom = document.getElementById('openingChangedCountBottom');
+        if (bottom) bottom.textContent = count;
+        const bar = document.getElementById('openingSavebar');
+        if (bar) bar.classList.toggle('opening-savebar--active', changedMap.size > 0);
+    }
+
+    function showToast(message, type = 'success') {
+        if (window.EnjazIMS && typeof EnjazIMS.toast === 'function') { EnjazIMS.toast(message, type); return; }
+        const c = { success:{bg:'#dcfce7',color:'#166534',border:'#86efac',icon:'fa-check-circle'}, error:{bg:'#fee2e2',color:'#991b1b',border:'#fca5a5',icon:'fa-exclamation-circle'}, warning:{bg:'#fef3c7',color:'#92400e',border:'#fcd34d',icon:'fa-exclamation-triangle'}, info:{bg:'#dbeafe',color:'#1e3a8a',border:'#93c5fd',icon:'fa-info-circle'} }[type] || {};
+        const div = document.createElement('div');
+        div.style.cssText = `position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:99999;min-width:300px;max-width:520px;background:${c.bg};color:${c.color};border:1px solid ${c.border};border-radius:12px;padding:.85rem 1.1rem;font-family:'Cairo',sans-serif;font-size:.9rem;font-weight:600;box-shadow:0 6px 24px rgba(0,0,0,.14);display:flex;align-items:center;gap:.6rem;`;
+        div.innerHTML = `<i class="fas ${c.icon}"></i><span>${message}</span>`;
+        document.body.appendChild(div);
+        setTimeout(() => div.remove(), 4500);
+    }
+
+    $('#openingSearchInput').on('input', function () { dt.search($(this).val()).draw(); });
+
+    stockSelect.addEventListener('change', function () {
+        changedMap.clear();
+        refreshChangedCount();
+        dt.ajax.reload();
+    });
+
+    $('#openingTable, #openingCardsMobile').on('input', '.opening-qty-input', function () {
+        const itemId   = String(this.dataset.itemId);
+        const original = parseFloat(this.dataset.original || 0);
+        const newVal   = parseFloat(this.value) || 0;
+
+        if (newVal < 0) { this.value = 0; showToast('لا يمكن إدخال كمية سالبة', 'error'); return; }
+
+        if (Math.abs(newVal - original) < 0.00005) {
+            changedMap.delete(itemId);
+            this.classList.remove('opening-qty-input--changed');
+        } else {
+            changedMap.set(itemId, parseFloat(newVal.toFixed(4)));
+            this.classList.add('opening-qty-input--changed');
+        }
+        refreshChangedCount();
+    });
+
+    function setSavingState(on) {
+        saveBtns.forEach(btn => {
+            if (!btn) return;
+            if (on) { btn.dataset.orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>جاري الحفظ...</span>'; }
+            else { btn.disabled = false; if (btn.dataset.orig) btn.innerHTML = btn.dataset.orig; }
+        });
+    }
+
+    function saveChanges() {
+        if (!stockSelect.value) { showToast('يرجى اختيار المخزن أولاً', 'warning'); return; }
+        if (!changedMap.size)   { showToast('لا توجد تعديلات للحفظ', 'info'); return; }
+        setSavingState(true);
+        fetch(SAVE_API, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.cookie.match('(^|;) ?csrftoken=([^;]*)(;|$)')?.[2] || '' },
+            body: JSON.stringify({
+                stock_id: stockSelect.value,
+                rows: Array.from(changedMap.entries()).map(([item_id, quantity]) => ({ item_id: Number(item_id), quantity }))
+            })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) { showToast(data.message || 'تعذر الحفظ', 'error'); return; }
+            changedMap.clear(); refreshChangedCount(); dt.ajax.reload(null, false);
+            showToast(data.message || 'تم حفظ التعديلات', 'success');
+        })
+        .catch(() => showToast('حدث خطأ في الاتصال', 'error'))
+        .finally(() => setSavingState(false));
+    }
+
+    saveBtns.forEach(btn => btn.addEventListener('click', saveChanges));
+})();
+</script>
+{% endblock %}

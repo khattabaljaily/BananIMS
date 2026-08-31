@@ -1,0 +1,170 @@
+{% extends "layouts/dashboard.html" %}
+{% load static store_tags humanize %}
+
+{% block title %}طلبات المتجر الإلكتروني{% endblock %}
+{% block page_header %}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/store_manage_orders.css' %}?v=2.0">
+{% endblock %}
+
+{% block content %}
+<div class="cx-scene">
+
+<div class="cx-hero">
+  <div class="cx-hero-inner">
+    <div class="cx-hero-left">
+      <div class="cx-hero-icon-wrap"><i class="fas fa-inbox"></i></div>
+      <div>
+        <h1 class="cx-hero-title">طلبات المتجر</h1>
+        <p class="cx-hero-desc">مراجعة واعتماد الطلبات الواردة من المتجر الإلكتروني</p>
+      </div>
+    </div>
+    <div class="cx-hero-right">
+      <div class="cx-hero-actions">
+        <a href="{% url 'store:manage_settings' %}" class="cx-btn-secondary">
+          <i class="fas fa-cog"></i><span>إعدادات المتجر</span>
+        </a>
+      </div>
+    </div>
+  </div>
+  <div class="cx-stats-inline">
+    <a href="?status=pending" class="cx-stat-badge {% if status_filter == 'pending' %}cx-stat-badge--danger{% else %}cx-stat-badge--muted{% endif %}">
+      <i class="fas fa-clock"></i>
+      <strong>{{ counts.pending }}</strong><span>في الانتظار</span>
+    </a>
+    <a href="?status=approved" class="cx-stat-badge {% if status_filter == 'approved' %}cx-stat-badge--success{% else %}cx-stat-badge--muted{% endif %}">
+      <i class="fas fa-check-circle"></i>
+      <strong>{{ counts.approved }}</strong><span>مقبول</span>
+    </a>
+    <a href="?status=rejected" class="cx-stat-badge {% if status_filter == 'rejected' %}cx-stat-badge--warning{% else %}cx-stat-badge--muted{% endif %}">
+      <i class="fas fa-times-circle"></i>
+      <strong>{{ counts.rejected }}</strong><span>مرفوض</span>
+    </a>
+    <a href="?" class="cx-stat-badge {% if not status_filter %}cx-stat-badge--muted cx-stat-badge--active{% else %}cx-stat-badge--muted{% endif %}">
+      <i class="fas fa-list"></i>
+      <strong>{{ counts.total|default:'' }}</strong><span>الكل</span>
+    </a>
+  </div>
+</div>
+
+<div class="cx-panel">
+  <div class="cx-table-wrap">
+    <table class="cx-table">
+      <thead>
+        <tr>
+          <th>رقم الطلب</th>
+          <th>العميل</th>
+          <th>الهاتف</th>
+          <th>المبلغ</th>
+          <th>الدفع</th>
+          <th>التاريخ</th>
+          <th>الحالة</th>
+          <th>إجراءات</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for order in orders %}
+        <tr id="order-row-{{ order.pk }}">
+          <td><strong>{{ order.order_number }}</strong></td>
+          <td>{{ order.customer_name }}</td>
+          <td><a href="tel:{{ order.customer_phone }}" dir="ltr">{{ order.customer_phone }}</a></td>
+          <td><strong dir="ltr">{{ order.total_amount|format_price }}</strong></td>
+          <td>
+            {% if order.payment_method == 'bank' %}
+            <span class="st-order-badge st-pay-badge--bank"><i class="fas fa-university"></i> تحويل بنكي</span>
+            {% else %}
+            <span class="st-order-badge st-pay-badge--credit"><i class="fas fa-clock"></i> آجل</span>
+            {% endif %}
+          </td>
+          <td>{{ order.created_at|naturaltime }}</td>
+          <td>
+            {% if order.status == 'pending' %}
+            <span class="st-order-badge st-order-badge--pending"><i class="fas fa-clock"></i> في الانتظار</span>
+            {% elif order.status == 'approved' %}
+            <span class="st-order-badge st-order-badge--approved"><i class="fas fa-check-circle"></i> مقبول</span>
+            {% else %}
+            <span class="st-order-badge st-order-badge--rejected"><i class="fas fa-times-circle"></i> مرفوض</span>
+            {% endif %}
+          </td>
+          <td>
+            <div style="display:flex;gap:.4rem;align-items:center;">
+              <a href="{% url 'store:manage_order_detail' pk=order.pk %}" class="cx-action-btn cx-action-btn--view" title="تفاصيل">
+                <i class="fas fa-eye"></i>
+              </a>
+              {% if order.status == 'pending' %}
+              <button class="st-action-approve" onclick="approveOrder({{ order.pk }})" title="قبول وإنشاء فاتورة">
+                <i class="fas fa-check"></i>
+              </button>
+              <button class="st-action-reject" onclick="rejectOrder({{ order.pk }})" title="رفض">
+                <i class="fas fa-times"></i>
+              </button>
+              {% elif order.status == 'approved' and order.sale_invoice %}
+              <a href="/sales/{{ order.sale_invoice.pk }}/" class="st-action-invoice" title="عرض الفاتورة">
+                <i class="fas fa-file-invoice"></i>
+              </a>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="8" style="text-align:center;padding:3rem 1rem;color:#94a3b8;">
+            <i class="fas fa-inbox" style="font-size:2rem;display:block;margin-bottom:.75rem;opacity:.35;"></i>
+            لا توجد طلبات
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const CSRF = "{{ csrf_token }}";
+
+async function approveOrder(pk) {
+  try {
+    const r = await fetch(`/store/manage/orders/${pk}/approve/`, {
+      method: 'POST', headers: { 'X-CSRFToken': CSRF, 'X-Requested-With': 'XMLHttpRequest' }
+    });
+    if (r.status === 403) {
+      EnjazIMS.toast('ليس لديك صلاحية لقبول الطلبات', 'error'); return;
+    }
+    const d = await r.json();
+    if (d.success) {
+      if (window.EnjazIMS) EnjazIMS.toast(d.message, 'success');
+      setTimeout(() => location.reload(), 800);
+    } else {
+      if (window.EnjazIMS) EnjazIMS.toast(d.error || d.message || 'حدث خطأ', 'error');
+    }
+  } catch(e) {
+    if (window.EnjazIMS) EnjazIMS.toast('خطأ في الاتصال، يرجى المحاولة مرة أخرى', 'error');
+  }
+}
+
+async function rejectOrder(pk) {
+  try {
+    const r = await fetch(`/store/manage/orders/${pk}/reject/`, {
+      method: 'POST', headers: { 'X-CSRFToken': CSRF, 'X-Requested-With': 'XMLHttpRequest' }
+    });
+    if (r.status === 403) {
+      EnjazIMS.toast('ليس لديك صلاحية لرفض الطلبات', 'error'); return;
+    }
+    const d = await r.json();
+    if (d.success) {
+      if (window.EnjazIMS) EnjazIMS.toast('تم رفض الطلب', 'warning');
+      setTimeout(() => location.reload(), 700);
+    } else {
+      if (window.EnjazIMS) EnjazIMS.toast(d.error || d.message || 'حدث خطأ', 'error');
+    }
+  } catch(e) {
+    if (window.EnjazIMS) EnjazIMS.toast('خطأ في الاتصال، يرجى المحاولة مرة أخرى', 'error');
+  }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,119 @@
+{% extends "layouts/dashboard.html" %}
+{% load static %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=4.0">
+{% endblock %}
+
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<div class="cx-scene printable-scene">
+
+    <!-- ══ HERO ════════════════════════════════════════════════ -->
+    <div class="rpt-hero rpt-hero--stocks">
+        <div class="rpt-hero-inner">
+            <div class="rpt-hero-left">
+                <div class="rpt-hero-icon"><i class="fas fa-warehouse"></i></div>
+                <div>
+                    <h1 class="rpt-hero-title">ملخص المخزن</h1>
+                    <p class="rpt-hero-desc">لحظي — جميع المخازن</p>
+                </div>
+            </div>
+            <div class="rpt-hero-actions">
+                <button onclick="window.print()" class="rpt-hero-btn">
+                    <i class="fas fa-print"></i> طباعة
+                </button>
+                <a href="{% url 'stocks:reports:summary_report_export' %}" class="rpt-hero-btn">
+                    <i class="fas fa-download"></i> تصدير
+                </a>
+                <a href="{% url 'stocks:quantities_list' %}" class="rpt-hero-btn">
+                    <i class="fas fa-arrow-left"></i> عودة
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <p class="rpt-unit-note rpt-unit-note m-0 p-2--mixed"><i class="fas fa-triangle-exclamation me-1"></i>الكميات إجمالية بالوحدة الأساسية لكل صنف — قد تختلف الوحدات بين الأصناف</p>
+
+    <!-- ══ KPI CARDS ═══════════════════════════════════════════ -->
+    <div class="rpt-kpi-grid">
+        <div class="rpt-kpi-card rpt-kpi--blue">
+            <div class="rpt-kpi-icon"><i class="fas fa-cube"></i></div>
+            <div class="rpt-kpi-value">{{ report.summary.total_quantity|floatformat:0 }}</div>
+            <div class="rpt-kpi-label">إجمالي الكمية</div>
+        </div>
+        <div class="rpt-kpi-card rpt-kpi--green">
+            <div class="rpt-kpi-icon"><i class="fas fa-check-circle"></i></div>
+            <div class="rpt-kpi-value">{{ report.summary.total_available|floatformat:0 }}</div>
+            <div class="rpt-kpi-label">الكمية المتاحة</div>
+        </div>
+        <div class="rpt-kpi-card rpt-kpi--amber">
+            <div class="rpt-kpi-icon"><i class="fas fa-lock"></i></div>
+            <div class="rpt-kpi-value">{{ report.summary.total_reserved|floatformat:0 }}</div>
+            <div class="rpt-kpi-label">الكمية المحجوزة</div>
+        </div>
+        <div class="rpt-kpi-card rpt-kpi--teal">
+            <div class="rpt-kpi-icon"><i class="fas fa-list"></i></div>
+            <div class="rpt-kpi-value">{{ report.summary.unique_items }}</div>
+            <div class="rpt-kpi-label">عدد المنتجات</div>
+        </div>
+        <div class="rpt-kpi-card rpt-kpi--red">
+            <div class="rpt-kpi-icon"><i class="fas fa-triangle-exclamation"></i></div>
+            <div class="rpt-kpi-value">{{ report.summary.low_stock_items }}</div>
+            <div class="rpt-kpi-label">منتجات منخفضة</div>
+        </div>
+        <div class="rpt-kpi-card rpt-kpi--purple">
+            <div class="rpt-kpi-icon"><i class="fas fa-coins"></i></div>
+            <div class="rpt-kpi-value">{{ report.summary.total_value|floatformat:0 }}</div>
+            <div class="rpt-kpi-label">القيمة الإجمالية</div>
+        </div>
+    </div>
+
+    <!-- ══ STOCK BREAKDOWN CHART ════════════════════════════════ -->
+    <div class="rpt-panel">
+        <div class="rpt-panel-header rpt-panel-header--stocks">
+            <h3 class="rpt-panel-title"><i class="fas fa-chart-pie me-2"></i>توزيع الكميات</h3>
+        </div>
+        <div class="rpt-chart-wrap" style="max-width:420px; margin:0 auto;">
+            <canvas id="stocksDoughnutChart" class="rpt-chart-canvas"></canvas>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    const available = parseFloat("{{ report.summary.total_available }}") || 0;
+    const reserved  = parseFloat("{{ report.summary.total_reserved }}")  || 0;
+    const isDark    = document.documentElement.getAttribute('data-theme') === 'dark';
+    const textColor = isDark ? '#9ca3af' : '#6b7280';
+
+    new Chart(document.getElementById('stocksDoughnutChart'), {
+        type: 'doughnut',
+        data: {
+            labels: ['متاح', 'محجوز'],
+            datasets: [{
+                data: [available, reserved],
+                backgroundColor: ['rgba(17,153,142,0.8)', 'rgba(245,158,11,0.8)'],
+                borderColor:     ['#11998e', '#f59e0b'],
+                borderWidth: 2,
+                hoverOffset: 8,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            cutout: '65%',
+            plugins: {
+                legend: { position: 'bottom', labels: { color: textColor, padding: 16, font: { size: 13 } } },
+                tooltip: { callbacks: { label: ctx => ' ' + Number(ctx.raw).toLocaleString('en') + ' وحدة' } }
+            }
+        }
+    });
+})();
+</script>
+{% endblock %}

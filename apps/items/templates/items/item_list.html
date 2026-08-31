@@ -1,0 +1,1663 @@
+{% extends "layouts/dashboard.html" %}
+{% load static %}
+{% load humanize %}
+{% load capabilities_tags %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/items.css' %}?v=1.0">
+<style>
+/* ── Unit type toggle ─────────────────────────────────────── */
+.unit-type-row { display:flex; gap:.75rem; }
+.unit-type-btn {
+  flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:.2rem; padding:.7rem; border:2px solid var(--border-light,#e5e7eb);
+  border-radius:12px; cursor:pointer; font-size:.82rem; font-weight:600;
+  color:var(--text-secondary,#6b7280); background:var(--surface-alt,#f9fafb);
+  transition:border-color .15s, background .15s, color .15s; user-select:none;
+}
+.unit-type-btn input[type=radio] { display:none; }
+.unit-type-btn i { font-size:1.1rem; }
+.unit-type-btn small { font-size:.68rem; font-weight:400; opacity:.7; }
+.unit-type-btn.active {
+  border-color:var(--indigo-500,#6366f1);
+  background:var(--indigo-50,#eef2ff);
+  color:var(--indigo-700,#4338ca);
+}
+/* ── Unit pair rows ───────────────────────────────────────── */
+.unit-pair {
+  display: flex;
+  align-items: flex-end;
+  gap: .55rem;
+  margin-bottom: .6rem;
+}
+.unit-pair__grp { display: flex; flex-direction: column; }
+.unit-pair__grp--name { flex: 1; min-width: 0; }
+.unit-pair__grp--count,
+.unit-pair__grp--prev { flex-shrink: 0; }
+.unit-pair__lbl {
+  font-size: .68rem; font-weight: 600;
+  color: var(--text-muted, #9ca3af);
+  margin-bottom: .22rem;
+  white-space: nowrap;
+}
+.unit-pair__prev-badge {
+  display: inline-flex; align-items: center;
+  height: 38px; padding: 0 .75rem;
+  background: #eef2ff; color: #4338ca;
+  border: 1px solid #c7d2fe; border-radius: .375rem;
+  font-size: .82rem; font-weight: 700;
+  white-space: nowrap;
+}
+.unit-pair__eq {
+  font-size: 1rem; font-weight: 800;
+  color: var(--text-muted, #9ca3af);
+  padding-bottom: .45rem; flex-shrink: 0;
+}
+/* Counter */
+.unit-counter {
+  display: flex; align-items: stretch;
+  border: 1px solid #ced4da; border-radius: .375rem;
+  overflow: hidden; height: 38px;
+}
+.unit-counter__btn {
+  width: 30px; border: none; background: #f8f9fa;
+  font-size: .95rem; font-weight: 700; cursor: pointer;
+  color: #495057; transition: background .12s, color .12s;
+}
+.unit-counter__btn:hover { background: #e9ecef; color: #4338ca; }
+.unit-counter__val {
+  width: 46px; border: none;
+  border-left: 1px solid #ced4da; border-right: 1px solid #ced4da;
+  text-align: center; font-size: .9rem; font-weight: 700;
+  background: #fff; color: #212529; padding: 0;
+}
+.unit-pair__remove {
+  background: none; border: none; color: #94a3b8;
+  cursor: pointer; padding: .4rem .5rem; border-radius: 7px;
+  font-size: .8rem; flex-shrink: 0; align-self: flex-end;
+  transition: color .15s, background .15s;
+  margin-bottom: .05rem;
+}
+.unit-pair__remove:hover { color: #ef4444; background: #fee2e2; }
+[data-theme="dark"] .unit-pair__prev-badge { background: rgba(99,102,241,.18); color: #a5b4fc; border-color: rgba(99,102,241,.3); }
+[data-theme="dark"] .unit-counter { border-color: rgba(255,255,255,.15); }
+[data-theme="dark"] .unit-counter__btn { background: rgba(255,255,255,.07); color: #e2e8f0; }
+[data-theme="dark"] .unit-counter__btn:hover { background: rgba(99,102,241,.18); color: #a5b4fc; }
+[data-theme="dark"] .unit-counter__val { background: rgba(255,255,255,.05); color: #f1f5f9; border-color: rgba(255,255,255,.1); }
+/* ── HC auto-calc hint ────────────────────────────────────── */
+.cx-hc-calc-hint {
+  font-size: .78rem; color: #6366f1; font-weight: 600;
+  min-height: 1.1rem; margin-top: 3px; transition: opacity .15s;
+}
+[data-theme="dark"] .cx-hc-calc-hint { color: #a5b4fc; }
+
+/* ── Ledger modal: restore real table layout on mobile ─── */
+@media (max-width: 768px) {
+  .cx-ledger-dialog .cx-table-wrap { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+  .cx-ledger-dialog .cx-table { display: table !important; min-width: 640px !important; }
+  .cx-ledger-dialog .cx-table thead { display: table-header-group !important; }
+  .cx-ledger-dialog .cx-table tbody { display: table-row-group !important; flex-direction: unset !important; gap: 0 !important; }
+  .cx-ledger-dialog .cx-table tbody tr { display: table-row !important; border-radius: 0 !important; box-shadow: none !important; padding: 0 !important; overflow: visible !important; }
+  .cx-ledger-dialog .cx-table tbody tr::before { display: none !important; }
+  .cx-ledger-dialog .cx-table tbody td { display: table-cell !important; padding: .5rem .7rem !important; border-bottom: 1px solid var(--border-light, #e5e7eb) !important; font-size: .8rem !important; }
+}
+</style>
+{% endblock %}
+
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<div class="cx-scene">
+
+<!-- ══════════════════════════ PAGE HERO HEADER ══════════════════════════ -->
+<div class="cx-hero">
+    <div class="cx-hero-inner">
+        <div class="cx-hero-left">
+            <div class="cx-hero-icon-wrap">
+                <i class="fas fa-box-open"></i>
+            </div>
+            <div>
+                <h1 class="cx-hero-title">المنتجات</h1>
+                <p class="cx-hero-desc">إدارة المنتجات والأصناف</p>
+            </div>
+        </div>
+        <div class="cx-hero-right">
+            <div class="cx-hero-actions">
+                <a href="{% url 'items:category_list' %}" class="cx-btn-secondary">
+                    <i class="fas fa-tags"></i>
+                    <span>التصنيفات</span>
+                </a>
+                <a href="{% url 'items:export_api' %}" class="cx-btn-secondary" data-require-perm="export_items">
+                    <i class="fas fa-file-export"></i>
+                    <span>تصدير</span>
+                </a>
+                <button type="button" class="cx-btn-secondary" id="btnOpenImportItems" data-require-perm="import_items">
+                    <i class="fas fa-file-import"></i>
+                    <span>استيراد</span>
+                </button>
+                <button type="button" class="cx-btn-add" id="btnOpenCreateItem" data-require-perm="add_items">
+                    <i class="fas fa-plus"></i>
+                    <span>إضافة منتج</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="cx-stats-inline">
+        <span class="cx-stat-badge cx-stat-badge--primary">
+            <i class="fas fa-box-open"></i>
+            <strong>{{ stats.total }}</strong>
+            <span>منتج</span>
+        </span>
+        <span class="cx-stat-badge cx-stat-badge--success">
+            <i class="fas fa-check-circle"></i>
+            <strong>{{ stats.active }}</strong>
+            <span>نشط</span>
+        </span>
+        <span class="cx-stat-badge cx-stat-badge--muted">
+            <i class="fas fa-pause-circle"></i>
+            <strong>{{ stats.inactive }}</strong>
+            <span>موقوف</span>
+        </span>
+    </div>
+</div>
+
+<!-- ══════════════════════════ MAIN TABLE PANEL ══════════════════════════ -->
+<div class="cx-panel">
+    <div class="cx-toolbar">
+        <div class="cx-toolbar-search">
+            <i class="fas fa-search cx-toolbar-search-icon"></i>
+            <input type="text" id="itemSearchInput" class="cx-search-input" placeholder="ابحث بالاسم أو الـ SKU أو الباركود...">
+        </div>
+        <div class="cx-toolbar-end">
+            <div class="cx-filter-tabs" role="group">
+                <button type="button" class="cx-filter-tab active" data-status="">الكل</button>
+                <button type="button" class="cx-filter-tab" data-status="active">نشط</button>
+                <button type="button" class="cx-filter-tab" data-status="inactive">موقوف</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-responsive cx-table-wrap">
+        <table id="itemsTable" class="cx-table">
+            <thead>
+                <tr>
+                    <th style="min-width:220px">المنتج</th>
+                    <th>الـ SKU</th>
+                    <th>التصنيف</th>
+                    <th>وحدة البيع</th>
+                    <th>سعر التكلفة</th>
+                    <th>سعر البيع</th>
+                    {% if hc_mode %}<th>السعر ({{ hc_currency_symbol }})</th>{% endif %}
+                    <th>الحالة</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+    <div id="itemCardsMobile" class="items-mobile-card-list d-none p-3" aria-live="polite"></div>
+</div>
+
+</div>
+
+<!-- ══════════════════════════ ADD / EDIT MODAL (Full Screen) ══════════════════════════ -->
+<div class="modal fade" id="itemModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered cx-modal-dialog">
+        <div class="modal-content cx-modal">
+            <form id="itemForm" novalidate enctype="multipart/form-data">
+                {% csrf_token %}
+                <input type="hidden" id="itemId" value="">
+
+                <div class="cx-modal-main">
+                    <div class="cx-modal-header">
+                        <div>
+                            <h5 class="cx-modal-title" id="itemModalTitle">إضافة منتج جديد</h5>
+                        </div>
+                        <button type="button" class="cx-modal-close" data-bs-dismiss="modal" aria-label="Close">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
+                    <div class="cx-modal-body">
+                        <div class="alert alert-danger d-none js-form-errors mb-4"></div>
+
+                        {# ── ١: معلومات أساسية ── #}
+                        <div class="cx-form-group-label">
+                            <span class="cx-form-group-icon"><i class="fas fa-circle-info"></i></span> المعلومات الأساسية
+                        </div>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label class="cx-label" for="id_name">{{ item_form.name.label }} <sup class="cx-required">*</sup></label>
+                                {{ item_form.name }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="cx-label" for="id_name_en">{{ item_form.name_en.label }}</label>
+                                {{ item_form.name_en }}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="cx-label" for="id_item_type">{{ item_form.item_type.label }}</label>
+                                {{ item_form.item_type }}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="cx-label" for="id_category">{{ item_form.category.label }}</label>
+                                {{ item_form.category }}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="cx-label" for="id_barcode">{{ item_form.barcode.label }}</label>
+                                {{ item_form.barcode }}
+                            </div>
+                            <div class="col-md-3">
+                                <label class="cx-label" for="id_sku">{{ item_form.sku.label }}</label>
+                                {{ item_form.sku }}
+                            </div>
+                            <div class="col-md-3">
+                                <label class="cx-label" for="id_tax_rate">{{ item_form.tax_rate.label }}</label>
+                                {{ item_form.tax_rate }}
+                            </div>
+                        </div>
+
+                        {# ── وحدات المنتج ── #}
+                        <div class="cx-form-group-label">
+                            <span class="cx-form-group-icon"><i class="fas fa-ruler"></i></span>
+                            الوحدات
+                        </div>
+                        <div class="mb-4">
+                            {# Toggle: single vs multiple #}
+                            <div class="unit-type-row mb-3">
+                                <label class="unit-type-btn active" id="btnUnitSingle">
+                                    <input type="radio" name="item_unit_mode" value="single" checked>
+                                    <i class="fas fa-cube"></i>
+                                    وحدة واحدة
+                                    <small>مثال: قطعة فقط</small>
+                                </label>
+                                <label class="unit-type-btn" id="btnUnitMultiple">
+                                    <input type="radio" name="item_unit_mode" value="multiple">
+                                    <i class="fas fa-cubes"></i>
+                                    وحدات متعددة
+                                    <small>مثال: حبة + كرتون</small>
+                                </label>
+                            </div>
+
+                            {# Single unit row #}
+                            <div id="singleUnitRow" class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="cx-label">اسم الوحدة</label>
+                                    <input type="text" class="form-control" id="singleUnitName" placeholder="مثال: قطعة، كيلو، لتر، متر">
+                                </div>
+                            </div>
+
+                            {# Multi-unit builder #}
+                            <div id="multiUnitRow" class="d-none">
+                                <div id="unitRowsContainer"></div>
+                                <button type="button" class="cx-btn-secondary mt-2" id="btnAddUnitRow" style="font-size:.8rem;">
+                                    <i class="fas fa-plus"></i> إضافة وحدة أكبر
+                                </button>
+                                <div class="cx-field-hint mt-2" style="font-size:.75rem;color:var(--text-muted,#9ca3af);">
+                                    <i class="fas fa-info-circle"></i>
+                                    أدخل الوحدات من الأصغر إلى الأكبر — الأولى هي الوحدة الأساسية (الأصغر دائماً = 1)
+                                </div>
+                            </div>
+
+                            {# Hidden field sent to server #}
+                            <input type="hidden" id="units_json" name="units_json" value="">
+                        </div>
+
+                        {# ── ٢: التسعير ── #}
+                        <div class="cx-form-group-label">
+                            <span class="cx-form-group-icon"><i class="fas fa-tag"></i></span>
+                            التسعير
+                            <span style="font-weight:400;font-size:.75rem;color:var(--text-muted,#9ca3af);margin-right:.5rem;">
+                                — الأسعار للوحدة: <strong id="pricingUnitLabel" style="color:var(--text-secondary,#6b7280);">—</strong>
+                            </span>
+                            {% if hc_mode %}
+                            <span class="badge bg-warning text-dark ms-2" style="font-size:.7rem;">
+                                <i class="fas fa-exchange-alt me-1"></i>
+                                وضع {{ hc_currency_symbol }} — 1 {{ hc_currency_symbol }} = {{ exchange_rate|stringformat:".2f"|intcomma }} {{ local_currency_symbol }}
+                            </span>
+                            {% endif %}
+                        </div>
+
+                        {% if hc_mode %}
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-4">
+                                <label class="cx-label" for="id_cost_price">سعر التكلفة ({{ local_currency_symbol }})</label>
+                                {{ item_form.cost_price }}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="cx-label" for="id_selling_price">سعر البيع ({{ local_currency_symbol }}) <sup class="cx-required">*</sup></label>
+                                {{ item_form.selling_price }}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="cx-label" for="id_min_selling_price">أدنى سعر ({{ local_currency_symbol }})</label>
+                                {{ item_form.min_selling_price }}
+                            </div>
+                        </div>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-4">
+                                <label class="cx-label text-muted">سعر التكلفة ({{ hc_currency_symbol }}) — تلقائي</label>
+                                <input type="text" class="form-control" id="id_cost_price_hc_display" readonly>
+                                <input type="hidden" id="id_cost_price_hc" name="cost_price_hc">
+                                <div class="cx-hc-calc-hint" id="hint_cost_price_hc"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="cx-label text-muted">سعر البيع ({{ hc_currency_symbol }}) — تلقائي</label>
+                                <input type="text" class="form-control" id="id_selling_price_hc_display" readonly>
+                                <input type="hidden" id="id_selling_price_hc" name="selling_price_hc">
+                                <div class="cx-hc-calc-hint" id="hint_selling_price_hc"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="cx-label text-muted">أدنى سعر ({{ hc_currency_symbol }}) — تلقائي</label>
+                                <input type="text" class="form-control" id="id_min_selling_price_hc_display" readonly>
+                                <input type="hidden" id="id_min_selling_price_hc" name="min_selling_price_hc">
+                                <div class="cx-hc-calc-hint" id="hint_min_selling_price_hc"></div>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-4">
+                                <label class="cx-label" for="id_cost_price">{{ item_form.cost_price.label }}</label>
+                                {{ item_form.cost_price }}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="cx-label" for="id_selling_price">{{ item_form.selling_price.label }} <sup class="cx-required">*</sup></label>
+                                {{ item_form.selling_price }}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="cx-label" for="id_min_selling_price">{{ item_form.min_selling_price.label }}</label>
+                                {{ item_form.min_selling_price }}
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        {# ── ٣: المخزون ── #}
+                        <div class="cx-form-group-label">
+                            <span class="cx-form-group-icon"><i class="fas fa-warehouse"></i></span> حدود المخزن
+                        </div>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label class="cx-label" for="id_min_quantity">{{ item_form.min_quantity.label }}</label>
+                                {{ item_form.min_quantity }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="cx-label" for="id_max_quantity">{{ item_form.max_quantity.label }}</label>
+                                {{ item_form.max_quantity }}
+                            </div>
+                        </div>
+
+                        {# ── ٤: خيارات متقدمة — تظهر فقط للأنواع التجارية التي تدعمها ── #}
+                        {% if tenant_capabilities.has_expiry_dates or tenant_capabilities.has_batch_numbers or tenant_capabilities.has_serial_numbers %}
+                        <div class="cx-form-group-label">
+                            <span class="cx-form-group-icon"><i class="fas fa-sliders"></i></span> خيارات متقدمة
+                        </div>
+                        <div class="row g-3 mb-4">
+                            {% if tenant_capabilities.has_expiry_dates %}
+                            <div class="col-md-6">
+                                <label class="cx-toggle-card" for="id_track_expiry">
+                                    <div class="cx-toggle-info">
+                                        <span class="cx-toggle-title">
+                                            <i class="fas fa-calendar-xmark text-danger me-1"></i>
+                                            {{ item_form.track_expiry.label }}
+                                        </span>
+                                        <span class="cx-toggle-desc">تتبع تاريخ انتهاء الصلاحية لهذا المنتج</span>
+                                    </div>
+                                    {{ item_form.track_expiry }}
+                                    <div class="cx-toggle-switch"></div>
+                                </label>
+                            </div>
+                            {% endif %}
+                            {% if tenant_capabilities.has_batch_numbers %}
+                            <div class="col-md-6">
+                                <label class="cx-toggle-card" for="id_track_batch">
+                                    <div class="cx-toggle-info">
+                                        <span class="cx-toggle-title">
+                                            <i class="fas fa-layer-group text-warning me-1"></i>
+                                            {{ item_form.track_batch.label }}
+                                        </span>
+                                        <span class="cx-toggle-desc">تتبع أرقام الدفعات لهذا المنتج</span>
+                                    </div>
+                                    {{ item_form.track_batch }}
+                                    <div class="cx-toggle-switch"></div>
+                                </label>
+                            </div>
+                            {% endif %}
+                            {% if tenant_capabilities.has_serial_numbers %}
+                            <div class="col-md-6">
+                                <label class="cx-toggle-card" for="id_track_serial">
+                                    <div class="cx-toggle-info">
+                                        <span class="cx-toggle-title">
+                                            <i class="fas fa-barcode text-info me-1"></i>
+                                            {{ item_form.track_serial.label }}
+                                        </span>
+                                        <span class="cx-toggle-desc">تتبع رقم تسلسلي لكل وحدة</span>
+                                    </div>
+                                    {{ item_form.track_serial }}
+                                    <div class="cx-toggle-switch"></div>
+                                </label>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        {# ── ٥: معلومات إضافية ── #}
+                        <div class="cx-form-group-label">
+                            <span class="cx-form-group-icon"><i class="fas fa-list-check"></i></span> معلومات إضافية
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="cx-label" for="id_description">{{ item_form.description.label }}</label>
+                                {{ item_form.description }}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="cx-toggle-card" for="id_is_active">
+                                    <div class="cx-toggle-info">
+                                        <span class="cx-toggle-title">{{ item_form.is_active.label }}</span>
+                                        <span class="cx-toggle-desc">يظهر في التقارير والبحث</span>
+                                    </div>
+                                    {{ item_form.is_active }}
+                                    <div class="cx-toggle-switch"></div>
+                                </label>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="cx-toggle-card" for="id_is_sellable">
+                                    <div class="cx-toggle-info">
+                                        <span class="cx-toggle-title">{{ item_form.is_sellable.label }}</span>
+                                        <span class="cx-toggle-desc">يظهر في فواتير البيع</span>
+                                    </div>
+                                    {{ item_form.is_sellable }}
+                                    <div class="cx-toggle-switch"></div>
+                                </label>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="cx-toggle-card" for="id_is_purchasable">
+                                    <div class="cx-toggle-info">
+                                        <span class="cx-toggle-title">{{ item_form.is_purchasable.label }}</span>
+                                        <span class="cx-toggle-desc">يظهر في أوامر الشراء</span>
+                                    </div>
+                                    {{ item_form.is_purchasable }}
+                                    <div class="cx-toggle-switch"></div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="cx-modal-footer">
+                        <button type="button" class="cx-btn-ghost" data-bs-dismiss="modal">إلغاء</button>
+                        <button type="submit" class="cx-btn-primary" id="itemSubmitBtn">
+                            <i class="fas fa-check me-1"></i> حفظ
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════ VIEW ITEM MODAL ══════════════════════════ -->
+<div class="modal fade" id="viewItemModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered cx-view-dialog">
+        <div class="modal-content cx-view-modal">
+            <div class="cx-view-header">
+                <div class="cx-view-header-content">
+                    <div class="cx-view-avatar" id="viewItemAvatar" style="background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.4rem;"><i class="fas fa-box-open"></i></div>
+                    <div>
+                        <h5 class="cx-view-title" id="viewItemName"></h5>
+                        <p class="cx-view-subtitle" id="viewItemSku"></p>
+                    </div>
+                </div>
+                <button type="button" class="cx-view-close" data-bs-dismiss="modal" aria-label="Close"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="cx-view-body">
+                {# ── المعلومات الأساسية ── #}
+                <div class="cx-view-section">
+                    <div class="cx-view-section-title"><i class="fas fa-info-circle"></i> المعلومات الأساسية</div>
+                    <div class="cx-info-grid">
+                        <div class="cx-info-card">
+                            <div class="cx-info-card-icon cx-info-icon--name"><i class="fas fa-tag"></i></div>
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">الاسم</span>
+                                <span class="cx-info-card-value" id="viewItemNameVal"></span>
+                            </div>
+                        </div>
+                        <div class="cx-info-card" id="viewItemNameEnCard">
+                            <div class="cx-info-card-icon cx-info-icon--notes"><i class="fas fa-language"></i></div>
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">الاسم بالإنجليزية</span>
+                                <span class="cx-info-card-value" id="viewItemNameEn"></span>
+                            </div>
+                        </div>
+                        <div class="cx-info-card">
+                            <div class="cx-info-card-icon cx-info-icon--phone"><i class="fas fa-barcode"></i></div>
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">الباركود</span>
+                                <span class="cx-info-card-value" id="viewItemBarcode"></span>
+                            </div>
+                        </div>
+                        <div class="cx-info-card">
+                            <div class="cx-info-card-icon cx-info-icon--city"><i class="fas fa-tags"></i></div>
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">التصنيف</span>
+                                <span class="cx-info-card-value" id="viewItemCategory"></span>
+                            </div>
+                        </div>
+                        <div class="cx-info-card">
+                            <div class="cx-info-card-icon cx-info-icon--email"><i class="fas fa-ruler"></i></div>
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">وحدة البيع</span>
+                                <span class="cx-info-card-value" id="viewItemUnit"></span>
+                            </div>
+                        </div>
+                        <div class="cx-info-card" id="viewItemPurchaseUnitCard">
+                            <div class="cx-info-card-icon cx-info-icon--email"><i class="fas fa-ruler-combined"></i></div>
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">وحدة الشراء</span>
+                                <span class="cx-info-card-value" id="viewItemPurchaseUnit"></span>
+                            </div>
+                        </div>
+                        <div class="cx-info-card">
+                            <div class="cx-info-card-icon cx-info-icon--status"><i class="fas fa-circle-check"></i></div>
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">الحالة</span>
+                                <span class="cx-info-card-value" id="viewItemStatus"></span>
+                            </div>
+                        </div>
+                        <div class="cx-info-card">
+                            <div class="cx-info-card-icon cx-info-icon--notes"><i class="fas fa-boxes-stacked"></i></div>
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">نوع المنتج</span>
+                                <span class="cx-info-card-value" id="viewItemType"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {# ── التسعير ── #}
+                <div class="cx-view-section">
+                    <div class="cx-view-section-title"><i class="fas fa-money-bill-wave"></i> التسعير</div>
+                    <div class="cx-info-grid">
+                        <div class="cx-info-card cx-info-card--money">
+                            <div class="cx-info-card-icon cx-info-icon--balance"><i class="fas fa-arrow-down"></i></div>
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">سعر التكلفة</span>
+                                <span class="cx-info-card-value cx-info-card-value--money" id="viewItemCostPrice"></span>
+                            </div>
+                        </div>
+                        <div class="cx-info-card cx-info-card--money">
+                            <div class="cx-info-card-icon cx-info-icon--credit"><i class="fas fa-arrow-up"></i></div>
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">سعر البيع</span>
+                                <span class="cx-info-card-value cx-info-card-value--money" id="viewItemSellingPrice"></span>
+                            </div>
+                        </div>
+                        <div class="cx-info-card cx-info-card--money">
+                            <div class="cx-info-card-icon cx-info-icon--balance"><i class="fas fa-percent"></i></div>
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">نسبة الضريبة</span>
+                                <span class="cx-info-card-value" id="viewItemTaxRate"></span>
+                            </div>
+                        </div>
+                        <div class="cx-info-card cx-info-card--money">
+                            <div class="cx-info-card-icon cx-info-icon--credit"><i class="fas fa-hand-holding-dollar"></i></div>
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">أدنى سعر بيع</span>
+                                <span class="cx-info-card-value cx-info-card-value--money" id="viewItemMinSelling"></span>
+                            </div>
+                        </div>
+                        {% if hc_mode %}
+                        <div class="cx-info-card cx-info-card--money" id="viewItemHcCard">
+                            <div class="cx-info-card-icon" style="background:rgba(245,158,11,.15)"><i class="fas fa-exchange-alt" style="color:#d97706"></i></div>
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">سعر البيع ({{ hc_currency_symbol }})</span>
+                                <span class="cx-info-card-value" id="viewItemSellingHc" style="color:#d97706;font-weight:600;"></span>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {# ── حدود المخزون ── #}
+                <div class="cx-view-section">
+                    <div class="cx-view-section-title"><i class="fas fa-warehouse"></i> حدود المخزون</div>
+                    <div class="cx-info-grid">
+                        <div class="cx-info-card">
+                            <div class="cx-info-card-icon" style="background:rgba(239,68,68,.12)"><i class="fas fa-arrow-down-wide-short" style="color:#ef4444"></i></div>
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">الحد الأدنى</span>
+                                <span class="cx-info-card-value" id="viewItemMinQty"></span>
+                            </div>
+                        </div>
+                        <div class="cx-info-card">
+                            <div class="cx-info-card-icon" style="background:rgba(16,185,129,.12)"><i class="fas fa-arrow-up-wide-short" style="color:#10b981"></i></div>
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">الحد الأقصى</span>
+                                <span class="cx-info-card-value" id="viewItemMaxQty"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {# ── وحدات متعددة ── #}
+                <div class="cx-view-section" id="viewItemUnitsSection" style="display:none">
+                    <div class="cx-view-section-title"><i class="fas fa-scale-balanced"></i> الوحدات المتعددة</div>
+                    <div class="table-responsive">
+                        <table class="cx-table" style="margin:0">
+                            <thead><tr><th>الوحدة</th><th>معامل التحويل</th></tr></thead>
+                            <tbody id="viewItemUnitsBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {# ── خيارات إضافية ── #}
+                <div class="cx-view-section">
+                    <div class="cx-view-section-title"><i class="fas fa-sliders"></i> خيارات إضافية</div>
+                    <div class="cx-info-grid">
+                        <div class="cx-info-card cx-info-card--full">
+                            <div class="cx-info-card-icon cx-info-icon--notes"><i class="fas fa-file-alt"></i></div>
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">الوصف</span>
+                                <span class="cx-info-card-value" id="viewItemDescription"></span>
+                            </div>
+                        </div>
+                        <div class="cx-info-card">
+                            <div class="cx-info-card-icon" style="background:rgba(245,158,11,.15)"><i class="fas fa-store" style="color:#f59e0b"></i></div>
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">قابل للبيع</span>
+                                <span class="cx-info-card-value" id="viewItemSellable"></span>
+                            </div>
+                        </div>
+                        <div class="cx-info-card">
+                            <div class="cx-info-card-icon" style="background:rgba(14,165,233,.15)"><i class="fas fa-cart-shopping" style="color:#0ea5e9"></i></div>
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">قابل للشراء</span>
+                                <span class="cx-info-card-value" id="viewItemPurchasable"></span>
+                            </div>
+                        </div>
+                        <div class="cx-info-card" id="viewTrackRow">
+                            <div class="cx-info-card-icon" style="background:rgba(16,185,129,.15)"><i class="fas fa-list-check" style="color:#10b981"></i></div>
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">خيارات متقدمة</span>
+                                <span class="cx-info-card-value" id="viewItemTracking"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="cx-view-footer">
+                <button type="button" class="cx-btn-ghost" data-bs-dismiss="modal">إغلاق</button>
+                <button type="button" class="cx-btn-primary" id="viewEditItemBtn" data-require-perm="change_items">
+                    <i class="fas fa-pen-to-square me-1"></i> تعديل
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="itemLedgerModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered cx-view-dialog cx-ledger-dialog">
+        <div class="modal-content cx-view-modal">
+            <div class="cx-view-header">
+                <div class="cx-view-header-content">
+                    <div>
+                        <h5 class="cx-view-title">سجل حركة المنتج</h5>
+                        <p class="cx-view-subtitle" id="itemLedgerSubtitle">—</p>
+                    </div>
+                </div>
+                <button type="button" class="cx-view-close" data-bs-dismiss="modal" aria-label="Close"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="cx-view-body">
+                <div class="table-responsive cx-table-wrap">
+                    <table class="cx-table">
+                        <thead>
+                            <tr>
+                                <th>التاريخ</th>
+                                <th>المخزن</th>
+                                <th>نوع الحركة</th>
+                                <th>المرجع</th>
+                                <th>الكمية</th>
+                                <th>الرصيد بعد الحركة</th>
+                                <th>ملاحظة</th>
+                            </tr>
+                        </thead>
+                        <tbody id="itemLedgerBody">
+                            <tr><td colspan="7" class="text-center text-muted">لا توجد حركات</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="cx-view-footer">
+                <button type="button" class="cx-btn-ghost" data-bs-dismiss="modal">إغلاق</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════ DELETE MODAL ══════════════════════════ -->
+<div class="modal fade" id="deleteItemModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered cx-delete-dialog">
+        <div class="modal-content cx-delete-modal">
+            <div class="cx-delete-body">
+                <div class="cx-delete-icon"><i class="fas fa-trash-alt"></i></div>
+                <h5 class="cx-delete-title">حذف المنتج؟</h5>
+                <p class="cx-delete-desc">
+                    ستقوم بحذف <strong id="deleteItemName"></strong> بشكل نهائي.
+                    <br>لا يمكن التراجع عن هذا الإجراء.
+                </p>
+                <input type="hidden" id="deleteItemId" value="">
+            </div>
+            <div class="cx-delete-footer">
+                <button type="button" class="cx-btn-ghost" data-bs-dismiss="modal">إلغاء</button>
+                <button type="button" class="cx-btn-danger" id="confirmDeleteItemBtn">نعم، احذف</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════ IMPORT MODAL ══════════════════════════ -->
+<div class="modal fade" id="importItemsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered cx-modal-dialog" style="max-width:480px">
+        <div class="modal-content cx-modal">
+            <div class="cx-modal-main">
+                <div class="cx-modal-header">
+                    <h5 class="cx-modal-title"><i class="fas fa-file-import me-2"></i>استيراد منتجات</h5>
+                    <button type="button" class="cx-modal-close" data-bs-dismiss="modal"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="cx-modal-body">
+                    <div class="alert alert-info d-flex align-items-start gap-2 mb-3" style="font-size:.875rem">
+                        <i class="fas fa-circle-info mt-1"></i>
+                        <div>
+                            ارفع ملف CSV أو Excel يحتوي على بيانات المنتجات.
+                            <a href="{% url 'items:template_api' %}" class="fw-bold" data-no-spinner>تحميل النموذج</a>
+                        </div>
+                    </div>
+                    <div id="importItemsResult" class="d-none mb-3"></div>
+                    <div class="mb-3">
+                        <label class="cx-label" for="importItemsFile">اختر الملف <sup class="cx-required">*</sup></label>
+                        <input type="file" class="form-control" id="importItemsFile" accept=".csv,.xlsx,.xls">
+                    </div>
+                </div>
+                <div class="cx-modal-footer">
+                    <button type="button" class="cx-btn-ghost" data-bs-dismiss="modal">إغلاق</button>
+                    <button type="button" class="cx-btn-primary" id="confirmImportItemsBtn">
+                        <i class="fas fa-upload me-1"></i> استيراد
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    'use strict';
+
+    const hasPerm = window.hasPerm || (function(){ return false; });
+    const CURRENCY_SYMBOLS = {{ currency_symbols_json|safe }};
+    function curSym(code) { return CURRENCY_SYMBOLS[(code || '').toUpperCase()] || code || ''; }
+
+    {% if hc_mode %}
+    const HC_EXCHANGE_RATE = {{ exchange_rate|stringformat:".4f" }};
+    const LOCAL_SYM = '{{ local_currency_symbol }}';
+    const HC_SYM = '{{ hc_currency_symbol }}';
+
+    function _lockHcPriceFields() {
+        ['cost_price_hc', 'selling_price_hc', 'min_selling_price_hc'].forEach(function(f) {
+            var el = document.getElementById('id_' + f + '_display');
+            if (!el) return;
+            el.readOnly = true;
+            el.style.background = '#f1f5f9';
+            el.style.cursor = 'not-allowed';
+            el.style.color = '#64748b';
+        });
+    }
+
+    // القيمة الدقيقة (4 خانات عشرية) هي اللي بتتحفظ فعلياً وتُستخدم لإعادة حساب
+    // السعر المحلي في السيرفر — لازم تفضل دقيقة عشان السعر المحلي المحفوظ يطابق
+    // اللي المشترك كتبه بالظبط. العرض للمستخدم بس بيتقرّب لخانتين عشريتين.
+    function _calcHcPrecise(localVal) {
+        var n = parseFloat(localVal);
+        return (isNaN(n) || n === 0 || !HC_EXCHANGE_RATE) ? '' : (n / HC_EXCHANGE_RATE).toFixed(4);
+    }
+
+    function _updateHint(hintId, hcVal) {
+        var el = document.getElementById(hintId);
+        if (!el) return;
+        if (hcVal === '') { el.textContent = ''; return; }
+        var fmt = parseFloat(hcVal).toLocaleString('en', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        el.textContent = '= ' + fmt + ' ' + HC_SYM;
+    }
+
+    function _syncHcPrices() {
+        var pairs = [
+            ['id_cost_price',         'id_cost_price_hc',         'hint_cost_price_hc'],
+            ['id_selling_price',      'id_selling_price_hc',      'hint_selling_price_hc'],
+            ['id_min_selling_price',  'id_min_selling_price_hc',  'hint_min_selling_price_hc'],
+        ];
+        pairs.forEach(function(p) {
+            var localEl   = document.getElementById(p[0]);
+            var hcEl      = document.getElementById(p[1]);
+            var displayEl = document.getElementById(p[1] + '_display');
+            if (!localEl || !hcEl) return;
+            var hcVal = _calcHcPrecise(localEl.value);
+            hcEl.value = hcVal;
+            if (displayEl) displayEl.value = hcVal === '' ? '' : parseFloat(hcVal).toFixed(2);
+            _updateHint(p[2], hcVal);
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        _lockHcPriceFields();
+
+        ['id_cost_price', 'id_selling_price', 'id_min_selling_price'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) el.addEventListener('input', _syncHcPrices);
+        });
+    });
+    {% endif %}
+
+    const urlTable       = "{% url 'items:table_api' %}";
+    const urlCreate      = "{% url 'items:create_api' %}";
+    const urlDetail      = "{% url 'items:detail_api' 0 %}";
+    const urlTransactions= "{% url 'items:transactions_api' 0 %}";
+    const urlUpdate      = "{% url 'items:update_api' 0 %}";
+    const urlDelete      = "{% url 'items:delete_api' 0 %}";
+    const urlCatOptions  = "{% url 'items:category_options_api' %}";
+    const CAP = {
+        hasExpiryDates:  {{ tenant_capabilities.has_expiry_dates|yesno:"true,false" }},
+        hasBatchNumbers: {{ tenant_capabilities.has_batch_numbers|yesno:"true,false" }},
+        hasSerialNumbers:{{ tenant_capabilities.has_serial_numbers|yesno:"true,false" }},
+    };
+    function apiUrl(tpl, id) { return tpl.replace('/0/', '/' + id + '/'); }
+
+    ['itemModal','viewItemModal','itemLedgerModal','deleteItemModal'].forEach(function(id) {
+        const el = document.getElementById(id);
+        if (el && el.parentElement !== document.body) document.body.appendChild(el);
+    });
+
+    const itemModal   = new bootstrap.Modal(document.getElementById('itemModal'));
+    const viewModal   = new bootstrap.Modal(document.getElementById('viewItemModal'));
+    const ledgerModal = new bootstrap.Modal(document.getElementById('itemLedgerModal'));
+    const deleteModal = new bootstrap.Modal(document.getElementById('deleteItemModal'));
+
+    const $form      = $('#itemForm');
+    const $submitBtn = $('#itemSubmitBtn');
+    const $idInput   = $('#itemId');
+    let activeStatus = '';
+
+    /* ── Mobile card renderer ───────────────────────────────── */
+    function renderMobileItemCards(rows) {
+        const $cards = $('#itemCardsMobile');
+        if (!$cards.length) return;
+
+        if (!rows || !rows.length) {
+            $cards.html('<div class="cx-empty-state">لا توجد منتجات للعرض</div>');
+            return;
+        }
+
+        const cardsHtml = rows.map(function (r) {
+            const category = r.category || '—';
+            const unit = r.unit || '—';
+            const selling = EnjazIMS.formatMoney(r.selling_price);
+            const status = r.is_active
+                ? '<span class="cx-status cx-status--on"><span class="cx-status-dot"></span>نشط</span>'
+                : '<span class="cx-status cx-status--off"><span class="cx-status-dot"></span>موقوف</span>';
+            const ledgerBtn = r.item_type === 'service'
+                ? ''
+                : `<button class="cxr-act cxr-act--small js-ledger-item" data-id="${r.id}" aria-label="السجل" title="السجل"><i class="fas fa-list"></i></button>`;
+
+            return `<article class="cx-item-card">
+                <div class="cx-item-card-head">
+                    <div class="cx-item-card-title-wrap">
+                        <h2 class="cx-item-card-title">${r.name || '—'}</h2>
+                        <div class="cx-item-card-badge-row">
+                            ${CAP.hasExpiryDates  && r.track_expiry ? '<span class="cx-item-card-badge">تتبع الانتهاء</span>' : ''}
+                            ${CAP.hasSerialNumbers && r.track_serial ? '<span class="cx-item-card-badge">رقم تسلسلي</span>' : ''}
+                        </div>
+                    </div>
+                    ${status}
+                </div>
+                <div class="cx-item-card-meta">
+                    <div>
+                        <span class="cx-item-card-meta-label">SKU</span>
+                        <strong class="cx-item-card-meta-value">${r.sku || '—'}</strong>
+                    </div>
+                    <div>
+                        <span class="cx-item-card-meta-label">التصنيف</span>
+                        <strong class="cx-item-card-meta-value">${category}</strong>
+                    </div>
+                    <div>
+                        <span class="cx-item-card-meta-label">الوحدة</span>
+                        <strong class="cx-item-card-meta-value">${unit}</strong>
+                    </div>
+                    <div>
+                        <span class="cx-item-card-meta-label">سعر البيع</span>
+                        <strong class="cx-item-card-meta-value">${selling}</strong>
+                    </div>
+                </div>
+                <div class="cx-item-card-actions">
+                    ${ledgerBtn}
+                    <button class="cxr-act cxr-act--view js-view-item" data-id="${r.id}" aria-label="عرض" title="عرض"><i class="fas fa-eye"></i></button>
+                    ${hasPerm('change_items') ? `<button class="cxr-act js-edit-item" data-id="${r.id}" aria-label="تعديل" title="تعديل"><i class="fas fa-pen-to-square"></i></button>` : ''}
+                    ${hasPerm('delete_items') ? `<button class="cxr-act cxr-act--del js-delete-item" data-id="${r.id}" data-name="${r.name}" aria-label="حذف" title="حذف"><i class="fas fa-trash"></i></button>` : ''}
+                </div>
+            </article>`;
+        }).join('');
+
+        $cards.html(cardsHtml);
+    }
+
+    /* ── DataTable ─────────────────────────────────────────── */
+    const dt = $('#itemsTable').DataTable({
+        processing : true,
+        serverSide : true,
+        dom        : '<"d-none"f>rt<"cx-dt-bottom"ip>',
+        pageLength : 25,
+        language   : {
+            emptyTable  : 'لا توجد منتجات',
+            info        : 'عرض _START_ إلى _END_ من _TOTAL_',
+            infoEmpty   : 'لا توجد بيانات',
+            zeroRecords : 'لا توجد نتائج مطابقة',
+            paginate    : { next: 'التالي', previous: 'السابق' },
+            processing  : 'جاري التحميل...',
+        },
+        ajax: {
+            url : urlTable,
+            data: function (d) { d.status = activeStatus; }
+        },
+        drawCallback: function () {
+            renderMobileItemCards(dt.rows({ page: 'current' }).data().toArray());
+        },
+        columns: [
+            {
+                data: null,
+                width: '220px',
+                render: function(_, __, r) {
+                    let badges = '';
+                    if (CAP.hasExpiryDates  && r.track_expiry) badges += `<span class="badge bg-danger ms-1" style="font-size:0.6rem" title="تتبع الانتهاء"><i class="fas fa-calendar-xmark"></i></span>`;
+                    if (CAP.hasSerialNumbers && r.track_serial) badges += `<span class="badge bg-info ms-1" style="font-size:0.6rem" title="رقم تسلسلي"><i class="fas fa-barcode"></i></span>`;
+                    return `<span class="cxr-name">${r.name}</span>${badges}`;
+                }
+            },
+            {
+                data: 'sku',
+                render: s => `<code class="cxr-code">${s}</code>`
+            },
+            {
+                data: 'category',
+                render: c => (!c || c==='-')
+                    ? `<span class="cxr-empty">—</span>`
+                    : `<span>${c}</span>`
+            },
+            {
+                data: 'unit',
+                render: u => (!u || u==='-')
+                    ? `<span class="cxr-empty">—</span>`
+                    : `<span>${u}</span>`
+            },
+            {
+                data: 'cost_price',
+                render: v => `<span class="cxr-bal">${EnjazIMS.formatMoney(v)}</span>`
+            },
+            {
+                data: 'selling_price',
+                render: v => `<span class="cxr-bal cxr-bal--pos">${EnjazIMS.formatMoney(v)}</span>`
+            },
+            {% if hc_mode %}
+            {
+                data: 'selling_price_hc',
+                render: function(v, t, r) {
+                    if (!v) return '<span class="cxr-empty">—</span>';
+                    return `<span class="cxr-bal" style="color:#d97706;">${EnjazIMS.formatMoney(v)} ${curSym(r.hc_currency)}</span>`;
+                }
+            },
+            {% endif %}
+            {
+                data: 'is_active',
+                render: a => a
+                    ? `<span class="cxr-status cxr-status--on"><span class="cxr-status-dot"></span>نشط</span>`
+                    : `<span class="cxr-status cxr-status--off"><span class="cxr-status-dot"></span>موقوف</span>`
+            },
+            {
+                data: null, orderable: false, searchable: false,
+                render: function(_, __, r) {
+                    const ledgerBtn = r.item_type === 'service'
+                        ? ''
+                        : `<button class="cxr-act js-ledger-item" data-id="${r.id}" aria-label="السجل" title="السجل"><i class="fas fa-list"></i></button>`;
+                    return `<div class="cxr-actions">
+                        ${ledgerBtn}
+                        <button class="cxr-act cxr-act--view js-view-item" data-id="${r.id}" aria-label="عرض"><i class="fas fa-eye"></i></button>
+                        ${hasPerm('change_items') ? `<button class="cxr-act js-edit-item" data-id="${r.id}" aria-label="تعديل"><i class="fas fa-pen-to-square"></i></button>` : ''}
+                        ${hasPerm('delete_items') ? `<button class="cxr-act cxr-act--del js-delete-item" data-id="${r.id}" data-name="${r.name}" aria-label="حذف"><i class="fas fa-trash"></i></button>` : ''}
+                    </div>`;
+                }
+            }
+        ]
+    });
+
+    /* ── Search & filter ───────────────────────────────────── */
+    let searchTimer;
+    $('#itemSearchInput').on('input', function () {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => dt.search($(this).val()).draw(), 350);
+    });
+    $('.cx-filter-tab').on('click', function () {
+        $('.cx-filter-tab').removeClass('active');
+        $(this).addClass('active');
+        activeStatus = $(this).data('status');
+        dt.ajax.reload();
+    });
+
+    /* ── Reset form ────────────────────────────────────────── */
+    /* ══════════════════════════════════════════════════════════
+       UNIT MANAGER — inline per-product unit definition
+       ══════════════════════════════════════════════════════════ */
+    var unitRows = [];   // [{name, factor}] ordered smallest→largest
+
+    function escUnitHtml(s) {
+        return String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function renderUnitRows() {
+        var container = document.getElementById('unitRowsContainer');
+        if (!container) return;
+        container.innerHTML = '';
+
+        unitRows.forEach(function(row, idx) {
+            var div = document.createElement('div');
+            div.className = 'unit-row';
+
+            if (idx === 0) {
+                // Base unit — single labelled field
+                div.className = 'unit-pair';
+                div.innerHTML =
+                    '<div class="unit-pair__grp unit-pair__grp--name">' +
+                    '  <div class="unit-pair__lbl">اسم الوحدة الأصغر</div>' +
+                    '  <input type="text" class="form-control" ' +
+                    '         placeholder="مثال: حبة، كيلو، متر" ' +
+                    '         value="' + escUnitHtml(row.name) + '" data-idx="0" data-field="name">' +
+                    '</div>';
+            } else {
+                var prev = unitRows[idx - 1];
+                var rawCount = (prev.factor > 0) ? parseFloat(row.factor) / parseFloat(prev.factor) : 1;
+                var count = (rawCount > 0) ? Math.round(rawCount) : 1;
+                div.className = 'unit-pair';
+                div.innerHTML =
+                    // Larger unit name (LEFT — الأكبر first)
+                    '<div class="unit-pair__grp unit-pair__grp--name">' +
+                    '  <div class="unit-pair__lbl">اسم الوحدة الأكبر</div>' +
+                    '  <input type="text" class="form-control" ' +
+                    '         placeholder="مثال: كرتون، طرد" ' +
+                    '         value="' + escUnitHtml(row.name) + '" data-idx="' + idx + '" data-field="name">' +
+                    '</div>' +
+                    // = sign
+                    '<span class="unit-pair__eq">=</span>' +
+                    // Count counter
+                    '<div class="unit-pair__grp unit-pair__grp--count">' +
+                    '  <div class="unit-pair__lbl">الكمية</div>' +
+                    '  <div class="unit-counter">' +
+                    '    <button type="button" class="unit-counter__btn" data-idx="' + idx + '" data-action="dec">−</button>' +
+                    '    <input type="text" inputmode="numeric" class="unit-counter__val" ' +
+                    '           value="' + count + '" data-idx="' + idx + '" data-field="count">' +
+                    '    <button type="button" class="unit-counter__btn" data-idx="' + idx + '" data-action="inc">+</button>' +
+                    '  </div>' +
+                    '</div>' +
+                    // Smaller unit badge (RIGHT — الأصغر last)
+                    '<div class="unit-pair__grp unit-pair__grp--prev">' +
+                    '  <div class="unit-pair__lbl">الأصغر</div>' +
+                    '  <span class="unit-pair__prev-badge" data-prev-idx="' + (idx-1) + '">' + escUnitHtml(prev.name || '—') + '</span>' +
+                    '</div>' +
+                    // Remove button
+                    '<button type="button" class="unit-pair__remove" data-idx="' + idx + '" title="حذف">' +
+                    '  <i class="fas fa-times"></i>' +
+                    '</button>';
+            }
+            container.appendChild(div);
+        });
+
+        // Name inputs
+        container.querySelectorAll('[data-field="name"]').forEach(function(inp) {
+            inp.addEventListener('input', function() {
+                unitRows[parseInt(this.dataset.idx)].name = this.value;
+                refreshRowLabels();
+                updateUnitsJson();
+            });
+        });
+        // Count text inputs
+        container.querySelectorAll('[data-field="count"]').forEach(function(inp) {
+            inp.addEventListener('input', function() {
+                var v = parseInt(this.value) || 1;
+                if (v < 1) { v = 1; this.value = 1; }
+                syncFactors();
+                updateUnitsJson();
+            });
+        });
+        // +/- counter buttons
+        container.querySelectorAll('.unit-counter__btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var i   = parseInt(this.dataset.idx);
+                var inp = container.querySelector('[data-field="count"][data-idx="' + i + '"]');
+                if (!inp) return;
+                var v = parseInt(inp.value) || 1;
+                v = this.dataset.action === 'inc' ? v + 1 : Math.max(1, v - 1);
+                inp.value = v;
+                syncFactors();
+                updateUnitsJson();
+            });
+        });
+        // Remove buttons
+        container.querySelectorAll('.unit-pair__remove').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                unitRows.splice(parseInt(this.dataset.idx), 1);
+                renderUnitRows();
+                updateUnitsJson();
+            });
+        });
+
+        // Show/hide add button based on limit
+        var addBtn = document.getElementById('btnAddUnitRow');
+        if (addBtn) addBtn.style.display = unitRows.length >= 2 ? 'none' : '';
+    }
+
+    function refreshRowLabels() {
+        document.querySelectorAll('#unitRowsContainer .unit-pair__prev-badge').forEach(function(span) {
+            var prevIdx = parseInt(span.dataset.prevIdx);
+            if (!isNaN(prevIdx)) span.textContent = unitRows[prevIdx].name || '—';
+        });
+    }
+
+    function syncFactors() {
+        // Recalculate cumulative factors from count inputs
+        var countInputs = document.querySelectorAll('#unitRowsContainer [data-field="count"]');
+        var cumFactor = 1;
+        unitRows[0].factor = 1;
+        countInputs.forEach(function(inp, i) {
+            var count = parseFloat(inp.value) || 1;
+            cumFactor = cumFactor * count;
+            unitRows[i + 1].factor = cumFactor;
+        });
+    }
+
+    function updateUnitsJson() {
+        var valid = unitRows.filter(function(r) { return r.name.trim(); });
+        document.getElementById('units_json').value = JSON.stringify(
+            valid.map(function(r) { return { name: r.name.trim(), factor: r.factor }; })
+        );
+        updatePricingLabel();
+    }
+
+    function setUnitMode(mode) {
+        var isSingle = mode === 'single';
+        document.getElementById('btnUnitSingle').classList.toggle('active', isSingle);
+        document.getElementById('btnUnitMultiple').classList.toggle('active', !isSingle);
+        document.getElementById('btnUnitSingle').querySelector('input').checked = isSingle;
+        document.getElementById('btnUnitMultiple').querySelector('input').checked = !isSingle;
+        document.getElementById('singleUnitRow').classList.toggle('d-none', !isSingle);
+        document.getElementById('multiUnitRow').classList.toggle('d-none', isSingle);
+        if (isSingle) {
+            unitRows = [{ name: '', factor: 1 }];
+        }
+        updateUnitsJson();
+    }
+
+    function loadUnitsFromData(itemUnits) {
+        if (!itemUnits || itemUnits.length === 0) {
+            setUnitMode('single');
+            return;
+        }
+        if (itemUnits.length === 1) {
+            setUnitMode('single');
+            document.getElementById('singleUnitName').value = itemUnits[0].name;
+            unitRows = [{ name: itemUnits[0].name, factor: 1 }];
+        } else {
+            // Multiple units — sort by factor
+            itemUnits.sort(function(a, b) { return parseFloat(a.factor) - parseFloat(b.factor); });
+            unitRows = itemUnits.map(function(u) { return { name: u.name, factor: parseFloat(u.factor) }; });
+            setUnitMode('multiple');
+            renderUnitRows();
+        }
+        updateUnitsJson();
+    }
+
+    // Toggle listeners
+    document.getElementById('btnUnitSingle').addEventListener('click', function() { setUnitMode('single'); renderUnitRows(); });
+    document.getElementById('btnUnitMultiple').addEventListener('click', function() {
+        if (unitRows.length < 2) unitRows.push({ name: '', factor: 1 });
+        setUnitMode('multiple');
+        renderUnitRows();
+    });
+
+    // Single unit name change
+    document.getElementById('singleUnitName').addEventListener('input', function() {
+        unitRows[0] = { name: this.value, factor: 1 };
+        updateUnitsJson();
+    });
+
+    // Add unit row button — max 2 units (base + one derived)
+    document.getElementById('btnAddUnitRow').addEventListener('click', function() {
+        if (unitRows.length >= 2) return;
+        unitRows.push({ name: '', factor: 1 });
+        renderUnitRows();
+        updateUnitsJson();
+    });
+
+    // Init
+    unitRows = [{ name: '', factor: 1 }];
+    setUnitMode('single');
+
+    /* ── Pricing unit label — shows which unit prices refer to ─ */
+    function updatePricingLabel() {
+        var lbl = document.getElementById('pricingUnitLabel');
+        if (!lbl) return;
+        var base = unitRows.length > 0 ? unitRows[0].name : '';
+        lbl.textContent = base || '—';
+    }
+
+    function resetForm() {
+        $form[0].reset();
+        $idInput.val('');
+        $('#id_is_active').prop('checked', true);
+        $('#id_is_sellable').prop('checked', true);
+        $('#id_is_purchasable').prop('checked', true);
+        unitRows = [{ name: '', factor: 1 }];
+        setUnitMode('single');
+        document.getElementById('singleUnitName').value = '';
+        updateUnitsJson();
+        EnjazIMS.clearFormErrors($form);
+        ['#id_cost_price','#id_selling_price','#id_min_selling_price','#id_tax_rate','#id_min_quantity','#id_max_quantity'].forEach(function(sel) {
+            var el = document.querySelector(sel);
+            if (el && parseFloat(el.value) === 0) el.value = '';
+        });
+        {% if hc_mode %}
+        ['hint_cost_price_hc','hint_selling_price_hc','hint_min_selling_price_hc'].forEach(function(id) {
+            var el = document.getElementById(id); if (el) el.textContent = '';
+        });
+        {% endif %}
+    }
+
+    /* ── Open create ───────────────────────────────────────── */
+    $('#btnOpenCreateItem').on('click', function () {
+        resetForm();
+        $('#itemModalTitle').text('إضافة منتج جديد');
+        $submitBtn.html('<i class="fas fa-check me-1"></i> حفظ');
+        itemModal.show();
+    });
+
+    /* ── Open edit ─────────────────────────────────────────── */
+    function openEdit(id) {
+        resetForm();
+        $.ajax({
+            url: apiUrl(urlDetail, id), method: 'GET',
+            success: function(resp) {
+                if (!resp.success) { EnjazIMS.toast(resp.message, 'error'); return; }
+                const d = resp.data;
+                $idInput.val(d.id);
+                $('#id_name').val(d.name || '');
+                $('#id_name_en').val(d.name_en || '');
+                $('#id_sku').val(d.sku || '');
+                $('#id_barcode').val(d.barcode || '');
+                $('#id_item_type').val(d.item_type || '');
+                $('#id_category').val(d.category || '');
+                // Load units from ItemUnit data
+                loadUnitsFromData(d.item_units || []);
+                if (d.item_units && d.item_units.length === 1) {
+                    document.getElementById('singleUnitName').value = d.item_units[0].name;
+                }
+                $('#id_cost_price').val(EnjazIMS.parseNumber(d.cost_price) || '');
+                $('#id_selling_price').val(EnjazIMS.parseNumber(d.selling_price) || '');
+                $('#id_min_selling_price').val(EnjazIMS.parseNumber(d.min_selling_price) || '');
+                {% if hc_mode %}
+                _syncHcPrices();
+                {% endif %}
+                $('#id_tax_rate').val(EnjazIMS.parseNumber(d.tax_rate) || '');
+                $('#id_min_quantity').val(EnjazIMS.parseNumber(d.min_quantity) || '');
+                $('#id_max_quantity').val(EnjazIMS.parseNumber(d.max_quantity) || '');
+                $('#id_track_expiry').prop('checked', !!d.track_expiry);
+                $('#id_track_batch').prop('checked', !!d.track_batch);
+                $('#id_track_serial').prop('checked', !!d.track_serial);
+                $('#id_description').val(d.description || '');
+                $('#id_is_active').prop('checked', !!d.is_active);
+                $('#id_is_sellable').prop('checked', !!d.is_sellable);
+                $('#id_is_purchasable').prop('checked', !!d.is_purchasable);
+
+                $('#itemModalTitle').text('تعديل المنتج');
+                $submitBtn.html('<i class="fas fa-check me-1"></i> حفظ التعديلات');
+                itemModal.show();
+            },
+            error: function() { EnjazIMS.toast('تعذر تحميل البيانات', 'error'); }
+        });
+    }
+
+    /* ── Save ──────────────────────────────────────────────── */
+    $form.on('submit', function (e) {
+        e.preventDefault();
+        EnjazIMS.clearFormErrors($form);
+        const id  = $idInput.val();
+        const url = id ? apiUrl(urlUpdate, id) : urlCreate;
+        const orig = $submitBtn.html();
+        EnjazIMS.showLoading($submitBtn);
+
+        // استخدام FormData للدعم المستقبلي لرفع الصور
+        const formData = new FormData($form[0]);
+        $.ajax({
+            url, method: 'POST', data: formData,
+            processData: false, contentType: false,
+            success: function(resp) {
+                EnjazIMS.hideLoading($submitBtn, orig);
+                if (resp.success) {
+                    itemModal.hide();
+                    dt.ajax.reload(null, false);
+                    EnjazIMS.toast(resp.message, 'success');
+                    return;
+                }
+                EnjazIMS.showFormError($form, resp.message);
+            },
+            error: function(xhr) {
+                EnjazIMS.hideLoading($submitBtn, orig);
+                const r = xhr.responseJSON || {};
+                if (r.errors) EnjazIMS.renderFieldErrors($form, r.errors);
+                EnjazIMS.showFormError($form, r.message || 'حدث خطأ');
+            }
+        });
+    });
+
+    /* ── Delete ────────────────────────────────────────────── */
+    $('#itemsTable').on('click', '.js-delete-item', function () {
+        $('#deleteItemId').val($(this).data('id'));
+        $('#deleteItemName').text($(this).data('name'));
+        deleteModal.show();
+    });
+    $('#confirmDeleteItemBtn').on('click', function () {
+        const id = $('#deleteItemId').val();
+        if (!id) return;
+        $.ajax({
+            url: apiUrl(urlDelete, id), method: 'POST',
+            success: function(resp) {
+                deleteModal.hide();
+                if (resp.success) { dt.ajax.reload(null, false); EnjazIMS.toast(resp.message, 'success'); }
+                else EnjazIMS.toast(resp.message, 'error');
+            },
+            error: function(xhr) { EnjazIMS.toast(_xhrMsg(xhr, 'تعذر الحذف'), 'error'); }
+        });
+    });
+
+    $('#itemsTable').on('click', '.js-edit-item', function () {
+        openEdit($(this).data('id'));
+    });
+
+    /* ── View ──────────────────────────────────────────────── */
+    function openView(id) {
+        $.ajax({
+            url: apiUrl(urlDetail, id), method: 'GET',
+            success: function(resp) {
+                if (!resp.success) { EnjazIMS.toast(resp.message, 'error'); return; }
+                const d = resp.data;
+
+                // بناء أيقونة Avatar بالحرف الأول
+                const colors = ['#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444'];
+                const color  = colors[(d.name || 'أ').charCodeAt(0) % colors.length];
+                $('#viewItemAvatar').css('background', color).html(d.name.trim().charAt(0).toUpperCase());
+
+                $('#viewItemName').text(d.name);
+                $('#viewItemSku').html(`<code class="cxr-code">${d.sku}</code>`);
+                $('#viewItemNameVal').text(d.name || '—');
+
+                // English name
+                const nameEnCard = document.getElementById('viewItemNameEnCard');
+                if (d.name_en) {
+                    $('#viewItemNameEn').text(d.name_en);
+                    nameEnCard.style.display = '';
+                } else {
+                    nameEnCard.style.display = 'none';
+                }
+
+                $('#viewItemBarcode').text(d.barcode || '—');
+                $('#viewItemCategory').text(d.category_name || '—');
+                $('#viewItemUnit').text(d.unit_name || '—');
+
+                // Purchase unit
+                const puCard = document.getElementById('viewItemPurchaseUnitCard');
+                if (d.purchase_unit_name) {
+                    $('#viewItemPurchaseUnit').text(d.purchase_unit_name);
+                    puCard.style.display = '';
+                } else {
+                    puCard.style.display = 'none';
+                }
+
+                $('#viewItemType').text(d.item_type || '—');
+                $('#viewItemCostPrice').text(EnjazIMS.formatMoney(d.cost_price));
+                $('#viewItemSellingPrice').text(EnjazIMS.formatMoney(d.selling_price));
+                $('#viewItemTaxRate').text((d.tax_rate || '0') + '%');
+                $('#viewItemMinSelling').text(EnjazIMS.formatMoney(d.min_selling_price));
+                {% if hc_mode %}
+                const hcSellingEl = document.getElementById('viewItemSellingHc');
+                if (hcSellingEl) {
+                    hcSellingEl.textContent = d.selling_price_hc ? EnjazIMS.formatMoney(d.selling_price_hc) + ' {{ hc_currency_symbol }}' : '—';
+                }
+                {% endif %}
+                $('#viewItemDescription').text(d.description || '—');
+
+                // Stock limits
+                const minQty = parseFloat(d.min_quantity || 0);
+                const maxQty = parseFloat(d.max_quantity || 0);
+                $('#viewItemMinQty').text(minQty > 0 ? minQty : '—');
+                $('#viewItemMaxQty').text(maxQty > 0 ? maxQty : '—');
+
+                // Multiple units
+                const unitsSection = document.getElementById('viewItemUnitsSection');
+                if (d.has_multiple_units && d.item_units && d.item_units.length > 0) {
+                    const rows = d.item_units.map(u =>
+                        `<tr><td>${u.name}</td><td>${u.factor}</td></tr>`
+                    ).join('');
+                    document.getElementById('viewItemUnitsBody').innerHTML = rows;
+                    unitsSection.style.display = '';
+                } else {
+                    unitsSection.style.display = 'none';
+                }
+
+                const yesHtml = '<span class="cxr-status cxr-status--on"><span class="cxr-status-dot"></span>نعم</span>';
+                const noHtml  = '<span class="cxr-status cxr-status--off"><span class="cxr-status-dot"></span>لا</span>';
+                $('#viewItemSellable').html(d.is_sellable ? yesHtml : noHtml);
+                $('#viewItemPurchasable').html(d.is_purchasable ? yesHtml : noHtml);
+
+                const statusHtml = d.is_active
+                    ? '<span class="cxr-status cxr-status--on"><span class="cxr-status-dot"></span>نشط</span>'
+                    : '<span class="cxr-status cxr-status--off"><span class="cxr-status-dot"></span>موقوف</span>';
+                $('#viewItemStatus').html(statusHtml);
+
+                // خيارات متقدمة
+                let tracking = [];
+                if (d.track_expiry)  tracking.push('تتبع الانتهاء');
+                if (d.track_batch)   tracking.push('تتبع الدفعات');
+                if (d.track_serial)  tracking.push('رقم تسلسلي');
+                $('#viewItemTracking').text(tracking.length ? tracking.join(' ، ') : 'لا يوجد');
+
+                $('#viewEditItemBtn').data('id', d.id);
+                viewModal.show();
+            },
+            error: function() { EnjazIMS.toast('تعذر تحميل البيانات', 'error'); }
+        });
+    }
+
+    function loadItemTransactions(id) {
+        const $body = $('#itemLedgerBody');
+        $body.html('<tr><td colspan="7" class="text-center text-muted">جاري التحميل...</td></tr>');
+
+        $.ajax({
+            url: apiUrl(urlTransactions, id),
+            method: 'GET',
+            success: function(resp) {
+                if (!resp.success || !resp.data || !Array.isArray(resp.data.movements)) {
+                    $body.html('<tr><td colspan="7" class="text-center text-muted">لا توجد حركات</td></tr>');
+                    return;
+                }
+
+                const d = resp.data;
+                if (d.is_service) {
+                    $('#itemLedgerSubtitle').text(`${d.item_name || '—'} (${d.item_sku || '—'}) — خدمة (لا يوجد مخزون)`);
+                    $body.html('<tr><td colspan="7" class="text-center text-muted">هذا الصنف خدمة ولا يملك حركة مخزون</td></tr>');
+                    return;
+                }
+
+                $('#itemLedgerSubtitle').text(`${d.item_name || '—'} (${d.item_sku || '—'}) — الرصيد الحالي: ${EnjazIMS.formatQuantity(d.current_qty || 0)}`);
+
+                if (!d.movements.length) {
+                    $body.html('<tr><td colspan="7" class="text-center text-muted">لا توجد حركات</td></tr>');
+                    return;
+                }
+
+                const refLabels = {
+                    'sale_invoice':             'فاتورة مبيعات',
+                    'sale_return':              'مرتجع مبيعات',
+                    'sale_payment':             'دفعة عميل',
+                    'purchase_invoice':         'أمر شراء',
+                    'purchase_invoice_edit':   'تعديل أمر شراء',
+                    'purchase_return':          'مرتجع مشتريات',
+                    'purchase_payment':         'دفعة مورد',
+                    'customer_payment_cash':    'دفعة عميل - نقداً',
+                    'customer_payment_bank':    'دفعة عميل - بنكي',
+                    'customer_payment_cancel':  'إلغاء دفعة عميل',
+                    'customer_payment_cash_cancel': 'إلغاء دفعة عميل - نقداً',
+                    'expense':                  'مصروف',
+                    'expense_cancel':           'إلغاء مصروف',
+                    'opening_balance':          'رصيد افتتاحي',
+                    'stock_transfer':           'تحويل مخزون',
+                    'stocktake':                'جرد مخزون',
+                    'manufacturing_order':      'أمر تصنيع',
+                };
+
+                const rows = d.movements.map(function(m) {
+                    const qty = EnjazIMS.parseNumber(m.quantity || 0);
+                    const isIn = m.direction === 'in';
+                    const qtyClass = isIn ? 'text-success' : 'text-danger';
+                    const qtyPrefix = isIn ? '+' : '-';
+                    const refLabel = refLabels[m.reference_type] || m.reference_type || '—';
+                    const dirLabel = isIn ? 'دخول' : 'خروج';
+                    const reversalBadge = m.is_reversal
+                        ? `<span style="background:rgba(100,116,139,.12);color:#64748b;font-size:.68rem;border-radius:5px;padding:.15rem .35rem;margin-right:.25rem;">↺ إلغاء</span>`
+                        : '';
+                    return `<tr${m.is_reversal ? ' style="opacity:.75;"' : ''}>
+                        <td>${m.movement_date || '—'}</td>
+                        <td>${m.stock || '—'}</td>
+                        <td>
+                            <span style="background:${isIn ? 'rgba(17,153,142,.12)' : 'rgba(239,68,68,.12)'};color:${isIn ? '#11998e' : '#ef4444'};font-size:.72rem;border-radius:6px;padding:.2rem .5rem;">${dirLabel}</span>
+                            ${reversalBadge}
+                        </td>
+                        <td>${refLabel}</td>
+                        <td class="${qtyClass} fw-bold">${qtyPrefix}${EnjazIMS.formatQuantity(qty)}</td>
+                        <td>${EnjazIMS.formatQuantity(m.balance_after || 0)}</td>
+                        <td style="font-size:.78rem;max-width:160px;">${m.notes || '—'}</td>
+                    </tr>`;
+                }).join('');
+
+                $body.html(rows);
+            },
+            error: function() {
+                $body.html('<tr><td colspan="7" class="text-center text-danger">تعذر تحميل الحركات</td></tr>');
+            }
+        });
+    }
+
+    function openItemLedger(id) {
+        loadItemTransactions(id);
+        ledgerModal.show();
+    }
+
+    $('#itemsTable').on('click', '.js-view-item', function () { openView($(this).data('id')); });
+    $('#itemCardsMobile').on('click', '.js-view-item', function () { openView($(this).data('id')); });
+    $('#itemsTable').on('click', '.js-ledger-item', function () { openItemLedger($(this).data('id')); });
+    $('#itemCardsMobile').on('click', '.js-ledger-item', function () { openItemLedger($(this).data('id')); });
+    $('#itemsTable').on('click', '.js-edit-item', function () { openEdit($(this).data('id')); });
+    $('#itemCardsMobile').on('click', '.js-edit-item', function () { openEdit($(this).data('id')); });
+    $('#itemsTable').on('click', '.js-delete-item', function () {
+        $('#deleteItemId').val($(this).data('id'));
+        $('#deleteItemName').text($(this).data('name'));
+        deleteModal.show();
+    });
+    $('#itemCardsMobile').on('click', '.js-delete-item', function () {
+        $('#deleteItemId').val($(this).data('id'));
+        $('#deleteItemName').text($(this).data('name'));
+        deleteModal.show();
+    });
+    $('#viewEditItemBtn').on('click', function () { viewModal.hide(); openEdit($(this).data('id')); });
+
+    /* ── Import ──────────────────────────────────────────────── */
+    const importItemsModal = new bootstrap.Modal(document.getElementById('importItemsModal'));
+    document.getElementById('importItemsModal') && document.body.appendChild(document.getElementById('importItemsModal'));
+
+    $('#btnOpenImportItems').on('click', function () {
+        $('#importItemsFile').val('');
+        $('#importItemsResult').addClass('d-none').html('');
+        importItemsModal.show();
+    });
+
+    $('#confirmImportItemsBtn').on('click', function () {
+        const file = $('#importItemsFile')[0].files[0];
+        if (!file) { EnjazIMS.toast('الرجاء اختيار ملف', 'error'); return; }
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('csrfmiddlewaretoken', $('[name=csrfmiddlewaretoken]').first().val());
+        const $btn = $(this);
+        EnjazIMS.showLoading($btn);
+        $.ajax({
+            url: "{% url 'items:import_api' %}",
+            method: 'POST',
+            data: fd,
+            processData: false,
+            contentType: false,
+            success: function (resp) {
+                EnjazIMS.hideLoading($btn, '<i class="fas fa-upload me-1"></i> استيراد');
+                const cls = resp.success ? 'alert-success' : 'alert-danger';
+                let html = `<div class="alert ${cls} mb-0">${resp.message}</div>`;
+                if (resp.errors && resp.errors.length) {
+                    html += '<ul class="mt-2 mb-0 small text-danger">' + resp.errors.map(e => `<li>${e}</li>`).join('') + '</ul>';
+                }
+                $('#importItemsResult').removeClass('d-none').html(html);
+                if (resp.success && resp.imported > 0) dt.ajax.reload(null, false);
+            },
+            error: function () {
+                EnjazIMS.hideLoading($btn, '<i class="fas fa-upload me-1"></i> استيراد');
+                EnjazIMS.toast('حدث خطأ أثناء الاستيراد', 'error');
+            }
+        });
+    });
+
+    /* ── Category select: tree-indented ────────────────────── */
+    (function initCategoryTreeSelect() {
+        $.getJSON(urlCatOptions, function(resp) {
+            if (!resp.success || !resp.categories) return;
+            const cats   = resp.categories;
+            const byId   = {};
+            cats.forEach(c => { byId[c.id] = c; });
+
+            const childMap = {};
+            cats.forEach(c => { childMap[c.id] = []; });
+            cats.forEach(c => {
+                if (c.parent_id && childMap[c.parent_id]) childMap[c.parent_id].push(c);
+            });
+
+            const roots = cats.filter(c => !c.parent_id || !byId[c.parent_id]);
+            const sf    = (a, b) => (a.display_order - b.display_order) || a.name.localeCompare(b.name, 'ar');
+            roots.sort(sf);
+            Object.values(childMap).forEach(arr => arr.sort(sf));
+
+            const $sel   = $('#id_category');
+            const selVal = $sel.val();
+            $sel.find('option:not(:first)').remove();
+
+            function addOpts(nodes, depth) {
+                nodes.forEach(function(c) {
+                    const prefix   = depth > 0 ? '—'.repeat(depth) + ' ' : '';
+                    const selected = String(c.id) === String(selVal);
+                    $sel.append(new Option(prefix + c.name, c.id, false, selected));
+                    addOpts(childMap[c.id] || [], depth + 1);
+                });
+            }
+            addOpts(roots, 0);
+        });
+    })();
+
+})();
+</script>
+{% endblock %}

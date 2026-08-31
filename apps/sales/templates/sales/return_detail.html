@@ -1,0 +1,238 @@
+{% extends "layouts/dashboard.html" %}
+{% load static %}
+{% load humanize %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/sales.css' %}?v=3.2">
+<link rel="stylesheet" href="{% static 'css/sales_return_detail.css' %}?v=1.0">
+{% endblock %}
+
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<div class="cx-scene">
+
+<div class="cx-hero">
+    <div class="cx-hero-inner">
+        <div class="cx-hero-left">
+            <div class="cx-hero-icon-wrap"><i class="fas fa-rotate-left"></i></div>
+            <div>
+                <h1 class="cx-hero-title">{{ sale_return.return_number }}</h1>
+                <p class="cx-hero-desc">
+                    مرتجع على فاتورة {{ sale_return.original_invoice.invoice_number }}
+                    — {{ sale_return.return_date }}
+                </p>
+            </div>
+        </div>
+        <div class="cx-hero-right">
+            <div class="cx-hero-actions">
+                <a href="{% url 'sales:invoice_detail' sale_return.original_invoice.pk %}" class="cx-btn-secondary">
+                    <i class="fas fa-file-invoice"></i><span>الفاتورة الأصلية</span>
+                </a>
+                <a href="{% url 'sales:return_list' %}" class="cx-btn-secondary">
+                    <i class="fas fa-list"></i><span>قائمة المرتجعات</span>
+                </a>
+                {% if can_confirm %}
+                <button class="cx-btn-add" onclick="doConfirm()">
+                    <i class="fas fa-check"></i><span>تأكيد</span>
+                </button>
+                {% endif %}
+                {% if can_cancel %}
+                <button class="cx-btn-danger" onclick="doCancel()">
+                    <i class="fas fa-ban"></i><span>إلغاء</span>
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="cx-stats-inline">
+        {% if sale_return.status == 'draft' %}
+        <span class="cx-stat-badge cx-stat-badge--muted">مسودة</span>
+        {% elif sale_return.status == 'confirmed' %}
+        <span class="cx-stat-badge cx-stat-badge--success">مؤكد</span>
+        {% else %}
+        <span class="cx-stat-badge cx-stat-badge--danger">ملغي</span>
+        {% endif %}
+        <span class="cx-stat-badge cx-stat-badge--primary">{{ sale_return.get_refund_method_display }}</span>
+    </div>
+</div>
+
+<div class="row g-3">
+<div class="col-lg-8">
+    <div class="cx-panel mb-3 p-4">
+        <div class="cx-panel-header"><h3 class="cx-panel-title">بيانات المرتجع</h3></div>
+        <div class="cx-panel-body">
+            <div class="cx-info-grid">
+                <div class="cx-info-item">
+                    <span class="cx-info-label">رقم المرتجع</span>
+                    <span class="cx-info-value">{{ sale_return.return_number }}</span>
+                </div>
+                <div class="cx-info-item">
+                    <span class="cx-info-label">تاريخ المرتجع</span>
+                    <span class="cx-info-value">{{ sale_return.return_date }}</span>
+                </div>
+                <div class="cx-info-item">
+                    <span class="cx-info-label">الفاتورة الأصلية</span>
+                    <span class="cx-info-value">
+                        <a href="{% url 'sales:invoice_detail' sale_return.original_invoice.pk %}">
+                            {{ sale_return.original_invoice.invoice_number }}
+                        </a>
+                    </span>
+                </div>
+                <div class="cx-info-item">
+                    <span class="cx-info-label">العميل</span>
+                    <span class="cx-info-value">{{ sale_return.original_invoice.customer.name|default:"زبون عابر" }}</span>
+                </div>
+                <div class="cx-info-item">
+                    <span class="cx-info-label">طريقة الاسترداد</span>
+                    <span class="cx-info-value">{{ sale_return.get_refund_method_display }}</span>
+                </div>
+                {% if sale_return.reason %}
+                <div class="cx-info-item cx-info-item--full">
+                    <span class="cx-info-label">سبب الإرجاع</span>
+                    <span class="cx-info-value">{{ sale_return.reason }}</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="cx-panel p-4">
+        <div class="cx-panel-header"><h3 class="cx-panel-title">بنود المرتجع</h3></div>
+        <div class="cx-panel-body p-0">
+            <table class="cx-table">
+                <thead>
+                    <tr><th>المنتج</th><th>الكمية المُرتجَعة</th><th>السعر</th><th>الإجمالي</th></tr>
+                </thead>
+                <tbody>
+                {% for line in return_lines %}
+                <tr>
+                    <td>{{ line.item.name }}</td>
+                    <td>{{ line.returned_quantity|floatformat:"-2" }}</td>
+                    <td>{{ line.unit_price|money}}</td>
+                    <td><strong>{{ line.line_total|money}}</strong></td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="col-lg-4">
+    <div class="cx-panel p-4">
+        <div class="cx-panel-header"><h3 class="cx-panel-title">الإجمالي</h3></div>
+        <div class="cx-panel-body">
+            <div class="cx-totals-block">
+                <div class="cx-totals-row cx-totals-row--grand">
+                    <span>إجمالي المرتجع</span>
+                    <strong>{{ sale_return.total_returned|money}}</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+
+</div>
+
+<div class="cx-modal-backdrop sales-field-hidden" id="returnActionModalBackdrop">
+    <div class="cx-modal sales-modal-sm">
+        <div class="cx-modal-header">
+            <h3 class="cx-modal-title" id="returnActionModalTitle">تأكيد الإجراء</h3>
+            <button type="button" class="cx-modal-close" onclick="closeReturnActionModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="cx-modal-body">
+            <p class="text-muted mb-0" id="returnActionModalMessage">هل تريد المتابعة؟</p>
+        </div>
+        <div class="cx-modal-footer">
+            <button type="button" class="cx-btn-secondary" onclick="closeReturnActionModal()">إلغاء</button>
+            <button type="button" class="cx-btn-danger" id="returnActionSubmitBtn" onclick="submitReturnAction()">
+                <i class="fas fa-check me-1"></i>تأكيد
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const RET_ID = {{ sale_return.id }};
+const CSRF = document.cookie.match('(^|;) ?csrftoken=([^;]*)(;|$)')?.[2];
+let pendingReturnAction = null;
+
+{% if can_confirm %}
+function doConfirm() {
+    openReturnActionModal({
+        title: 'تأكيد المرتجع',
+        message: 'سيتم اعتماد المرتجع وتطبيق تأثيره على المخزون والحسابات. هل تريد المتابعة؟',
+        confirmLabel: 'تأكيد المرتجع',
+        confirmClass: 'cx-btn-add',
+        run: () => fetch(`/sales/returns/${RET_ID}/confirm/`, { method: 'POST', headers: { 'X-CSRFToken': CSRF } })
+    });
+}
+{% endif %}
+
+{% if can_cancel %}
+function doCancel() {
+    openReturnActionModal({
+        title: 'إلغاء المرتجع',
+        message: 'سيتم إلغاء هذا المرتجع. هل تريد المتابعة؟',
+        confirmLabel: 'تأكيد الإلغاء',
+        confirmClass: 'cx-btn-danger',
+        run: () => fetch(`/sales/returns/${RET_ID}/cancel/`, { method: 'POST', headers: { 'X-CSRFToken': CSRF } })
+    });
+}
+{% endif %}
+
+function openReturnActionModal(config) {
+    pendingReturnAction = config;
+    document.getElementById('returnActionModalTitle').textContent = config.title;
+    document.getElementById('returnActionModalMessage').textContent = config.message;
+    const submitBtn = document.getElementById('returnActionSubmitBtn');
+    submitBtn.className = config.confirmClass;
+    submitBtn.innerHTML = `<i class="fas fa-check me-1"></i>${config.confirmLabel}`;
+    document.getElementById('returnActionModalBackdrop').classList.remove('sales-field-hidden');
+}
+
+function closeReturnActionModal() {
+    pendingReturnAction = null;
+    document.getElementById('returnActionModalBackdrop').classList.add('sales-field-hidden');
+}
+
+function submitReturnAction() {
+    if (!pendingReturnAction) return;
+    const submitBtn = document.getElementById('returnActionSubmitBtn');
+    const originalHtml = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>جاري التنفيذ...';
+
+    Promise.resolve(pendingReturnAction.run())
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            closeReturnActionModal();
+            location.reload();
+        } else {
+            showAlert(data.message, 'danger');
+        }
+    })
+    .catch(() => showAlert('حدث خطأ في الاتصال', 'danger'))
+    .finally(() => {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalHtml;
+    });
+}
+
+function showAlert(msg, type = 'danger') {
+    const mapped = type === 'danger' ? 'error' : type;
+    if (window.EnjazIMS && typeof EnjazIMS.toast === 'function') {
+        EnjazIMS.toast(msg, mapped);
+        return;
+    }
+    console.warn(msg);
+}
+</script>
+{% endblock %}

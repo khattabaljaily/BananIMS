@@ -1,0 +1,212 @@
+{% load static %}
+{% load humanize %}
+{% load permission_tags %}
+<nav class="navbar">
+    <div class="navbar-shell">
+
+        <!-- RIGHT: Hamburger (mobile) + Brand (mobile) -->
+        <div class="navbar-start">
+            <button class="navbar-icon-btn sidebar-toggle d-lg-none" id="sidebarToggleBtn" aria-label="القائمة">
+                <i class="fas fa-bars"></i>
+            </button>
+            <a class="navbar-brand-wrap" href="{% url 'core:dashboard' %}">
+                <img src="{% static 'img/logo/logo-161616.png' %}" alt="إنجاز" class="navbar-logo logo-light">
+                <img src="{% static 'img/logo/logo-ffffff.png' %}" alt="إنجاز" class="navbar-logo logo-dark">
+                <span class="navbar-brand-text">إنجاز</span>
+            </a>
+        </div>
+
+        <!-- LEFT: Actions -->
+        <div class="navbar-actions">
+            <!-- Theme Toggle -->
+            <button class="navbar-icon-btn theme-toggle" onclick="toggleTheme()" aria-label="تبديل الوضع">
+                <i class="fas fa-moon theme-icon-ref" id="theme-icon"></i>
+            </button>
+
+            <!-- Notifications -->
+            {% if request.user.is_superuser or request.user|has_perm_key:"view_notifications" %}
+            <div class="dropdown" id="notifDropdown">
+                <button class="navbar-icon-btn" data-bs-toggle="dropdown" data-bs-display="static" aria-label="الإشعارات">
+                    <i class="fas fa-bell"></i>
+                    <span class="navbar-badge d-none" id="notifBadge">0</span>
+                </button>
+                <div class="dropdown-menu dropdown-menu-end notif-menu" style="min-width:340px;max-width:380px;">
+                    <div class="notif-menu-head">
+                        <span class="notif-menu-head-title">الإشعارات</span>
+                        <button class="notif-menu-mark-all" id="btnMarkAllRead" onclick="markAllRead()">
+                            تعليم الكل كمقروء
+                        </button>
+                    </div>
+                    <div class="notif-drop-list" id="notifList">
+                        <div class="notif-drop-empty"><i class="fas fa-bell-slash"></i>لا إشعارات جديدة</div>
+                    </div>
+                    <div class="notif-menu-footer">
+                        {% if request.user.is_superuser %}
+                        <a href="{% url 'core:admin_notifications' %}">عرض جميع الإشعارات <i class="fas fa-arrow-left" style="font-size:.65rem"></i></a>
+                        {% else %}
+                        <a href="{% url 'notifications:list' %}">عرض جميع الإشعارات <i class="fas fa-arrow-left" style="font-size:.65rem"></i></a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="navbar-sep"></div>
+
+            <!-- Tenant Info -->
+            {% if current_tenant %}
+            <div class="dropdown">
+                <a class="navbar-menu-link dropdown-toggle" href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                    <i class="fas fa-store" style="font-size:0.8rem;color:var(--primary)"></i>
+                    <span class="navbar-label">{{ current_tenant.name }}</span>
+                </a>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li><a class="dropdown-item" href="{% url 'core:tenant_settings' %}">
+                        <i class="fas fa-sliders me-2 text-primary"></i>إعدادات النشاط
+                    </a></li>
+                    {% if current_tenant.hard_currency_mode %}
+                    <li><a class="dropdown-item" href="{% url 'core:exchange_rate_page' %}">
+                        <i class="fas fa-exchange-alt me-2 text-warning"></i>سعر الصرف
+                    </a></li>
+                    {% endif %}
+                    <li><a class="dropdown-item" href="{% url 'core:subscription' %}">
+                        <i class="fas fa-credit-card me-2 text-info"></i>الاشتراك
+                    </a></li>
+                </ul>
+            </div>
+            {% endif %}
+
+            <!-- User Menu -->
+            <div class="dropdown">
+                <a class="navbar-menu-link dropdown-toggle" href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                    <span class="navbar-avatar">{{ user.get_full_name|slice:':1'|default:user.username|slice:':1'|upper }}</span>
+                    <span class="navbar-label">{{ user.get_full_name|default:user.username }}</span>
+                </a>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li><a class="dropdown-item" href="{% url 'accounts:profile' %}">
+                        <i class="fas fa-user me-2 text-secondary"></i>الملف الشخصي
+                    </a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item text-danger" href="{% url 'accounts:logout' %}">
+                        <i class="fas fa-arrow-right-from-bracket me-2"></i>تسجيل الخروج
+                    </a></li>
+                </ul>
+            </div>
+        </div>
+
+    </div>
+</nav>
+
+<script>
+// Theme Toggle Functionality
+function toggleTheme() {
+    const html = document.documentElement;
+    const currentTheme = html.getAttribute('data-theme');
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+
+    html.setAttribute('data-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
+
+    // Update all theme icons on page
+    document.querySelectorAll('.theme-icon-ref').forEach(function(icon) {
+        if (newTheme === 'dark') {
+            icon.classList.replace('fa-moon', 'fa-sun');
+        } else {
+            icon.classList.replace('fa-sun', 'fa-moon');
+        }
+    });
+}
+
+// Load saved theme on page load
+(function() {
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    if (savedTheme === 'dark') {
+        document.querySelectorAll('.theme-icon-ref').forEach(function(icon) {
+            icon.classList.replace('fa-moon', 'fa-sun');
+        });
+    }
+})();
+
+// ── Notifications ──────────────────────────────────────
+const NOTIF_ICON_STYLE = {
+    'fa-triangle-exclamation': { bg: 'rgba(245,158,11,0.12)',  color: '#f59e0b' },
+    'fa-file-invoice-dollar':  { bg: 'rgba(239,68,68,0.12)',   color: '#ef4444' },
+    'fa-clock':                { bg: 'rgba(59,130,246,0.12)',  color: '#3b82f6' },
+    'fa-arrows-left-right':    { bg: 'rgba(16,185,129,0.12)',  color: '#10b981' },
+    'fa-clipboard-check':      { bg: 'rgba(16,185,129,0.12)',  color: '#10b981' },
+    'fa-bell':                 { bg: 'rgba(107,114,128,0.10)', color: '#6b7280' },
+};
+
+{% if request.user.is_superuser %}
+const NOTIF_API     = '{% url "core:admin_notifications_api" %}';
+const NOTIF_READ    = (id) => '{% url "core:admin_notifications_mark_read" 0 %}'.replace('/0/', `/${id}/`);
+const NOTIF_ALL_READ = '{% url "core:admin_notifications_mark_all_read" %}';
+{% else %}
+const NOTIF_API     = '/notifications/api/';
+const NOTIF_READ    = (id) => `/notifications/api/${id}/read/`;
+const NOTIF_ALL_READ = '/notifications/api/read-all/';
+{% endif %}
+
+async function loadNotifications() {
+    try {
+        const r = await fetch(NOTIF_API);
+        const d = await r.json();
+        const badge = document.getElementById('notifBadge');
+        const list  = document.getElementById('notifList');
+
+        badge.textContent = d.unread > 99 ? '99+' : d.unread;
+        badge.classList.toggle('d-none', !d.unread);
+
+        if (!d.items || !d.items.length) {
+            list.innerHTML = '<div class="notif-drop-empty"><i class="fas fa-bell-slash"></i>لا إشعارات جديدة</div>';
+            return;
+        }
+
+        list.innerHTML = d.items.map(n => {
+            const iconName = (n.icon || 'fa-bell').split(' ')[0];
+            const style = NOTIF_ICON_STYLE[iconName] || NOTIF_ICON_STYLE['fa-bell'];
+            return `
+            <a href="${n.link || '#'}"
+               class="notif-drop-item${n.is_read ? '' : ' notif-drop-item--unread'}"
+               onclick="markRead(${n.id}, event)">
+                <div class="notif-drop-icon" style="background:${style.bg};color:${style.color}">
+                    <i class="fas ${iconName}"></i>
+                </div>
+                <div class="notif-drop-body">
+                    <div class="notif-drop-title">${n.title}</div>
+                    <div class="notif-drop-msg">${n.message}</div>
+                    <div class="notif-drop-time">${n.time}</div>
+                </div>
+                ${!n.is_read ? '<div class="notif-drop-dot"></div>' : ''}
+            </a>`;
+        }).join('');
+    } catch (e) { /* silent fail */ }
+}
+
+async function markRead(id, event) {
+    await fetch(NOTIF_READ(id), {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCookie('csrftoken') },
+    });
+}
+
+async function markAllRead() {
+    await fetch(NOTIF_ALL_READ, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCookie('csrftoken') },
+    });
+    document.getElementById('notifBadge').classList.add('d-none');
+    loadNotifications();
+}
+
+function getCookie(name) {
+    const v = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+    return v ? v.pop() : '';
+}
+
+// Load on dropdown open + poll every 2 minutes
+document.getElementById('notifDropdown')?.addEventListener('show.bs.dropdown', loadNotifications);
+loadNotifications();
+setInterval(loadNotifications, 120000);
+</script>

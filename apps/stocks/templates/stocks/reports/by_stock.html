@@ -1,0 +1,160 @@
+{% extends "layouts/dashboard.html" %}
+{% load static %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=4.0">
+{% endblock %}
+
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<div class="cx-scene printable-scene">
+
+    <!-- ══ HERO ════════════════════════════════════════════════ -->
+    <div class="rpt-hero rpt-hero--stocks">
+        <div class="rpt-hero-inner">
+            <div class="rpt-hero-left">
+                <div class="rpt-hero-icon"><i class="fas fa-location-dot"></i></div>
+                <div>
+                    <h1 class="rpt-hero-title">المخزن حسب الموقع</h1>
+                    <p class="rpt-hero-desc">مقارنة الكميات بين المخازن</p>
+                </div>
+            </div>
+            <div class="rpt-hero-actions">
+                <button onclick="window.print()" class="rpt-hero-btn">
+                    <i class="fas fa-print"></i> طباعة
+                </button>
+                <a href="{% url 'stocks:reports:by_stock_report_export' %}{% if selected_stock_id %}?stock_id={{ selected_stock_id }}{% endif %}" class="rpt-hero-btn">
+                    <i class="fas fa-download"></i> تصدير
+                </a>
+                <a href="{% url 'stocks:quantities_list' %}" class="rpt-hero-btn">
+                    <i class="fas fa-arrow-left"></i> عودة
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ FILTERS ═════════════════════════════════════════════ -->
+    <div class="rpt-filters">
+        <form method="get" class="row g-3">
+            <div class="col-md-4">
+                <label for="stock_id" class="form-label">المخزن</label>
+                <select id="stock_id" name="stock_id" class="form-select">
+                    <option value="">كل المخازن</option>
+                    {% for s in stocks %}
+                        <option value="{{ s.id }}" {% if s.id|stringformat:"s" == selected_stock_id %}selected{% endif %}>{{ s.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="rpt-filter-btn rpt-filter-btn--stocks">
+                    <i class="fas fa-search me-1"></i>بحث
+                </button>
+            </div>
+        </form>
+    </div>
+
+    {% if report.data and not selected_stock_id %}
+    <!-- ══ CHART — stocks comparison ════════════════════════════ -->
+    <div class="rpt-panel">
+        <div class="rpt-panel-header rpt-panel-header--stocks">
+            <h3 class="rpt-panel-title"><i class="fas fa-chart-bar me-2"></i>مقارنة المخازن بالكمية المتاحة</h3>
+        </div>
+        <div class="rpt-chart-wrap">
+            <canvas id="stocksStockChart" class="rpt-chart-canvas"></canvas>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ══ DATA TABLE ══════════════════════════════════════════ -->
+    <div class="rpt-panel">
+        <div class="rpt-panel-header rpt-panel-header--stocks">
+            <h3 class="rpt-panel-title"><i class="fas fa-table me-2"></i>تفاصيل المخزن حسب الموقع</h3>
+        </div>
+        <div class="rpt-panel-body">
+            {% if report.data %}
+            <p class="rpt-unit-note m-0 p-2 rpt-unit-note--mixed"><i class="fas fa-triangle-exclamation me-1"></i>الكميات إجمالية بالوحدة الأساسية لكل صنف — قد تختلف الوحدات بين الأصناف</p>
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>المخزن</th>
+                            <th class="text-center">النوع</th>
+                            <th class="text-center">عدد المنتجات</th>
+                            <th class="text-center">المتاح</th>
+                            <th class="text-center">المحجوز</th>
+                            <th class="text-center">الإجمالي</th>
+                            <th class="text-center">منخفضة</th>
+                            <th class="text-end">القيمة</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for stock in report.data %}
+                        <tr>
+                            <td class="fw-bold">{{ stock.stock_name }}</td>
+                            <td class="text-center text-muted">{{ stock.stock_type }}</td>
+                            <td class="text-center">{{ stock.item_count }}</td>
+                            <td class="text-center fw-bold" style="color:#11998e">{{ stock.total_available|floatformat:0 }}</td>
+                            <td class="text-center" style="color:#f59e0b">{{ stock.total_reserved|floatformat:0 }}</td>
+                            <td class="text-center">{{ stock.total_quantity|floatformat:0 }}</td>
+                            <td class="text-center">
+                                {% if stock.low_stock_items > 0 %}
+                                <span style="color:#ef4444; font-weight:700;">
+                                    <i class="fas fa-triangle-exclamation"></i> {{ stock.low_stock_items }}
+                                </span>
+                                {% else %}—{% endif %}
+                            </td>
+                            <td class="text-end text-muted">{{ stock.total_value|money }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="rpt-empty">
+                <i class="fas fa-warehouse"></i>
+                <p>لا توجد بيانات مخزن</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if report.data and not selected_stock_id %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    const data = [{% for s in report.data %}{ name: "{{ s.stock_name|truncatechars:16 }}", available: parseFloat("{{ s.total_available }}") || 0, reserved: parseFloat("{{ s.total_reserved }}") || 0 }{% if not forloop.last %},{% endif %}{% endfor %}];
+    const isDark    = document.documentElement.getAttribute('data-theme') === 'dark';
+    const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+    const textColor = isDark ? '#9ca3af' : '#6b7280';
+
+    new Chart(document.getElementById('stocksStockChart'), {
+        type: 'bar',
+        data: {
+            labels: data.map(r => r.name),
+            datasets: [
+                { label: 'متاح',   data: data.map(r => r.available), backgroundColor: 'rgba(17,153,142,0.75)',  borderColor: '#11998e', borderWidth:1, borderRadius:4 },
+                { label: 'محجوز',  data: data.map(r => r.reserved),  backgroundColor: 'rgba(245,158,11,0.75)', borderColor: '#f59e0b', borderWidth:1, borderRadius:4 },
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: { position: 'top', labels: { color: textColor } },
+                tooltip: { callbacks: { label: ctx => ' ' + Number(ctx.raw).toLocaleString('en') + ' وحدة' } }
+            },
+            scales: {
+                x: { ticks: { color: textColor }, grid: { color: gridColor } },
+                y: { ticks: { color: textColor, callback: v => Number(v).toLocaleString('en') }, grid: { color: gridColor } }
+            }
+        }
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}

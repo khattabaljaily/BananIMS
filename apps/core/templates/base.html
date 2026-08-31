@@ -1,0 +1,149 @@
+{% load static %}
+{% load humanize %}
+{% load permission_tags %}
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>{% block title %}{{ app_name }}{% endblock %}</title>
+
+    <!-- Favicon & PWA -->
+    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'img/icons/icon-128x128.png' %}">
+    <link rel="apple-touch-icon" sizes="152x152" href="{% static 'img/icons/icon-152x152.png' %}">
+    <link rel="apple-touch-icon" sizes="192x192" href="{% static 'img/icons/icon-192x192.png' %}">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="إنجاز">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="theme-color" content="#6366f1" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#4f46e5" media="(prefers-color-scheme: dark)">
+
+    <!-- Bootstrap 5 RTL -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
+
+    <!-- Font Awesome 6 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- DataTables RTL -->
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Custom CSS - Main (Fonts + Colors Only) -->
+    <link rel="stylesheet" href="{% static 'css/main.css' %}?v=8.1">
+
+    <!-- Layout Components CSS -->
+    <link rel="stylesheet" href="{% static 'css/layout.css' %}?v=4.5">
+
+    <!-- Dashboard CSS -->
+    <link rel="stylesheet" href="{% static 'css/dashboard.css' %}?v=2.2">
+
+    <!-- Shared UI Components CSS -->
+    <link rel="stylesheet" href="{% static 'css/components.css' %}?v=2.0">
+
+    <!-- Auth Pages CSS -->
+    <link rel="stylesheet" href="{% static 'css/auth.css' %}?v=2.0">
+
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div id="global-alerts" class="container mt-3"></div>
+    
+    {% block body %}
+    <!-- Page content goes here -->
+    {% endblock %}
+    
+    <!-- Global Spinner -->
+    <div id="global-spinner" aria-hidden="true" role="status">
+        <div class="global-spinner__ring"></div>
+    </div>
+
+    <!-- jQuery 3.7 -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    
+    <!-- Bootstrap 5 Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- DataTables -->
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    
+    <!-- Custom JS -->
+    <script src="{% static 'js/main.js' %}?v=4.0"></script>
+
+    <!-- Global permission-denied handler: reads server message for all jQuery AJAX errors -->
+    <script>
+    function _xhrMsg(xhr, fallback) {
+        try { var r = JSON.parse(xhr.responseText); if (r && r.message) return r.message; } catch(e) {}
+        return fallback;
+    }
+    </script>
+
+    <!-- Global permissions helper: hasPerm(key) + CSS-first hide for data-require-perm elements -->
+    <style>[data-require-perm]{display:none!important}</style>
+    <script>
+    (function(){
+        var _p = new Set({% user_perm_keys_json %});
+        window.hasPerm = function(k){ return !k || _p.has(k); };
+        document.addEventListener('DOMContentLoaded', function(){
+            document.querySelectorAll('[data-require-perm]').forEach(function(el){
+                if (window.hasPerm(el.dataset.requirePerm)) el.removeAttribute('data-require-perm');
+            });
+        });
+    })();
+    </script>
+
+    <!-- Inject print date for report letterhead (no-op on non-report pages) -->
+    <script>
+    !function(){
+        var s=document.querySelector('.printable-scene');
+        if(!s)return;
+        function f(d){
+            try{return d.toLocaleDateString('ar-EG',{year:'numeric',month:'long',day:'numeric'});}
+            catch(e){return d.toISOString().slice(0,10);}
+        }
+        s.setAttribute('data-print-date',f(new Date()));
+        window.addEventListener('beforeprint',function(){s.setAttribute('data-print-date',f(new Date()));});
+    }();
+    </script>
+
+    {% block extra_js %}{% endblock %}
+
+    {% if request.user.is_authenticated and request.tenant %}
+        {% if plan_allows_ai %}{% include "ai/chat_widget.html" %}{% endif %}
+        {% include "components/help_widget.html" %}
+    {% endif %}
+
+    {% if training_template %}
+        {% include "components/training_panel.html" %}
+    {% endif %}
+
+    
+    <!-- PWA Service Worker -->
+    <script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+            navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                .catch(function() {});
+        });
+    }
+    </script>
+
+    <script>
+        // Global AJAX setup for Django CSRF
+        $.ajaxSetup({
+            beforeSend: function(xhr, settings) {
+                if (!(/^(GET|HEAD|OPTIONS|TRACE)$/.test(settings.type)) && !this.crossDomain) {
+                    xhr.setRequestHeader("X-CSRFToken", "{{ csrf_token }}");
+                }
+            }
+        });
+        
+    </script>
+</body>
+</html>

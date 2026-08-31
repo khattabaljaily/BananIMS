@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>New Tenant Registered — EnjazIMS</title>
+<style>
+  body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+  table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+  img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
+  body { margin: 0; padding: 0; background-color: #f0f4f8; font-family: 'Segoe UI', Helvetica, Arial, sans-serif; }
+  .email-body { background-color: #f0f4f8; padding: 32px 16px; }
+  .card { background: #ffffff; border-radius: 12px; overflow: hidden; max-width: 600px; margin: 0 auto; box-shadow: 0 2px 16px rgba(0,0,0,0.08); }
+</style>
+</head>
+<body>
+<div class="email-body">
+<table width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr><td align="center">
+<table class="card" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 16px rgba(0,0,0,0.08);">
+
+  <!-- HEADER -->
+  <tr>
+    <td style="background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);padding:40px 40px 32px;text-align:center;">
+      <p style="margin:0 0 16px;font-size:12px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,0.65);">EnjazIMS Platform</p>
+      <div style="display:inline-block;background:rgba(255,255,255,0.15);border-radius:50px;padding:10px 24px;margin-bottom:20px;">
+        <span style="font-size:14px;color:#ffffff;font-weight:600;letter-spacing:1px;">NEW TENANT REGISTERED</span>
+      </div>
+      <h1 style="margin:0;font-size:28px;font-weight:700;color:#ffffff;line-height:1.3;">Subscription Created</h1>
+      <p style="margin:10px 0 0;font-size:14px;color:rgba(255,255,255,0.75);">{{ created_at|date:"l, F j, Y" }} at {{ created_at|date:"g:i A" }}</p>
+    </td>
+  </tr>
+
+  <!-- SUCCESS BANNER -->
+  <tr>
+    <td style="background:#ecfdf5;border-bottom:1px solid #d1fae5;padding:14px 32px;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td width="24" style="vertical-align:middle;">
+            <div style="width:10px;height:10px;background:#10b981;border-radius:50%;"></div>
+          </td>
+          <td style="vertical-align:middle;padding-left:10px;font-size:13px;font-weight:600;color:#065f46;">
+            Tenant account successfully created and is now active
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- BODY -->
+  <tr>
+    <td style="padding:32px 40px 8px;">
+      <p style="margin:0 0 28px;font-size:15px;color:#64748b;line-height:1.6;">
+        A new subscription has been registered on EnjazIMS. Here is the full summary:
+      </p>
+
+      <!-- SECTION: Business Info -->
+      <p style="margin:0 0 12px;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#94a3b8;">Business Information</p>
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:24px;">
+
+        <!-- Business Name -->
+        <tr style="border-bottom:1px solid #e2e8f0;">
+          <td style="padding:14px 18px;border-bottom:1px solid #e2e8f0;vertical-align:top;width:160px;">
+            <span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Business Name</span>
+          </td>
+          <td style="padding:14px 18px;border-bottom:1px solid #e2e8f0;vertical-align:top;">
+            <span style="font-size:14px;font-weight:700;color:#1e293b;">{{ tenant.name }}</span>
+          </td>
+        </tr>
+
+        <!-- Slug -->
+        <tr>
+          <td style="padding:14px 18px;border-bottom:1px solid #e2e8f0;vertical-align:top;width:160px;">
+            <span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Identifier</span>
+          </td>
+          <td style="padding:14px 18px;border-bottom:1px solid #e2e8f0;vertical-align:top;">
+            <span style="font-size:13px;font-family:monospace;color:#4f46e5;background:#ede9fe;padding:2px 8px;border-radius:4px;">{{ tenant.slug }}</span>
+          </td>
+        </tr>
+
+        {% if tenant.business_type %}
+        <tr>
+          <td style="padding:14px 18px;border-bottom:1px solid #e2e8f0;vertical-align:top;width:160px;">
+            <span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Business Type</span>
+          </td>
+          <td style="padding:14px 18px;border-bottom:1px solid #e2e8f0;vertical-align:top;">
+            <span style="font-size:14px;color:#1e293b;">{{ tenant.business_type.name_ar }}</span>
+          </td>
+        </tr>
+        {% endif %}
+
+        {% if tenant.city %}
+        <tr>
+          <td style="padding:14px 18px;border-bottom:1px solid #e2e8f0;vertical-align:top;width:160px;">
+            <span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Location</span>
+          </td>
+          <td style="padding:14px 18px;border-bottom:1px solid #e2e8f0;vertical-align:top;">
+            <span style="font-size:14px;color:#1e293b;">{{ tenant.city }}{% if tenant.country %}, {{ tenant.country }}{% endif %}</span>
+          </td>
+        </tr>
+        {% endif %}
+
+        {% if tenant.phone %}
+        <tr>
+          <td style="padding:14px 18px;border-bottom:1px solid #e2e8f0;vertical-align:top;width:160px;">
+            <span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Phone</span>
+          </td>
+          <td style="padding:14px 18px;border-bottom:1px solid #e2e8f0;vertical-align:top;">
+            <span style="font-size:14px;color:#1e293b;">{{ tenant.phone }}</span>
+          </td>
+        </tr>
+        {% endif %}
+
+        {% if tenant.email %}
+        <tr>
+          <td style="padding:14px 18px;vertical-align:top;width:160px;">
+            <span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Email</span>
+          </td>
+          <td style="padding:14px 18px;vertical-align:top;">
+            <span style="font-size:14px;color:#1e293b;">{{ tenant.email }}</span>
+          </td>
+        </tr>
+        {% endif %}
+
+      </table>
+
+      <!-- SECTION: Subscription -->
+      <p style="margin:0 0 12px;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#94a3b8;">Subscription Details</p>
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:24px;">
+
+        <tr>
+          <td style="padding:14px 18px;border-bottom:1px solid #e2e8f0;vertical-align:top;width:160px;">
+            <span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Plan</span>
+          </td>
+          <td style="padding:14px 18px;border-bottom:1px solid #e2e8f0;vertical-align:top;">
+            {% if tenant.subscription_plan == 'trial' %}
+              <span style="font-size:12px;font-weight:700;color:#92400e;background:#fef3c7;padding:3px 10px;border-radius:20px;">{{ tenant.get_subscription_plan_display }}</span>
+            {% elif tenant.subscription_plan == 'basic' %}
+              <span style="font-size:12px;font-weight:700;color:#1e40af;background:#dbeafe;padding:3px 10px;border-radius:20px;">{{ tenant.get_subscription_plan_display }}</span>
+            {% elif tenant.subscription_plan == 'pro' %}
+              <span style="font-size:12px;font-weight:700;color:#5b21b6;background:#ede9fe;padding:3px 10px;border-radius:20px;">{{ tenant.get_subscription_plan_display }}</span>
+            {% else %}
+              <span style="font-size:12px;font-weight:700;color:#166534;background:#dcfce7;padding:3px 10px;border-radius:20px;">{{ tenant.get_subscription_plan_display }}</span>
+            {% endif %}
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:14px 18px;border-bottom:1px solid #e2e8f0;vertical-align:top;width:160px;">
+            <span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Version</span>
+          </td>
+          <td style="padding:14px 18px;border-bottom:1px solid #e2e8f0;vertical-align:top;">
+            <span style="font-size:14px;color:#1e293b;">{{ tenant.get_version_type_display }}</span>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:14px 18px;border-bottom:1px solid #e2e8f0;vertical-align:top;width:160px;">
+            <span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Account Type</span>
+          </td>
+          <td style="padding:14px 18px;border-bottom:1px solid #e2e8f0;vertical-align:top;">
+            {% if tenant.is_demo %}
+              <span style="font-size:12px;font-weight:700;color:#9d174d;background:#fce7f3;padding:3px 10px;border-radius:20px;">Demo</span>
+            {% else %}
+              <span style="font-size:12px;font-weight:700;color:#065f46;background:#d1fae5;padding:3px 10px;border-radius:20px;">Live</span>
+            {% endif %}
+          </td>
+        </tr>
+
+        {% if tenant.subscription_start %}
+        <tr>
+          <td style="padding:14px 18px;border-bottom:1px solid #e2e8f0;vertical-align:top;width:160px;">
+            <span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Start Date</span>
+          </td>
+          <td style="padding:14px 18px;border-bottom:1px solid #e2e8f0;vertical-align:top;">
+            <span style="font-size:14px;color:#1e293b;">{{ tenant.subscription_start|date:"F j, Y" }}</span>
+          </td>
+        </tr>
+        {% endif %}
+
+        <tr>
+          <td style="padding:14px 18px;border-bottom:1px solid #e2e8f0;vertical-align:top;width:160px;">
+            <span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Expires</span>
+          </td>
+          <td style="padding:14px 18px;border-bottom:1px solid #e2e8f0;vertical-align:top;">
+            <span style="font-size:14px;color:#1e293b;">{% if tenant.subscription_expires %}{{ tenant.subscription_expires|date:"F j, Y" }}{% else %}Open-ended{% endif %}</span>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:14px 18px;vertical-align:top;width:160px;">
+            <span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Limits</span>
+          </td>
+          <td style="padding:14px 18px;vertical-align:top;">
+            <span style="font-size:13px;color:#475569;">
+              {{ tenant.max_users }} users &nbsp;&bull;&nbsp; {{ tenant.max_stocks }} warehouses &nbsp;&bull;&nbsp; {{ tenant.max_branches }} branches
+            </span>
+          </td>
+        </tr>
+
+      </table>
+
+      <!-- SECTION: Admin Account -->
+      <p style="margin:0 0 12px;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#94a3b8;">Admin Account Created</p>
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:32px;">
+
+        {% if admin_full_name %}
+        <tr>
+          <td style="padding:14px 18px;border-bottom:1px solid #e2e8f0;vertical-align:top;width:160px;">
+            <span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Full Name</span>
+          </td>
+          <td style="padding:14px 18px;border-bottom:1px solid #e2e8f0;vertical-align:top;">
+            <span style="font-size:14px;font-weight:600;color:#1e293b;">{{ admin_full_name }}</span>
+          </td>
+        </tr>
+        {% endif %}
+
+        <tr>
+          <td style="padding:14px 18px;border-bottom:{% if admin_email %}1px solid #e2e8f0{% else %}0{% endif %};vertical-align:top;width:160px;">
+            <span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Username</span>
+          </td>
+          <td style="padding:14px 18px;border-bottom:{% if admin_email %}1px solid #e2e8f0{% else %}0{% endif %};vertical-align:top;">
+            <span style="font-size:13px;font-family:monospace;color:#4f46e5;background:#ede9fe;padding:2px 8px;border-radius:4px;">{{ admin_username }}</span>
+          </td>
+        </tr>
+
+        {% if admin_email %}
+        <tr>
+          <td style="padding:14px 18px;vertical-align:top;width:160px;">
+            <span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Email</span>
+          </td>
+          <td style="padding:14px 18px;vertical-align:top;">
+            <span style="font-size:14px;color:#1e293b;">{{ admin_email }}</span>
+          </td>
+        </tr>
+        {% endif %}
+
+      </table>
+
+      <!-- CTA BUTTON -->
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:32px;">
+        <tr>
+          <td align="center">
+            <a href="{{ dashboard_url }}" style="display:inline-block;background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;padding:14px 40px;border-radius:8px;letter-spacing:0.3px;">
+              View in Admin Dashboard
+            </a>
+          </td>
+        </tr>
+      </table>
+
+    </td>
+  </tr>
+
+  <!-- FOOTER -->
+  <tr>
+    <td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:24px 40px;text-align:center;">
+      <p style="margin:0 0 4px;font-size:15px;font-weight:700;color:#4f46e5;">EnjazIMS</p>
+      <p style="margin:0 0 4px;font-size:12px;color:#94a3b8;">This is an automated notification. Please do not reply.</p>
+      <p style="margin:12px 0 0;font-size:11px;color:#cbd5e1;">&copy; {{ created_at|date:"Y" }} EnjazIMS. All rights reserved.</p>
+    </td>
+  </tr>
+
+</table>
+</td></tr>
+</table>
+</div>
+</body>
+</html>

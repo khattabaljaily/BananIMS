@@ -1,0 +1,713 @@
+{% extends "layouts/dashboard.html" %}
+{% load static %}
+{% load humanize %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/employees.css' %}?v=1.0">
+{% endblock %}
+
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<div class="cx-scene">
+
+<!-- ══════════ HERO ══════════ -->
+<div class="cx-hero">
+    <div class="cx-hero-inner">
+        <div class="cx-hero-left">
+            <div class="cx-hero-icon-wrap"><i class="fas fa-file-invoice-dollar"></i></div>
+            <div>
+                <h1 class="cx-hero-title">كشوف الرواتب</h1>
+                <p class="cx-hero-desc">إدارة رواتب الموظفين الشهرية</p>
+            </div>
+        </div>
+        <div class="cx-hero-right">
+            <div class="cx-hero-actions">
+                {% if request.user|has_perm_key:"add_employee_salaries" %}
+                <button type="button" class="cx-btn-add" id="btnOpenCreateSalary">
+                    <i class="fas fa-plus"></i><span>كشف راتب جديد</span>
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="cx-stats-inline">
+        <span class="cx-stat-badge cx-stat-badge--primary">
+            <i class="fas fa-list"></i><strong>{{ stats.total }}</strong><span>إجمالي</span>
+        </span>
+        <span class="cx-stat-badge cx-stat-badge--muted">
+            <i class="fas fa-pencil"></i><strong>{{ stats.draft }}</strong><span>مسودة</span>
+        </span>
+        <span class="cx-stat-badge cx-stat-badge--success">
+            <i class="fas fa-check-circle"></i><strong>{{ stats.paid }}</strong><span>مدفوع</span>
+        </span>
+        <span class="cx-stat-badge cx-stat-badge--muted">
+            <i class="fas fa-ban"></i><strong>{{ stats.cancelled }}</strong><span>ملغى</span>
+        </span>
+    </div>
+</div>
+
+<!-- ══════════ TABLE PANEL ══════════ -->
+<div class="cx-panel">
+    <div class="cx-toolbar">
+        <div class="cx-toolbar-search">
+            <i class="fas fa-search cx-toolbar-search-icon"></i>
+            <input type="text" id="salSearch" class="cx-search-input" placeholder="اسم الموظف...">
+        </div>
+        <div class="cx-toolbar-end">
+            <select id="employeeFilter" class="cx-select-sm">
+                <option value="">كل الموظفين</option>
+                {% for emp in employees %}
+                <option value="{{ emp.pk }}">{{ emp.name }}</option>
+                {% endfor %}
+            </select>
+            <select id="statusFilter" class="cx-select-sm">
+                <option value="">كل الحالات</option>
+                <option value="draft">مسودة</option>
+                <option value="paid">مدفوع</option>
+                <option value="cancelled">ملغى</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="table-responsive cx-table-wrap">
+        <table id="salariesTable" class="cx-table">
+            <thead>
+                <tr>
+                    <th>الموظف</th>
+                    <th>من</th>
+                    <th>إلى</th>
+                    <th>الراتب</th>
+                    <th>الحوافز</th>
+                    <th>السلف</th>
+                    <th>الخصومات</th>
+                    <th>الصافي</th>
+                    <th>الخزينة</th>
+                    <th>الحالة</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+</div>
+
+<!-- ══════════ CREATE MODAL ══════════ -->
+<div class="modal fade" id="salaryModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered cx-modal-dialog">
+        <div class="modal-content cx-modal" style="max-width:780px;">
+            <div class="cx-modal-main">
+                <div class="cx-modal-header">
+                    <div>
+                        <h5 class="cx-modal-title">كشف راتب جديد</h5>
+                    </div>
+                    <button type="button" class="cx-modal-close" data-bs-dismiss="modal"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="cx-modal-body">
+                    <div class="cx-form-group-label">
+                        <span class="cx-form-group-icon"><i class="fas fa-user"></i></span>
+                        الموظف والفترة
+                    </div>
+                    <div class="row g-3 mb-4">
+                        <div class="col-12">
+                            <label class="cx-label">الموظف <sup class="cx-required">*</sup></label>
+                            <select id="salEmployee" class="cx-input" required>
+                                <option value="">اختر موظف</option>
+                                {% for emp in employees %}
+                                <option value="{{ emp.pk }}" data-salary="{{ emp.base_salary }}">{{ emp.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="cx-label">من <sup class="cx-required">*</sup></label>
+                            <input type="date" id="salPeriodStart" class="cx-input" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="cx-label">إلى <sup class="cx-required">*</sup></label>
+                            <input type="date" id="salPeriodEnd" class="cx-input" required>
+                        </div>
+                    </div>
+                    <div class="cx-form-group-label">
+                        <span class="cx-form-group-icon"><i class="fas fa-coins"></i></span>
+                        تفاصيل الراتب
+                    </div>
+                    <div class="row g-3 mb-4">
+                        <div class="col-12">
+                            <label class="cx-label">الراتب الأساسي</label>
+                            <input type="number" id="salBaseSalary" class="cx-input text-end" min="0" step="0.01">
+                        </div>
+                        <div class="col-12" id="pendingItemsSection" style="display:none">
+                            <div style="border:1px solid #e2e8f0;border-radius:10px;overflow-x:auto;">
+                                <table class="table table-sm table-hover mb-0" style="font-size:.875rem;">
+                                    <thead style="background:#f1f5f9;">
+                                        <tr>
+                                            <th style="width:36px;padding:8px 10px;">
+                                                <input type="checkbox" id="checkAllItems" checked style="cursor:pointer;">
+                                            </th>
+                                            <th style="padding:8px 6px;">النوع</th>
+                                            <th style="padding:8px 6px;">الوصف</th>
+                                            <th style="padding:8px 6px;">التاريخ</th>
+                                            <th class="text-end" style="padding:8px 10px;">المبلغ</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="pendingItemsBody"></tbody>
+                                    <tfoot>
+                                        <tr style="background:#f8fafc;border-top:2px solid #e2e8f0;">
+                                            <td colspan="5" style="padding:8px 12px;">
+                                                <div class="d-flex gap-4 justify-content-end small fw-semibold flex-wrap">
+                                                    <span>سلفيات: <span id="totAdv" style="color:#d97706">0.00</span></span>
+                                                    <span>حوافز: <span id="totBonus" style="color:#16a34a">0.00</span></span>
+                                                    <span>خصومات: <span id="totDed" style="color:#dc2626">0.00</span></span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div style="background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;border-radius:12px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;">
+                                <span class="fw-bold">صافي الراتب المستحق</span>
+                                <span class="fs-5 fw-bold" id="salNetDisplay">0.00</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="cx-form-group-label">
+                        <span class="cx-form-group-icon"><i class="fas fa-building-columns"></i></span>
+                        الخزينة والملاحظات
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="cx-label">طريقة الدفع</label>
+                            <div class="d-flex gap-2">
+                                <button type="button" class="cx-btn-secondary flex-fill sal-pm active" data-method="cash"><i class="fas fa-coins me-1"></i>نقدي</button>
+                                <button type="button" class="cx-btn-secondary flex-fill sal-pm" data-method="bank"><i class="fas fa-building-columns me-1"></i>تحويل بنكي</button>
+                            </div>
+                            <input type="hidden" id="salPaymentMethod" value="cash">
+                        </div>
+                        <div class="col-12" id="salTreasuryRow">
+                            <label class="cx-label">الخزينة / الحساب <sup class="cx-required">*</sup></label>
+                            <select id="salTreasury" class="cx-input">
+                                <option value="">اختر خزينة</option>
+                                {% for t in treasuries %}
+                                <option value="{{ t.pk }}">{{ t.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-12" id="salBankRefRow" style="display:none">
+                            <label class="cx-label">رقم الحوالة / المرجع</label>
+                            <input type="text" id="salBankRef" class="cx-input" placeholder="رقم الحوالة البنكية...">
+                        </div>
+                        <div class="col-12">
+                            <label class="cx-label">ملاحظات</label>
+                            <textarea id="salNotes" class="cx-input" rows="2"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="cx-modal-footer">
+                    <button type="button" class="cx-btn-ghost" data-bs-dismiss="modal">إلغاء</button>
+                    <button type="button" class="cx-btn-primary" id="btnSaveSalary">
+                        <i class="fas fa-check me-1"></i>حفظ كمسودة
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════ VIEW MODAL ══════════ -->
+<div class="modal fade" id="viewSalaryModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered cx-view-dialog">
+        <div class="modal-content cx-view-modal">
+            <div class="cx-view-header">
+                <div class="cx-view-header-content">
+                    <div class="cx-view-avatar"><i class="fas fa-file-invoice-dollar"></i></div>
+                    <div>
+                        <h5 class="cx-view-title" id="viewSalEmployee">—</h5>
+                        <p class="cx-view-subtitle" id="viewSalPeriod">—</p>
+                    </div>
+                </div>
+                <button type="button" class="cx-view-close" data-bs-dismiss="modal"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="cx-view-body">
+                <div class="cx-view-section">
+                    <div class="cx-view-section-title"><i class="fas fa-coins"></i>تفاصيل الراتب</div>
+                    <div class="cx-info-grid" id="viewSalBody"></div>
+                </div>
+            </div>
+            <div class="cx-view-footer">
+                <button type="button" class="cx-btn-ghost" data-bs-dismiss="modal">إغلاق</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════ PAY CONFIRM MODAL ══════════ -->
+<div class="modal fade" id="paySalaryModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered cx-delete-dialog">
+        <div class="modal-content cx-delete-modal">
+            <div class="cx-delete-body">
+                <div class="cx-delete-icon" style="background:linear-gradient(135deg,#22c55e,#16a34a)"><i class="fas fa-money-bill-wave"></i></div>
+                <h5 class="cx-delete-title">دفع الراتب؟</h5>
+                <p class="cx-delete-desc" id="paySalaryDesc">سيتم خصم صافي الراتب من الخزينة المحددة وتسجيل الحركة. لا يمكن التراجع.</p>
+                <input type="hidden" id="paySalaryId">
+            </div>
+            <div class="cx-delete-footer">
+                <button type="button" class="cx-btn-ghost" data-bs-dismiss="modal">لا</button>
+                <button type="button" class="cx-btn-primary" id="btnConfirmPaySalary">نعم، دفع الراتب</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════ CANCEL CONFIRM MODAL ══════════ -->
+<div class="modal fade" id="cancelSalaryModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered cx-delete-dialog">
+        <div class="modal-content cx-delete-modal">
+            <div class="cx-delete-body">
+                <div class="cx-delete-icon" style="background:linear-gradient(135deg,#f59e0b,#d97706)"><i class="fas fa-ban"></i></div>
+                <h5 class="cx-delete-title">إلغاء كشف الراتب؟</h5>
+                <p class="cx-delete-desc" id="cancelSalaryDesc">سيتم إلغاء الكشف وتسجيل الحركة العكسية. لا يمكن التراجع.</p>
+                <input type="hidden" id="cancelSalaryId">
+                <input type="hidden" id="cancelSalaryMethod">
+            </div>
+            <div class="cx-delete-footer">
+                <button type="button" class="cx-btn-ghost" data-bs-dismiss="modal">لا</button>
+                <button type="button" class="cx-btn-danger" id="btnConfirmCancelSalary">نعم، إلغاء الكشف</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    'use strict';
+    const hasPerm = window.hasPerm || (function(){ return false; });
+
+    function getCookie(name) {
+        const v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
+        return v ? v[2] : null;
+    }
+
+    const urlTable  = "{% url 'employees:salary_table_api' %}";
+    const urlCreate = "{% url 'employees:salary_create' %}";
+    function detailUrl(id) { return '/employees/salaries/api/' + id + '/'; }
+    function payUrl(id)    { return '/employees/salaries/api/' + id + '/pay/'; }
+    function cancelUrl(id) { return '/employees/salaries/api/' + id + '/cancel/'; }
+    function pendAdvUrl(id){ return '/employees/api/' + id + '/pending-advances/'; }
+    function pendIncUrl(id){ return '/employees/api/' + id + '/pending-incentives/'; }
+
+    const salModalEl    = document.getElementById('salaryModal');
+    const viewModalEl   = document.getElementById('viewSalaryModal');
+    const payModalEl    = document.getElementById('paySalaryModal');
+    const cancelModalEl = document.getElementById('cancelSalaryModal');
+    [salModalEl, viewModalEl, payModalEl, cancelModalEl].forEach(function (el) {
+        if (el && el.parentElement !== document.body) document.body.appendChild(el);
+    });
+    const salModal    = new bootstrap.Modal(salModalEl);
+    const viewModal   = new bootstrap.Modal(viewModalEl);
+    const payModal    = new bootstrap.Modal(payModalEl);
+    const cancelModal = new bootstrap.Modal(cancelModalEl);
+
+    function fmtStatus(s) {
+        const m = {
+            'draft':     '<span class="cxr-status cxr-status--off">مسودة</span>',
+            'paid':      '<span class="cxr-status cxr-status--on">مدفوع</span>',
+            'cancelled': '<span class="cxr-status cxr-status--off">ملغى</span>',
+        };
+        return m[s] || s;
+    }
+
+    /* ── Pending items state ── */
+    let pendingItems = [];
+
+    function updateTotals() {
+        const checked = pendingItems.filter(i => i.checked);
+        document.getElementById('totAdv').textContent   = EnjazIMS.formatMoney(checked.filter(i => i.type === 'advance').reduce((s,i) => s + i.amount, 0));
+        document.getElementById('totBonus').textContent = EnjazIMS.formatMoney(checked.filter(i => i.type === 'bonus').reduce((s,i) => s + i.amount, 0));
+        document.getElementById('totDed').textContent   = EnjazIMS.formatMoney(checked.filter(i => i.type === 'deduction').reduce((s,i) => s + i.amount, 0));
+    }
+
+    function calcNet() {
+        const base = parseFloat(document.getElementById('salBaseSalary').value) || 0;
+        const checked = pendingItems.filter(i => i.checked);
+        const bonuses    = checked.filter(i => i.type === 'bonus').reduce((s,i) => s + i.amount, 0);
+        const advances   = checked.filter(i => i.type === 'advance').reduce((s,i) => s + i.amount, 0);
+        const deductions = checked.filter(i => i.type === 'deduction').reduce((s,i) => s + i.amount, 0);
+        document.getElementById('salNetDisplay').textContent = EnjazIMS.formatMoney(base + bonuses - advances - deductions);
+    }
+
+    function renderPendingTable() {
+        const section = document.getElementById('pendingItemsSection');
+        const tbody   = document.getElementById('pendingItemsBody');
+        if (!pendingItems.length) {
+            section.style.display = 'none';
+            tbody.innerHTML = '';
+            updateTotals();
+            return;
+        }
+        section.style.display = '';
+        tbody.innerHTML = pendingItems.map(function (item, idx) {
+            const badge = item.type === 'advance'
+                ? '<span class="badge" style="background:#fef3c7;color:#92400e;font-weight:600;">سلفة</span>'
+                : item.type === 'bonus'
+                ? '<span class="badge" style="background:#dcfce7;color:#166534;font-weight:600;">حافز</span>'
+                : '<span class="badge" style="background:#fee2e2;color:#991b1b;font-weight:600;">خصم</span>';
+            const amtStyle = item.checked ? (item.type === 'bonus' ? 'color:#16a34a' : 'color:#dc2626') : 'color:#9ca3af';
+            const rowStyle = item.checked ? '' : 'opacity:.55';
+            return `<tr id="pit-${idx}" style="${rowStyle}">
+                <td style="padding:7px 10px;"><input type="checkbox" class="pit-chk" data-idx="${idx}" ${item.checked ? 'checked' : ''} style="cursor:pointer;"></td>
+                <td style="padding:7px 6px;">${badge}</td>
+                <td style="padding:7px 6px;" class="small">${item.description || '—'}</td>
+                <td style="padding:7px 6px;" class="small text-muted">${item.date}</td>
+                <td style="padding:7px 10px;text-align:end;font-weight:600;${amtStyle}">${EnjazIMS.formatMoney(item.amount)}</td>
+            </tr>`;
+        }).join('');
+        updateTotals();
+    }
+
+    function loadPendingItems() {
+        const employee = document.getElementById('salEmployee').value;
+        if (!employee) {
+            pendingItems = [];
+            renderPendingTable();
+            calcNet();
+            return;
+        }
+        Promise.all([
+            fetch(pendAdvUrl(employee)).then(r => r.json()),
+            fetch(pendIncUrl(employee)).then(r => r.json())
+        ]).then(function (results) {
+            const advData = results[0];
+            const incData = results[1];
+            const advances   = (advData.advances || []).map(function (a) {
+                return { id: a.id, itemType: 'advance', type: 'advance', amount: parseFloat(a.amount), date: a.date, description: a.notes || 'سلفة', checked: true };
+            });
+            const incentives = (incData.items || []).map(function (i) {
+                return { id: i.id, itemType: 'incentive', type: i.type, amount: parseFloat(i.amount), date: i.date, description: i.description, checked: true };
+            });
+            pendingItems = advances.concat(incentives);
+            const allChecked = pendingItems.length > 0;
+            document.getElementById('checkAllItems').checked = allChecked;
+            renderPendingTable();
+            calcNet();
+        }).catch(function () {
+            pendingItems = [];
+            renderPendingTable();
+        });
+    }
+
+    /* ── Checkbox events (delegation) ── */
+    document.getElementById('pendingItemsBody').addEventListener('change', function (e) {
+        if (!e.target.classList.contains('pit-chk')) return;
+        const idx = parseInt(e.target.dataset.idx, 10);
+        pendingItems[idx].checked = e.target.checked;
+        const row = document.getElementById('pit-' + idx);
+        const item = pendingItems[idx];
+        row.style.opacity = item.checked ? '' : '.55';
+        const amtCell = row.querySelector('td:last-child');
+        amtCell.style.color = item.checked ? (item.type === 'bonus' ? '#16a34a' : '#dc2626') : '#9ca3af';
+        updateTotals();
+        calcNet();
+        const anyUnchecked = pendingItems.some(i => !i.checked);
+        document.getElementById('checkAllItems').checked = !anyUnchecked;
+    });
+
+    document.getElementById('checkAllItems').addEventListener('change', function () {
+        pendingItems.forEach(function (item) { item.checked = this.checked; }, this);
+        renderPendingTable();
+        calcNet();
+    });
+
+    /* ── DataTable ── */
+    let _perms = { pay: false, cancel: false };
+
+    const dt = $('#salariesTable').DataTable({
+        processing: true,
+        serverSide: true,
+        searching: true,
+        ordering: false,
+        dom: '<"d-none"f><"d-none"l>rt<"cx-dt-bottom"ip>',
+        ajax: {
+            url: urlTable,
+            data: function (d) {
+                d.status   = document.getElementById('statusFilter').value;
+                d.employee = document.getElementById('employeeFilter').value;
+                d.search   = { value: document.getElementById('salSearch').value };
+            },
+            dataSrc: function (json) { _perms = json.perms || _perms; return json.data; }
+        },
+        columns: [
+            { data: 'employee', render: v => `<span class="cxr-name">${v}</span>` },
+            { data: 'period_start' },
+            { data: 'period_end' },
+            { data: 'base_salary',       className: 'text-end', render: v => EnjazIMS.formatMoney(v || 0) },
+            { data: 'bonus',             className: 'text-end', render: v => EnjazIMS.formatMoney(v || 0) },
+            { data: 'advances_deducted', className: 'text-end', render: v => EnjazIMS.formatMoney(v || 0) },
+            { data: 'deductions',        className: 'text-end', render: v => EnjazIMS.formatMoney(v || 0) },
+            { data: 'total_due',         className: 'text-end fw-bold', render: v => EnjazIMS.formatMoney(v || 0) },
+            { data: 'treasury' },
+            { data: 'status', render: v => fmtStatus(v) },
+            {
+                data: null, orderable: false, searchable: false,
+                render: function (_, __, r) {
+                    let html = '<div class="cxr-actions">';
+                    html += `<button class="cxr-act js-view-sal" data-id="${r.id}" title="عرض"><i class="fas fa-eye"></i></button>`;
+                    if (r.status === 'draft' && _perms.pay) {
+                        html += `<button class="cxr-act js-pay-sal" data-id="${r.id}" data-method="${r.payment_method || 'cash'}" title="دفع الراتب"><i class="fas fa-money-bill-wave"></i></button>`;
+                    }
+                    if (r.status !== 'cancelled' && _perms.cancel) {
+                        html += `<button class="cxr-act cxr-act--del js-cancel-sal" data-id="${r.id}" data-method="${r.payment_method || 'cash'}" title="إلغاء"><i class="fas fa-ban"></i></button>`;
+                    }
+                    html += '</div>';
+                    return html;
+                }
+            }
+        ],
+        language: {
+            emptyTable: 'لا توجد كشوف رواتب',
+            zeroRecords: 'لا توجد نتائج مطابقة',
+            info: 'عرض _START_ إلى _END_ من _TOTAL_',
+            paginate: { previous: 'السابق', next: 'التالي' }
+        },
+        pageLength: 25,
+        order: [[1, 'desc']]
+    });
+
+    /* ── Search & Filter ── */
+    let searchTimer;
+    $('#salSearch').on('input', function () {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => dt.search($(this).val()).draw(), 350);
+    });
+    ['statusFilter', 'employeeFilter'].forEach(function (id) {
+        document.getElementById(id).addEventListener('change', () => dt.ajax.reload());
+    });
+
+    document.getElementById('salBaseSalary').addEventListener('input', calcNet);
+
+    /* ── When employee changes → prefill base salary + load pending items ── */
+    document.getElementById('salEmployee').addEventListener('change', function () {
+        const opt = this.options[this.selectedIndex];
+        if (opt && opt.dataset.salary) {
+            document.getElementById('salBaseSalary').value = opt.dataset.salary;
+        }
+        loadPendingItems();
+    });
+
+    function setSalPM(method) {
+        document.getElementById('salPaymentMethod').value = method;
+        document.querySelectorAll('.sal-pm').forEach(b => b.classList.toggle('active', b.dataset.method === method));
+        document.getElementById('salTreasuryRow').style.display = method === 'cash' ? '' : 'none';
+        document.getElementById('salBankRefRow').style.display  = method === 'bank' ? '' : 'none';
+        if (method === 'bank') document.getElementById('salTreasury').value = '';
+        else document.getElementById('salBankRef').value = '';
+    }
+
+    document.querySelectorAll('.sal-pm').forEach(b => b.addEventListener('click', () => setSalPM(b.dataset.method)));
+
+    /* ── Open Create ── */
+    $('#btnOpenCreateSalary').on('click', function () {
+        document.getElementById('salEmployee').value = '';
+        document.getElementById('salPeriodStart').value = '';
+        document.getElementById('salPeriodEnd').value = '';
+        document.getElementById('salBaseSalary').value = '';
+        document.getElementById('salTreasury').value = '';
+        document.getElementById('salBankRef') && (document.getElementById('salBankRef').value = '');
+        document.getElementById('salNotes').value = '';
+        document.getElementById('salNetDisplay').textContent = '0.00';
+        pendingItems = [];
+        document.getElementById('pendingItemsSection').style.display = 'none';
+        document.getElementById('pendingItemsBody').innerHTML = '';
+        document.getElementById('checkAllItems').checked = true;
+        document.getElementById('totAdv').textContent   = '0.00';
+        document.getElementById('totBonus').textContent = '0.00';
+        document.getElementById('totDed').textContent   = '0.00';
+        setSalPM('cash');
+        salModal.show();
+    });
+
+    /* ── Save ── */
+    $('#btnSaveSalary').on('click', function () {
+        const employee = document.getElementById('salEmployee').value;
+        const start    = document.getElementById('salPeriodStart').value;
+        const end      = document.getElementById('salPeriodEnd').value;
+        const method   = document.getElementById('salPaymentMethod').value;
+        const treasury = document.getElementById('salTreasury').value;
+        if (!employee) { EnjazIMS.toast('الرجاء اختيار الموظف', 'error'); return; }
+        if (!start || !end) { EnjazIMS.toast('الرجاء تحديد فترة الراتب', 'error'); return; }
+        if (method === 'cash' && !treasury) { EnjazIMS.toast('الرجاء اختيار الخزينة للدفع النقدي', 'error'); return; }
+
+        const checked = pendingItems.filter(function (i) { return i.checked; });
+        const bonus            = checked.filter(i => i.type === 'bonus').reduce((s,i) => s + i.amount, 0);
+        const advances_deducted= checked.filter(i => i.type === 'advance').reduce((s,i) => s + i.amount, 0);
+        const deductions       = checked.filter(i => i.type === 'deduction').reduce((s,i) => s + i.amount, 0);
+        const selected_incentive_ids = checked.filter(i => i.itemType === 'incentive').map(i => i.id);
+
+        const payload = {
+            employee,
+            period_start:           start,
+            period_end:             end,
+            base_salary:            document.getElementById('salBaseSalary').value || '0',
+            bonus:                  bonus.toFixed(2),
+            advances_deducted:      advances_deducted.toFixed(2),
+            deductions:             deductions.toFixed(2),
+            selected_incentive_ids: selected_incentive_ids,
+            payment_method:         method,
+            treasury:               treasury,
+            bank_reference:         document.getElementById('salBankRef').value.trim(),
+            notes:                  document.getElementById('salNotes').value.trim(),
+        };
+
+        const $btn = $('#btnSaveSalary');
+        const orig = $btn.html();
+        $btn.html('<i class="fas fa-spinner fa-spin me-1"></i>جارٍ الحفظ...').prop('disabled', true);
+
+        fetch(urlCreate, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+            body: JSON.stringify(payload),
+        })
+        .then(r => r.json())
+        .then(function (resp) {
+            $btn.html(orig).prop('disabled', false);
+            if (!resp.success) { EnjazIMS.toast(resp.message || 'تعذر الحفظ', 'error'); return; }
+            salModal.hide();
+            dt.ajax.reload(null, false);
+            EnjazIMS.toast('تم إنشاء كشف الراتب', 'success');
+        })
+        .catch(() => { $btn.html(orig).prop('disabled', false); EnjazIMS.toast('خطأ في الاتصال', 'error'); });
+    });
+
+    /* ── View ── */
+    $('#salariesTable').on('click', '.js-view-sal', function () {
+        fetch(detailUrl($(this).data('id')))
+            .then(r => r.json())
+            .then(function (d) {
+                $('#viewSalEmployee').text(d.employee);
+                $('#viewSalPeriod').text(d.period_start + ' — ' + d.period_end);
+
+                const deferredItemsHtml = Array.isArray(d.deferred_items) && d.deferred_items.length
+                    ? d.deferred_items.map(item => `
+                        <div class="cx-info-card" style="grid-column:1/-1">
+                            <div class="cx-info-card-icon ${item.type === 'bonus' ? 'cx-info-icon--success' : 'cx-info-icon--danger'}"><i class="fas ${item.type === 'bonus' ? 'fa-star' : 'fa-minus-circle'}"></i></div>
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">${item.type_display} — ${item.date}</span>
+                                <span class="cx-info-card-value">${item.description} (${EnjazIMS.formatMoney(item.amount)})</span>
+                            </div>
+                        </div>
+                    `).join('')
+                    : '';
+
+                $('#viewSalBody').html(`
+                    <div class="cx-info-card">
+                        <div class="cx-info-card-icon cx-info-icon--balance"><i class="fas fa-wallet"></i></div>
+                        <div class="cx-info-card-content"><span class="cx-info-card-label">الراتب الأساسي</span><span class="cx-info-card-value">${EnjazIMS.formatMoney(d.base_salary)}</span></div>
+                    </div>
+                    <div class="cx-info-card">
+                        <div class="cx-info-card-icon" style="background:#dcfce7"><i class="fas fa-star" style="color:#16a34a"></i></div>
+                        <div class="cx-info-card-content"><span class="cx-info-card-label">الحوافز</span><span class="cx-info-card-value cx-money--pos">${EnjazIMS.formatMoney(d.bonus)}</span></div>
+                    </div>
+                    <div class="cx-info-card">
+                        <div class="cx-info-card-icon" style="background:#fef3c7"><i class="fas fa-hand-holding-dollar" style="color:#d97706"></i></div>
+                        <div class="cx-info-card-content"><span class="cx-info-card-label">السلف المخصومة</span><span class="cx-info-card-value cx-money--neg">${EnjazIMS.formatMoney(d.advances_deducted)}</span></div>
+                    </div>
+                    <div class="cx-info-card">
+                        <div class="cx-info-card-icon" style="background:#fee2e2"><i class="fas fa-minus-circle" style="color:#dc2626"></i></div>
+                        <div class="cx-info-card-content"><span class="cx-info-card-label">خصومات أخرى</span><span class="cx-info-card-value cx-money--neg">${EnjazIMS.formatMoney(d.deductions)}</span></div>
+                    </div>
+                    <div class="cx-info-card cx-info-card--money">
+                        <div class="cx-info-card-icon cx-info-icon--credit"><i class="fas fa-coins"></i></div>
+                        <div class="cx-info-card-content"><span class="cx-info-card-label">الصافي المستحق</span><span class="cx-info-card-value cx-info-card-value--money">${EnjazIMS.formatMoney(d.total_due)}</span></div>
+                    </div>
+                    <div class="cx-info-card">
+                        <div class="cx-info-card-icon cx-info-icon--status"><i class="fas fa-circle-check"></i></div>
+                        <div class="cx-info-card-content"><span class="cx-info-card-label">الحالة</span><span class="cx-info-card-value">${d.status_display}</span></div>
+                    </div>
+                    ${d.treasury ? `<div class="cx-info-card"><div class="cx-info-card-icon cx-info-icon--credit"><i class="fas fa-building-columns"></i></div><div class="cx-info-card-content"><span class="cx-info-card-label">الخزينة</span><span class="cx-info-card-value">${d.treasury}</span></div></div>` : ''}
+                    ${deferredItemsHtml}
+                    ${d.deductions_notes ? `<div class="cx-info-card" style="grid-column:1/-1"><div class="cx-info-card-icon cx-info-icon--notes"><i class="fas fa-note-sticky"></i></div><div class="cx-info-card-content"><span class="cx-info-card-label">تفاصيل الخصومات</span><span class="cx-info-card-value">${d.deductions_notes}</span></div></div>` : ''}
+                    ${d.notes ? `<div class="cx-info-card" style="grid-column:1/-1"><div class="cx-info-card-icon cx-info-icon--notes"><i class="fas fa-note-sticky"></i></div><div class="cx-info-card-content"><span class="cx-info-card-label">ملاحظات</span><span class="cx-info-card-value">${d.notes}</span></div></div>` : ''}
+                `);
+                viewModal.show();
+            })
+            .catch(() => EnjazIMS.toast('تعذر تحميل البيانات', 'error'));
+    });
+
+    /* ── Pay ── */
+    $('#salariesTable').on('click', '.js-pay-sal', function () {
+        const id = $(this).data('id');
+        const method = $(this).data('method') || 'cash';
+        document.getElementById('paySalaryId').value = id;
+        const desc = method === 'bank'
+            ? 'سيتم تسجيل صرف الراتب من الحساب البنكي. لا يمكن التراجع.'
+            : 'سيتم خصم صافي الراتب من الخزينة المحددة وتسجيل الحركة. لا يمكن التراجع.';
+        document.getElementById('paySalaryDesc').textContent = desc;
+        payModal.show();
+    });
+
+    $('#btnConfirmPaySalary').on('click', function () {
+        const id = document.getElementById('paySalaryId').value;
+        const $btn = $(this);
+        const orig = $btn.html();
+        $btn.html('<i class="fas fa-spinner fa-spin me-1"></i>...').prop('disabled', true);
+
+        fetch(payUrl(id), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+            body: JSON.stringify({}),
+        })
+        .then(r => r.json())
+        .then(function (resp) {
+            $btn.html(orig).prop('disabled', false);
+            if (!resp.success) { EnjazIMS.toast(resp.message || 'تعذر الدفع', 'error'); return; }
+            payModal.hide();
+            dt.ajax.reload(null, false);
+            EnjazIMS.toast('تم دفع الراتب بنجاح', 'success');
+        })
+        .catch(() => { $btn.html(orig).prop('disabled', false); EnjazIMS.toast('خطأ في الاتصال', 'error'); });
+    });
+
+    /* ── Cancel ── */
+    $('#salariesTable').on('click', '.js-cancel-sal', function () {
+        const id = $(this).data('id');
+        const method = $(this).data('method') || 'cash';
+        document.getElementById('cancelSalaryId').value = id;
+        document.getElementById('cancelSalaryMethod').value = method;
+        const desc = method === 'bank'
+            ? 'سيتم إلغاء الكشف وعكس عملية الحساب البنكي إن كان مدفوعاً. لا يمكن التراجع.'
+            : 'سيتم إلغاء الكشف وإعادة المبلغ للخزينة إن كان مدفوعاً. لا يمكن التراجع.';
+        document.getElementById('cancelSalaryDesc').textContent = desc;
+        cancelModal.show();
+    });
+
+    $('#btnConfirmCancelSalary').on('click', function () {
+        const id = document.getElementById('cancelSalaryId').value;
+        const $btn = $(this);
+        const orig = $btn.html();
+        $btn.html('<i class="fas fa-spinner fa-spin me-1"></i>...').prop('disabled', true);
+
+        fetch(cancelUrl(id), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+            body: JSON.stringify({}),
+        })
+        .then(r => r.json())
+        .then(function (resp) {
+            $btn.html(orig).prop('disabled', false);
+            if (!resp.success) { EnjazIMS.toast(resp.message || 'تعذر الإلغاء', 'error'); return; }
+            cancelModal.hide();
+            dt.ajax.reload(null, false);
+            EnjazIMS.toast('تم إلغاء كشف الراتب', 'success');
+        })
+        .catch(() => { $btn.html(orig).prop('disabled', false); EnjazIMS.toast('خطأ في الاتصال', 'error'); });
+    });
+
+})();
+</script>
+{% endblock %}

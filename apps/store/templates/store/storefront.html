@@ -1,0 +1,221 @@
+{% load static store_tags %}
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>{{ store.display_name }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="{% static 'css/store_storefront.css' %}?v=3.1">
+<style>:root { --brand: {{ store.accent_color }}; }</style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────── -->
+<header class="sf-header">
+  <div class="sf-header__inner">
+    <a href="{% url 'store:storefront' slug=store.slug %}" class="sf-brand">
+      {% if store.cover_image %}
+      <img src="{{ store.cover_image.url }}" alt="{{ store.display_name }}" class="sf-brand__img">
+      {% endif %}
+      <span class="sf-brand__name">{{ store.display_name }}</span>
+    </a>
+    <div class="sf-header__actions">
+      {% if store.show_price_list %}
+      <a href="{% url 'store:price_list' slug=store.slug %}" class="sf-pricelist-btn">
+        <i class="fas fa-tags"></i><span>قائمة الأسعار</span>
+      </a>
+      {% endif %}
+      <a href="{% url 'store:cart' slug=store.slug %}" class="sf-cart" aria-label="السلة">
+        <i class="fas fa-shopping-bag"></i>
+        {% if cart_count > 0 %}<span class="sf-cart__badge">{{ cart_count }}</span>{% endif %}
+      </a>
+    </div>
+  </div>
+</header>
+
+<!-- ── Hero ───────────────────────────────────────────── -->
+{% if not search %}
+<div class="sf-hero">
+  <div class="sf-hero__bg"></div>
+  <div class="sf-hero__content">
+    <h1 class="sf-hero__name">{{ store.display_name }}</h1>
+    {% if store.description %}<p class="sf-hero__desc">{{ store.description }}</p>{% endif %}
+    <div class="sf-status sf-status--open">
+      <span class="sf-status__dot"></span>
+      <span>مفتوح</span>
+      {% if status.mode == 'schedule' and status.today_hours %}
+        <span class="sf-status__sub"><i class="fas fa-clock"></i> {{ status.today_hours }}</span>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Search ─────────────────────────────────────────── -->
+<div class="sf-search-wrap">
+  <form class="sf-search" method="get" role="search">
+    <i class="fas fa-search sf-search__icon"></i>
+    <input class="sf-search__input" type="search" name="q"
+           value="{{ search }}" placeholder="ابحث في المنتجات..." autocomplete="off">
+    {% if search %}
+    <a href="{% url 'store:storefront' slug=store.slug %}" class="sf-search__clear" title="مسح البحث">
+      <i class="fas fa-times"></i>
+    </a>
+    {% endif %}
+  </form>
+</div>
+
+<!-- ── Categories ─────────────────────────────────────── -->
+{% if categories %}
+<div class="sf-cats">
+  <div class="sf-cats__scroll">
+    <a href="{% url 'store:storefront' slug=store.slug %}"
+       class="sf-cat {% if not category_id %}sf-cat--active{% endif %}">
+      <i class="fas fa-border-all"></i> الكل
+    </a>
+    {% for cat in categories %}
+    <a href="?cat={{ cat.id }}"
+       class="sf-cat {% if category_id == cat.id|stringformat:'s' %}sf-cat--active{% endif %}">
+      {{ cat.name }}
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Products ───────────────────────────────────────── -->
+<main class="sf-main">
+  {% if search %}
+  <p class="sf-results-hint">نتائج البحث عن: <strong>{{ search }}</strong></p>
+  {% endif %}
+
+  <div class="sf-grid">
+    {% for item in products %}
+    <article class="sf-card">
+      <div class="sf-card__img-wrap">
+        {% if item.image %}
+        <img src="{{ item.image.url }}" alt="{{ item.name }}" class="sf-card__img" loading="lazy">
+        {% else %}
+        <div class="sf-card__no-img"><i class="fas fa-box"></i></div>
+        {% endif %}
+        {% if store.show_stock_quantity %}
+          {% with qty=stock_qty_map|get_qty:item.id %}
+          {% if not qty or qty <= 0 %}
+          <span class="sf-badge sf-badge--out">نافد</span>
+          {% endif %}
+          {% endwith %}
+        {% endif %}
+      </div>
+
+      <div class="sf-card__body">
+        {% if item.category %}<p class="sf-card__cat">{{ item.category.name }}</p>{% endif %}
+        <h3 class="sf-card__name">{{ item.name }}</h3>
+
+        <div class="sf-card__meta">
+          {% if store.show_prices %}
+          <div class="sf-card__price">
+            {{ item.selling_price|format_price }}
+            <span class="sf-card__cur">{{ store.tenant.currency|currency_ar }}</span>
+          </div>
+          {% endif %}
+          {% if store.show_stock_quantity %}
+          {% with qty=stock_qty_map|get_qty:item.id %}
+          {% if qty and qty > 0 %}
+          <span class="sf-badge sf-badge--in">{{ qty|floatformat:0 }} متوفر</span>
+          {% endif %}
+          {% endwith %}
+          {% endif %}
+        </div>
+
+        <form method="post" action="{% url 'store:cart_add' slug=store.slug %}" class="add-to-cart-form">
+          {% csrf_token %}
+          <input type="hidden" name="item_id" value="{{ item.id }}">
+          <input type="hidden" name="qty" value="1">
+          <button type="submit" class="sf-add-btn">
+            <i class="fas fa-cart-plus"></i> أضف للسلة
+          </button>
+        </form>
+      </div>
+    </article>
+    {% empty %}
+    <div class="sf-empty">
+      <div class="sf-empty__icon"><i class="fas fa-box-open"></i></div>
+      <h3 class="sf-empty__title">لا توجد منتجات</h3>
+      <p class="sf-empty__text">
+        {% if search %}لم يتم العثور على منتجات تطابق "{{ search }}".
+        {% else %}لا توجد منتجات متاحة حالياً.{% endif %}
+      </p>
+      {% if search %}
+      <a href="{% url 'store:storefront' slug=store.slug %}" class="sf-empty__link">
+        <i class="fas fa-arrow-right"></i> عرض كل المنتجات
+      </a>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</main>
+
+<!-- ── Footer ─────────────────────────────────────────── -->
+<footer class="sf-footer">
+  <div class="sf-footer__inner">
+    <span class="sf-footer__copy">{{ store.display_name }}</span>
+    {% if store.whatsapp %}
+    <a href="https://wa.me/{{ store.whatsapp }}" target="_blank" class="sf-footer__wa">
+      <i class="fab fa-whatsapp"></i> تواصل معنا
+    </a>
+    {% endif %}
+  </div>
+</footer>
+
+<!-- ── Toast ──────────────────────────────────────────── -->
+<div class="sf-toast" id="sfToast">
+  <i class="fas fa-check-circle"></i> تمت الإضافة للسلة
+</div>
+
+<script>
+(function () {
+  document.querySelectorAll('.add-to-cart-form').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var data = new FormData(this);
+      var req = fetch(this.action, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: data
+      });
+      req.then(function (r) {
+        return r.json().then(function(d) { return { ok: r.ok, data: d }; });
+      }).then(function (res) {
+        var toast = document.getElementById('sfToast');
+        if (!res.ok) {
+          toast.innerHTML = '<i class="fas fa-lock"></i> ' + (res.data.error || 'المتجر مغلق');
+          toast.classList.add('show', 'sf-toast--error');
+          setTimeout(function () { toast.classList.remove('show', 'sf-toast--error'); }, 2500);
+          return;
+        }
+        var d = res.data;
+        var badge = document.querySelector('.sf-cart__badge');
+        if (d.cart_count > 0) {
+          if (badge) {
+            badge.textContent = d.cart_count;
+          } else {
+            var b = document.createElement('span');
+            b.className = 'sf-cart__badge';
+            b.textContent = d.cart_count;
+            document.querySelector('.sf-cart').appendChild(b);
+          }
+        }
+        toast.innerHTML = '<i class="fas fa-check-circle"></i> تمت الإضافة للسلة';
+        toast.classList.remove('sf-toast--error');
+        toast.classList.add('show');
+        setTimeout(function () { toast.classList.remove('show'); }, 2200);
+      });
+    });
+  });
+})();
+</script>
+</body>
+</html>

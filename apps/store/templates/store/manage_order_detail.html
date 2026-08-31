@@ -1,0 +1,210 @@
+{% extends "layouts/dashboard.html" %}
+{% load static store_tags humanize %}
+
+{% block title %}تفاصيل الطلب {{ order.order_number }}{% endblock %}
+{% block page_header %}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/store_manage_orders.css' %}?v=2.0">
+{% endblock %}
+
+{% block content %}
+<div class="cx-scene">
+
+<div class="cx-hero">
+  <div class="cx-hero-inner">
+    <div class="cx-hero-left">
+      <div class="cx-hero-icon-wrap"><i class="fas fa-file-alt"></i></div>
+      <div>
+        <h1 class="cx-hero-title">{{ order.order_number }}</h1>
+        <p class="cx-hero-desc">{{ order.created_at|naturaltime }} — {{ order.customer_name }}</p>
+      </div>
+    </div>
+    <div class="cx-hero-right">
+      <div class="cx-hero-actions">
+        <a href="{% url 'store:manage_orders' %}" class="cx-btn-secondary">
+          <i class="fas fa-arrow-right"></i><span>العودة</span>
+        </a>
+        {% if order.status == 'pending' %}
+        <button class="cx-btn-primary" onclick="approveOrder({{ order.pk }})">
+          <i class="fas fa-check"></i><span>قبول وإنشاء فاتورة</span>
+        </button>
+        <button class="cx-btn-secondary" style="color:#ef4444;border-color:#fecaca;" onclick="rejectOrder({{ order.pk }})">
+          <i class="fas fa-times"></i><span>رفض الطلب</span>
+        </button>
+        {% elif order.status == 'approved' and order.sale_invoice %}
+        <a href="/sales/{{ order.sale_invoice.pk }}/" class="cx-btn-primary">
+          <i class="fas fa-file-invoice"></i><span>عرض الفاتورة</span>
+        </a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="st-detail-grid">
+
+  <!-- Products table -->
+  <div class="cx-panel p-3">
+    <div class="cx-panel-head"><i class="fas fa-list"></i> المنتجات المطلوبة</div>
+    <div class="cx-table-wrap">
+      <table class="cx-table">
+        <thead>
+          <tr>
+            <th>المنتج</th>
+            <th>السعر</th>
+            <th>الكمية</th>
+            <th>الإجمالي</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in lines %}
+          <tr>
+            <td><strong>{{ line.item_name }}</strong></td>
+            <td dir="ltr">{{ line.unit_price|format_price }}</td>
+            <td>{{ line.quantity|floatformat:0 }}</td>
+            <td dir="ltr"><strong>{{ line.line_total|format_price }}</strong></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <!-- إجمالي الطلب خارج الجدول لضمان الظهور على الموبايل -->
+    <div class="d-flex justify-content-end mt-3 px-2">
+      <div style="background:#f0f0ff;border-radius:12px;padding:.875rem 1.25rem;border:1px solid #c7d2fe;min-width:240px;">
+        <div class="d-flex justify-content-between align-items-center gap-4">
+          <span style="font-size:.9rem;color:#4338ca;font-weight:600;">الإجمالي النهائي</span>
+          <strong style="font-size:1.15rem;color:#6366f1;" dir="ltr">
+            {{ order.total_amount|format_price }} {{ order.tenant.currency|currency_ar }}
+          </strong>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="st-detail-sidebar">
+
+    <!-- Customer info -->
+    <div class="cx-panel p-3">
+      <div class="cx-panel-head"><i class="fas fa-user"></i> بيانات العميل</div>
+      <div style="padding:1rem 1.1rem;">
+        <div class="st-detail-row">
+          <span class="st-detail-label">الاسم</span>
+          <span class="st-detail-value">{{ order.customer_name }}</span>
+        </div>
+        <div class="st-detail-row">
+          <span class="st-detail-label">الهاتف</span>
+          <span class="st-detail-value">
+            <a href="tel:{{ order.customer_phone }}" dir="ltr">{{ order.customer_phone }}</a>
+          </span>
+        </div>
+        {% if order.customer_address %}
+        <div class="st-detail-row">
+          <span class="st-detail-label">العنوان</span>
+          <span class="st-detail-value">{{ order.customer_address }}</span>
+        </div>
+        {% endif %}
+        {% if order.customer_notes %}
+        <div class="st-detail-row" style="align-items:flex-start;">
+          <span class="st-detail-label">ملاحظات</span>
+          <span class="st-detail-value" style="line-height:1.6;">{{ order.customer_notes }}</span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Order status -->
+    <div class="cx-panel p-3">
+      <div class="cx-panel-head"><i class="fas fa-info-circle"></i> حالة الطلب</div>
+      <div style="padding:1rem 1.1rem;">
+        <div class="st-detail-row">
+          <span class="st-detail-label">الحالة</span>
+          <span>
+            {% if order.status == 'pending' %}
+            <span class="st-order-badge st-order-badge--pending"><i class="fas fa-clock"></i> في الانتظار</span>
+            {% elif order.status == 'approved' %}
+            <span class="st-order-badge st-order-badge--approved"><i class="fas fa-check-circle"></i> مقبول</span>
+            {% else %}
+            <span class="st-order-badge st-order-badge--rejected"><i class="fas fa-times-circle"></i> مرفوض</span>
+            {% endif %}
+          </span>
+        </div>
+        <div class="st-detail-row">
+          <span class="st-detail-label">طريقة الدفع</span>
+          <span>
+            {% if order.payment_method == 'bank' %}
+            <span class="st-order-badge st-pay-badge--bank"><i class="fas fa-university"></i> تحويل بنكي</span>
+            {% else %}
+            <span class="st-order-badge st-pay-badge--credit"><i class="fas fa-clock"></i> آجل</span>
+            {% endif %}
+          </span>
+        </div>
+        {% if order.sale_invoice %}
+        <div class="st-detail-row">
+          <span class="st-detail-label">الفاتورة</span>
+          <span class="st-detail-value">
+            <a href="/sales/{{ order.sale_invoice.pk }}/" style="color:#6366f1;font-weight:700;">
+              {{ order.sale_invoice.invoice_number }}
+            </a>
+          </span>
+        </div>
+        {% endif %}
+        <div class="st-detail-row" style="border-bottom:none;">
+          <span class="st-detail-label">التاريخ</span>
+          <span class="st-detail-value" style="font-size:.8rem;color:#94a3b8;">{{ order.created_at|naturaltime }}</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const CSRF = "{{ csrf_token }}";
+
+async function approveOrder(pk) {
+  try {
+    const r = await fetch(`/store/manage/orders/${pk}/approve/`, {
+      method: 'POST', headers: { 'X-CSRFToken': CSRF, 'X-Requested-With': 'XMLHttpRequest' }
+    });
+    if (r.status === 403) {
+      EnjazIMS.toast('ليس لديك صلاحية لقبول الطلبات', 'error'); return;
+    }
+    const d = await r.json();
+    if (d.success) {
+      if (window.EnjazIMS) EnjazIMS.toast(d.message, 'success');
+      setTimeout(() => { window.location.href = d.invoice_url; }, 600);
+    } else {
+      if (window.EnjazIMS) EnjazIMS.toast(d.error || d.message || 'حدث خطأ', 'error');
+    }
+  } catch(e) {
+    if (window.EnjazIMS) EnjazIMS.toast('خطأ في الاتصال، يرجى المحاولة مرة أخرى', 'error');
+  }
+}
+
+async function rejectOrder(pk) {
+  try {
+    const r = await fetch(`/store/manage/orders/${pk}/reject/`, {
+      method: 'POST', headers: { 'X-CSRFToken': CSRF, 'X-Requested-With': 'XMLHttpRequest' }
+    });
+    if (r.status === 403) {
+      EnjazIMS.toast('ليس لديك صلاحية لرفض الطلبات', 'error'); return;
+    }
+    const d = await r.json();
+    if (d.success) {
+      if (window.EnjazIMS) EnjazIMS.toast('تم رفض الطلب', 'warning');
+      setTimeout(() => location.reload(), 700);
+    } else {
+      if (window.EnjazIMS) EnjazIMS.toast(d.error || d.message || 'حدث خطأ', 'error');
+    }
+  } catch(e) {
+    if (window.EnjazIMS) EnjazIMS.toast('خطأ في الاتصال، يرجى المحاولة مرة أخرى', 'error');
+  }
+}
+</script>
+{% endblock %}

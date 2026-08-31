@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block body %}
+<div class="dashboard-shell mt-3 d-flex flex-column min-vh-100">
+
+    <!-- Navbar -->
+    {% include "components/navbar.html" %}
+
+    <div class="dashboard-body d-flex flex-grow-1">
+        <!-- Sidebar -->
+        {% include "components/sidebar.html" %}
+
+        <!-- Main Content -->
+        <main class="dashboard-main flex-grow-1">
+
+    <!-- ─── Platform Announcement Banner ─────────────────────── -->
+    {% if platform_cfg.announcement_active and platform_cfg.announcement_text %}
+    <div class="pf-banner pf-banner--{{ platform_cfg.announcement_type }}" role="alert">
+        <i class="fas fa-bullhorn"></i>
+        <span>{{ platform_cfg.announcement_text }}</span>
+        <button class="pf-banner__close" onclick="this.parentElement.remove()" aria-label="إغلاق">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+    {% endif %}
+
+    <!-- ─── Impersonation Banner ──────────────────────────────── -->
+    {% if impersonating %}
+    <div class="pf-banner pf-banner--warning" role="alert" style="background:linear-gradient(90deg,#f59e0b,#d97706);color:#fff;font-weight:600;">
+        <i class="fas fa-user-secret me-1"></i>
+        <span>أنت تتصفح كـ <strong>{{ request.user.get_full_name|default:request.user.username }}</strong> — وضع انتحال الهوية</span>
+        <a href="{% url 'accounts:exit_impersonation' %}" class="ms-3 btn btn-sm" style="background:#fff;color:#d97706;font-weight:700;border-radius:6px;padding:2px 12px;">
+            <i class="fas fa-sign-out-alt me-1"></i>الخروج
+        </a>
+    </div>
+    {% endif %}
+
+            {% block breadcrumb %}{% endblock %}
+            
+            <!-- Page Header -->
+            {% block page_header %}
+            <div class="page-head">
+                <div>
+                    <h2 class="page-head-title">{% block page_title %}{% endblock %}</h2>
+                    <p class="page-head-subtitle">{% block page_description %}{% endblock %}</p>
+                </div>
+                <div class="page-head-actions">
+                    {% block page_actions %}{% endblock %}
+                </div>
+            </div>
+            {% endblock %}
+            
+            <!-- Messages -->
+            {% include "components/messages.html" %}
+            
+            <!-- Page Content -->
+            <div class="content">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+    
+    <!-- Footer -->
+    {% include "components/footer.html" %}
+</div>
+{% endblock %}

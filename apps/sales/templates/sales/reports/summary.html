@@ -1,0 +1,199 @@
+{% extends "layouts/dashboard.html" %}
+{% load static %}
+{% load humanize %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=4.0">
+{% endblock %}
+
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<div class="cx-scene printable-scene">
+
+    <!-- ══ HERO ════════════════════════════════════════════════ -->
+    <div class="rpt-hero rpt-hero--sales">
+        <div class="rpt-hero-inner">
+            <div class="rpt-hero-left">
+                <div class="rpt-hero-icon"><i class="fas fa-chart-pie"></i></div>
+                <div>
+                    <h1 class="rpt-hero-title">تقرير ملخص المبيعات</h1>
+                    <p class="rpt-hero-desc">
+                        <i class="fas fa-calendar-alt me-1"></i> من {{ start_date }} إلى {{ end_date }}
+                    </p>
+                </div>
+            </div>
+            <div class="rpt-hero-actions">
+                <button onclick="window.print()" class="rpt-hero-btn">
+                    <i class="fas fa-print"></i> طباعة
+                </button>
+                <a href="{% url 'reports:summary_report_export' %}?start_date={{ start_date|date:"Y-m-d" }}&end_date={{ end_date|date:"Y-m-d" }}" class="rpt-hero-btn">
+                    <i class="fas fa-download"></i> تصدير CSV
+                </a>
+                <a href="{% url 'reports:reports' %}" class="rpt-hero-btn">
+                    <i class="fas fa-arrow-left"></i> عودة
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ FILTERS ═════════════════════════════════════════════ -->
+    <div class="rpt-filters">
+        <form method="get" class="row g-3">
+            <div class="col-md-3">
+                <label for="start_date" class="form-label">من التاريخ</label>
+                <input type="date" id="start_date" name="start_date"
+                    value="{{ start_date|date:"Y-m-d" }}" class="form-control">
+            </div>
+            <div class="col-md-3">
+                <label for="end_date" class="form-label">إلى التاريخ</label>
+                <input type="date" id="end_date" name="end_date"
+                    value="{{ end_date|date:"Y-m-d" }}" class="form-control">
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="rpt-filter-btn rpt-filter-btn--sales">
+                    <i class="fas fa-search me-1"></i>بحث
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- ══ KPI CARDS ═══════════════════════════════════════════ -->
+    <div class="rpt-kpi-grid">
+        <div class="rpt-kpi-card rpt-kpi--purple">
+            <div class="rpt-kpi-icon"><i class="fas fa-file-invoice"></i></div>
+            <div class="rpt-kpi-value">{{ report.summary.invoice_count|default:0 }}</div>
+            <div class="rpt-kpi-label">عدد الفواتير</div>
+        </div>
+        <div class="rpt-kpi-card rpt-kpi--orange">
+            <div class="rpt-kpi-icon"><i class="fas fa-boxes-stacked"></i></div>
+            <div class="rpt-kpi-value">{{ report.summary.total_quantity|default:0 }}</div>
+            <div class="rpt-kpi-label">إجمالي الكمية</div>
+        </div>
+        <div class="rpt-kpi-card rpt-kpi--blue">
+            <div class="rpt-kpi-icon"><i class="fas fa-money-bill-wave"></i></div>
+            <div class="rpt-kpi-value">{{ report.summary.total_amount|default:0 }}</div>
+            <div class="rpt-kpi-label">إجمالي المبيعات</div>
+        </div>
+        <div class="rpt-kpi-card rpt-kpi--amber">
+            <div class="rpt-kpi-icon"><i class="fas fa-percent"></i></div>
+            <div class="rpt-kpi-value">{{ report.summary.total_tax|default:0 }}</div>
+            <div class="rpt-kpi-label">إجمالي الضريبة</div>
+        </div>
+        <div class="rpt-kpi-card rpt-kpi--emerald">
+            <div class="rpt-kpi-icon"><i class="fas fa-chart-line"></i></div>
+            <div class="rpt-kpi-value">{{ report.summary.avg_invoice_amount|default:0 }}</div>
+            <div class="rpt-kpi-label">متوسط الفاتورة</div>
+        </div>
+    </div>
+
+    {% if chart_amounts and chart_amounts != "[]" %}
+    <!-- ══ TREND CHART ══════════════════════════════════════════ -->
+    <div class="rpt-panel">
+        <div class="rpt-panel-header rpt-panel-header--sales">
+            <h3 class="rpt-panel-title"><i class="fas fa-chart-line me-2"></i>مسار المبيعات اليومي</h3>
+        </div>
+        <div class="rpt-chart-wrap">
+            <canvas id="salesTrendChart" class="rpt-chart-canvas"></canvas>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ══ INVOICES TABLE ════════════════════════════════════════ -->
+    <div class="rpt-panel">
+        <div class="rpt-panel-header rpt-panel-header--sales">
+            <h3 class="rpt-panel-title"><i class="fas fa-file-invoice me-2"></i>قائمة الفواتير</h3>
+        </div>
+        <div class="rpt-panel-body">
+            {% if report.details %}
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>رقم الفاتورة</th>
+                            <th>التاريخ</th>
+                            <th>العميل</th>
+                            <th class="text-end">الكمية</th>
+                            <th class="text-end">الإجمالي</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in report.details %}
+                        <tr>
+                            <td class="fw-bold" style="color:#667eea">{{ row.invoice_number }}</td>
+                            <td class="text-muted">{{ row.invoice_date|date:"Y-m-d" }}</td>
+                            <td>{{ row.customer_name }}</td>
+                            <td class="text-end text-muted">{{ row.total_quantity }}</td>
+                            <td class="text-end fw-bold">{{ row.grand_total }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="rpt-total-row">
+                            <td colspan="3"><i class="fas fa-calculator me-2"></i>الإجمالي</td>
+                            <td class="text-end">{{ report.summary.total_quantity }}</td>
+                            <td class="text-end fw-bold" style="color:#667eea">{{ report.summary.total_amount }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            {% else %}
+            <div class="rpt-empty">
+                <i class="fas fa-file-circle-xmark"></i>
+                <p>لا توجد فواتير في الفترة المحددة</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if chart_amounts and chart_amounts != "[]" %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    const labels  = {{ chart_labels|safe }};
+    const amounts = {{ chart_amounts|safe }};
+    const isDark  = document.documentElement.getAttribute('data-theme') === 'dark';
+    const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+    const textColor = isDark ? '#9ca3af' : '#6b7280';
+
+    new Chart(document.getElementById('salesTrendChart'), {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                label: 'المبيعات',
+                data: amounts,
+                fill: true,
+                tension: 0.4,
+                borderColor: '#667eea',
+                backgroundColor: 'rgba(102,126,234,0.12)',
+                pointBackgroundColor: '#667eea',
+                pointRadius: amounts.length > 20 ? 2 : 4,
+                pointHoverRadius: 6,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => ' ' + Number(ctx.raw).toLocaleString('en')
+                    }
+                }
+            },
+            scales: {
+                x: { ticks: { color: textColor, maxTicksLimit: 10 }, grid: { color: gridColor } },
+                y: { ticks: { color: textColor, callback: v => Number(v).toLocaleString('en') }, grid: { color: gridColor } }
+            }
+        }
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}

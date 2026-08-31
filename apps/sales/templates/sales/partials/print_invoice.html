@@ -1,0 +1,148 @@
+{% load static %}
+{% load humanize %}
+<style>
+.print-doc--invoice .print-doc-heading { color: {{ settings_obj.invoice_color|default:"#6366f1" }}; }
+.print-doc--invoice .print-total-row--grand { color: {{ settings_obj.invoice_color|default:"#6366f1" }}; }
+.print-doc--invoice .footer-line     { background: {{ settings_obj.invoice_color|default:"#6366f1" }}; }
+</style>
+<div class="print-doc print-doc--invoice" dir="rtl">
+    <div class="print-head">
+        <div class="print-brand">
+            {% if tenant.logo %}
+                <img src="{{ tenant.logo.url }}" alt="{{ tenant.name }}" class="print-logo">
+            {% else %}
+                <img src="{% static 'img/logo/logo-161616.png' %}" alt="{{ tenant.name }}" class="print-logo">
+            {% endif %}
+            <div>
+                <div class="print-brand-name">{{ tenant.name }}</div>
+                {% if tenant.phone %}<div style="font-size:9px;color:#6b7280;margin-top:2px;">{{ tenant.phone }}</div>{% endif %}
+                {% if tenant.address %}<div style="font-size:9px;color:#6b7280;margin-top:1px;">{{ tenant.address }}{% if tenant.city %}، {{ tenant.city }}{% endif %}</div>{% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="print-head-bottom">
+        <h1 class="print-doc-heading">فاتورة مبيعات</h1>
+        <div class="print-meta print-meta--inline">
+            <div class="print-meta-row"><span>رقم الفاتورة</span><strong>{{ invoice.invoice_number }}</strong></div>
+            <div class="print-meta-row"><span>التاريخ</span><strong>{{ invoice.invoice_date }}</strong></div>
+            <div class="print-meta-row"><span>الحالة</span><strong class="status-badge">{{ invoice.get_status_display }}</strong></div>
+            <div class="print-meta-row"><span>طريقة الدفع</span><strong>{{ invoice.get_payment_method_display }}</strong></div>
+        </div>
+    </div>
+
+    <!-- بطاقة العميل -->
+    <section class="print-box customer-box">
+        <div class="print-box-header">
+                        <h3 class="print-box-title">بيانات العميل</h3>
+        </div>
+        <div class="print-info-grid">
+            <div class="print-info-item">
+                <span class="print-info-label">العميل</span>
+                <span class="print-info-value">{{ invoice.customer.name|default:"زبون عابر" }}</span>
+            </div>
+            <div class="print-info-item">
+                <span class="print-info-label">الرقم المرجعي</span>
+                <span class="print-info-value">{{ invoice.reference_number|default:"—" }}</span>
+            </div>
+            {% if settings_obj.print_agent_name and invoice.agent %}
+            <div class="print-info-item">
+                <span class="print-info-label">المندوب</span>
+                <span class="print-info-value">{{ invoice.agent.name }}</span>
+            </div>
+            {% endif %}
+            {% if invoice.due_date %}
+            <div class="print-info-item">
+                <span class="print-info-label">تاريخ الاستحقاق</span>
+                <span class="print-info-value">{{ invoice.due_date }}</span>
+            </div>
+            {% endif %}
+            {% if invoice.notes %}
+            <div class="print-info-item full-width">
+                <span class="print-info-label">ملاحظات</span>
+                <span class="print-info-value notes-text">{{ invoice.notes }}</span>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+
+    <div class="section-separator" aria-hidden="true"></div>
+
+    <!-- جدول البنود -->
+    <section class="print-box items-table">
+        <div class="print-box-header">
+                        <h3 class="print-box-title">تفاصيل الفاتورة</h3>
+        </div>
+        <table class="print-table">
+            <thead>
+                <tr>
+                    <th class="col-sn">#</th>
+                    <th class="col-product">المنتج / الخدمة</th>
+                    <th class="col-qty">الكمية</th>
+                    <th class="col-price">سعر الوحدة</th>
+                    <th class="col-discount">الخصم</th>
+                    <th class="col-tax">الضريبة</th>
+                    <th class="col-total">الإجمالي</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for line in lines %}
+                <tr>
+                    <td class="col-sn">{{ forloop.counter }}</td>
+                    <td class="col-product">{{ line.item.name }}</td>
+                    <td class="col-qty">{{ line.quantity|floatformat:"-3u" }}</td>
+                    <td class="col-price">{{ line.unit_price|money}}</td>
+                    <td class="col-discount">{{ line.discount_percent|money}}%</td>
+                    <td class="col-tax">{{ line.tax_rate|money}}%</td>
+                    <td class="col-total">{{ line.line_total|money}}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <!-- ملخص المبالغ -->
+    <div class="print-summary">
+        <div class="print-totals">
+            <div class="print-total-row">
+                <span>المجموع الفرعي</span>
+                <span>{{ invoice.subtotal|money}}</span>
+            </div>
+            <div class="print-total-row discount-row">
+                <span>الخصم على الفاتورة</span>
+                <span>- {{ invoice.invoice_discount_amount|money}}</span>
+            </div>
+            <div class="print-total-row tax-row">
+                <span>قيمة الضريبة المضافة</span>
+                <span>{{ invoice.tax_amount|money}}</span>
+            </div>
+            <div class="print-total-row print-total-row--grand">
+                <span>الإجمالي النهائي</span>
+                <span>{{ invoice.grand_total|money}}</span>
+            </div>
+            <div class="print-total-row paid-row">
+                <span>المدفوع</span>
+                <span>{{ invoice.paid_amount|money}}</span>
+            </div>
+            <div class="print-total-row remaining-row">
+                <span>المتبقي</span>
+                <span>{{ invoice.remaining_amount|money}}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- فوتر -->
+    <div class="print-footer">
+        <div class="footer-line"></div>
+        {% if settings_obj.invoice_footer %}
+            <div class="footer-text">{{ settings_obj.invoice_footer }}</div>
+        {% else %}
+            <div class="footer-thanks">شكراً لثقتكم بنا</div>
+        {% endif %}
+        <div class="footer-timestamps">
+            <span>وقت البيع: {{ invoice.created_at|date:"Y-m-d" }} {{ invoice.created_at|time:"H:i" }}</span>
+            <span class="footer-ts-sep">|</span>
+            <span>وقت الطباعة: {% now "Y-m-d H:i" %}</span>
+        </div>
+    </div>
+</div>

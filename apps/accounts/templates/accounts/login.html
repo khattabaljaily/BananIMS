@@ -1,0 +1,78 @@
+{% extends "layouts/auth.html" %}
+{% load humanize %}
+
+{% block auth_content %}
+<!-- Header -->
+<div class="text-center mb-4">
+    <h1 class="auth-title">تسجيل الدخول</h1>
+    <p class="auth-subtitle">أدخل بياناتك للمتابعة</p>
+</div>
+
+<!-- Form -->
+<form method="post" action="{% url 'accounts:login_api' %}" class="js-auth-ajax" autocomplete="off" data-lpignore="true" novalidate>
+    {% csrf_token %}
+    {% if request.GET.next %}
+    <input type="hidden" name="next" value="{{ request.GET.next }}">
+    {% endif %}
+
+    <div class="alert alert-danger auth-alert js-form-errors d-none mb-3"></div>
+    
+    {% if form.non_field_errors %}
+    <div class="alert alert-danger auth-alert d-flex align-items-center gap-2 mb-4">
+        <i class="fas fa-exclamation-circle"></i>
+        <span>{{ form.non_field_errors }}</span>
+    </div>
+    {% endif %}
+    
+    <!-- Username -->
+    <div class="input-group-modern">
+        <label>{{ form.username.label }}</label>
+        {{ form.username }}
+        {% if form.username.errors %}
+        <div class="text-danger small mt-1 js-field-errors" data-field="username">
+            {{ form.username.errors }}
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- Password -->
+    <div class="input-group-modern">
+        <label>{{ form.password.label }}</label>
+        {{ form.password }}
+        {% if form.password.errors %}
+        <div class="text-danger small mt-1 js-field-errors" data-field="password">
+            {{ form.password.errors }}
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- Remember & Forgot -->
+    <div class="auth-options">
+        <div class="form-check">
+            {{ form.remember_me }}
+            <label class="form-check-label" for="{{ form.remember_me.id_for_label }}">
+                {{ form.remember_me.label }}
+            </label>
+        </div>
+        <a href="{% url 'accounts:password_reset_request' %}">نسيت كلمة المرور؟</a>
+    </div>
+    
+    <!-- Submit Button -->
+    <button type="submit" class="btn-auth">
+        تسجيل الدخول
+    </button>
+</form>
+
+{% endblock %}
+
+{% block auth_links %}
+ليس لديك حساب؟
+<a href="{% url 'accounts:register_step1' %}">إنشاء حساب</a>
+<br>
+<a href="{% url 'core:pricing' %}">عرض خطط الاشتراك</a>
+<p class="text-muted mt-2">
+  <a href="{% url 'core:about' %}">عن النظام</a>
+  &nbsp;·&nbsp;
+  <a href="{% url 'core:terms_of_service' %}">اتفاقية الاستخدام</a>
+</p>
+{% endblock %}

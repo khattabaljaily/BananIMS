@@ -1,0 +1,343 @@
+/* ============================================================
+   EnjazIMS - Items (Products) Page Specific Styles
+   خاص بصفحة المنتجات فقط
+   ============================================================ */
+
+/* ══════════════════════════ MOBILE CARD LAYOUT — ITEMS TABLE ══════════════════════════ */
+@media (max-width: 768px) {
+    .cx-table-wrap { display: none !important; }
+    #itemCardsMobile {
+        display: grid !important;
+        gap: 0.9rem;
+        margin-top: 1rem;
+    }
+    .cx-item-card {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+        padding: 0.9rem 0.9rem 0.9rem;
+        background: var(--bg-card, #ffffff);
+        border: 1px solid var(--border-color);
+        border-radius: 18px;
+        box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
+        transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+    }
+    .cx-item-card:hover {
+        transform: translateY(-1px);
+        border-color: rgba(99, 102, 241, 0.24);
+        box-shadow: 0 16px 34px rgba(15, 23, 42, 0.12);
+    }
+    .cx-item-card-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.65rem;
+        align-items: flex-start;
+    }
+    .cx-item-card-title-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 0.18rem;
+        min-width: 0;
+    }
+    .cx-item-card-title {
+        margin: 0;
+        font-size: 0.99rem;
+        font-weight: 700;
+        color: var(--text-heading, #111827);
+        line-height: 1.2;
+    }
+    .cx-item-card-badge-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin-top: 0.18rem;
+    }
+    .cx-item-card-badge {
+        padding: 0.24rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.68rem;
+        font-weight: 700;
+        color: var(--text-heading, #111827);
+        background: rgba(99, 102, 241, 0.09);
+    }
+    .cx-item-card-meta {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.5rem;
+    }
+    .cx-item-card-meta div {
+        display: flex;
+        flex-direction: column;
+        gap: 0.16rem;
+        padding: 0.65rem 0.75rem;
+        background: rgba(15, 23, 42, 0.03);
+        border-radius: 14px;
+    }
+    .cx-item-card-meta-label {
+        font-size: 0.68rem;
+        font-weight: 700;
+        color: var(--text-tertiary, #6b7280);
+        letter-spacing: 0.36px;
+        text-transform: uppercase;
+    }
+    .cx-item-card-meta-value {
+        font-size: 0.92rem;
+        color: var(--text-heading, #111827);
+        font-weight: 700;
+    }
+    .cx-item-card-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+        justify-content: flex-end;
+    }
+    .cx-item-card-actions .cxr-act {
+        min-width: 2.5rem;
+        min-height: 2.5rem;
+        border-radius: 14px;
+        padding: 0.62rem 0.75rem;
+        border: 1px solid transparent;
+        transition: background 160ms ease, border-color 160ms ease;
+    }
+    .cx-item-card-actions .cxr-act:hover {
+        border-color: rgba(15, 23, 42, 0.12);
+    }
+    .cx-item-card-actions .cxr-act--view {
+        background: rgba(99, 102, 241, 0.08);
+    }
+    .cx-item-card-actions .cxr-act--del {
+        background: rgba(239, 68, 68, 0.08);
+    }
+    .cx-item-card-actions .cxr-act--small {
+        padding: 0.7rem;
+    }
+}
+
+@media (max-width: 576px) {
+    #itemCardsMobile { gap: 0.75rem; }
+    .cx-item-card-meta { grid-template-columns: 1fr 1fr; }
+}
+
+/* ══════════════════════════ MOBILE CARD LAYOUT — CATEGORIES TABLE ══════════════════════════ */
+@media (max-width: 768px) {
+    #categoriesTable { display: none !important; }
+    .categories-mobile-card-list {
+        display: grid !important;
+        gap: 0.9rem;
+        margin-top: 1rem;
+    }
+    .cx-category-card {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+        padding: 0.9rem;
+        background: var(--bg-card, #ffffff);
+        border: 1px solid var(--border-color);
+        border-radius: 18px;
+        box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
+        transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+    }
+    .cx-category-card:hover {
+        transform: translateY(-1px);
+        border-color: rgba(99, 102, 241, 0.24);
+        box-shadow: 0 16px 34px rgba(15, 23, 42, 0.12);
+    }
+    .cx-category-card-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.65rem;
+        align-items: flex-start;
+    }
+    .cx-category-card-title-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 0.18rem;
+        min-width: 0;
+    }
+    .cx-category-card-title {
+        margin: 0;
+        font-size: 0.99rem;
+        font-weight: 700;
+        color: var(--text-heading, #111827);
+        line-height: 1.2;
+    }
+    .cx-category-card-path {
+        margin: 0;
+        font-size: 0.75rem;
+        color: var(--text-secondary, #6b7280);
+    }
+    .cx-category-card-meta {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.5rem;
+    }
+    .cx-category-card-meta div {
+        display: flex;
+        flex-direction: column;
+        gap: 0.16rem;
+        padding: 0.65rem 0.75rem;
+        background: rgba(15, 23, 42, 0.03);
+        border-radius: 14px;
+    }
+    .cx-category-card-meta-label {
+        font-size: 0.68rem;
+        font-weight: 700;
+        color: var(--text-tertiary, #6b7280);
+        letter-spacing: 0.36px;
+        text-transform: uppercase;
+    }
+    .cx-category-card-meta-value {
+        font-size: 0.92rem;
+        color: var(--text-heading, #111827);
+        font-weight: 700;
+    }
+    .cx-category-card-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+        justify-content: flex-end;
+    }
+    .cx-category-card-actions .cxr-act {
+        min-width: 2.5rem;
+        min-height: 2.5rem;
+        border-radius: 14px;
+        padding: 0.62rem 0.75rem;
+        border: 1px solid transparent;
+        transition: background 160ms ease, border-color 160ms ease;
+    }
+    .cx-category-card-actions .cxr-act:hover {
+        border-color: rgba(15, 23, 42, 0.12);
+    }
+    .cx-category-card-actions .cxr-act--del {
+        background: rgba(239, 68, 68, 0.08);
+    }
+}
+
+@media (max-width: 576px) {
+    .categories-mobile-card-list { gap: 0.75rem; }
+    .cx-category-card-meta { grid-template-columns: 1fr 1fr; }
+}
+
+/* ══════════════════════════ MOBILE CARD LAYOUT — UNITS TABLE ══════════════════════════ */
+@media (max-width: 768px) {
+    #unitsTable { display: none !important; }
+    .units-mobile-card-list {
+        display: grid !important;
+        gap: 0.9rem;
+        margin-top: 1rem;
+    }
+    .cx-unit-card {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+        padding: 0.9rem;
+        background: var(--bg-card, #ffffff);
+        border: 1px solid var(--border-color);
+        border-radius: 18px;
+        box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
+        transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+    }
+    .cx-unit-card:hover {
+        transform: translateY(-1px);
+        border-color: rgba(99, 102, 241, 0.24);
+        box-shadow: 0 16px 34px rgba(15, 23, 42, 0.12);
+    }
+    .cx-unit-card-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.65rem;
+        align-items: flex-start;
+    }
+    .cx-unit-card-title-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 0.18rem;
+        min-width: 0;
+    }
+    .cx-unit-card-title {
+        margin: 0;
+        font-size: 0.99rem;
+        font-weight: 700;
+        color: var(--text-heading, #111827);
+        line-height: 1.2;
+    }
+    .cx-unit-card-code {
+        margin: 0;
+        font-size: 0.75rem;
+        color: var(--text-secondary, #6b7280);
+    }
+    .cx-unit-card-meta {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.5rem;
+    }
+    .cx-unit-card-meta div {
+        display: flex;
+        flex-direction: column;
+        gap: 0.16rem;
+        padding: 0.65rem 0.75rem;
+        background: rgba(15, 23, 42, 0.03);
+        border-radius: 14px;
+    }
+    .cx-unit-card-meta-label {
+        font-size: 0.68rem;
+        font-weight: 700;
+        color: var(--text-tertiary, #6b7280);
+        letter-spacing: 0.36px;
+        text-transform: uppercase;
+    }
+    .cx-unit-card-meta-value {
+        font-size: 0.92rem;
+        color: var(--text-heading, #111827);
+        font-weight: 700;
+    }
+    .cx-unit-card-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+        justify-content: flex-end;
+    }
+    .cx-unit-card-actions .cxr-act {
+        min-width: 2.5rem;
+        min-height: 2.5rem;
+        border-radius: 14px;
+        padding: 0.62rem 0.75rem;
+        border: 1px solid transparent;
+        transition: background 160ms ease, border-color 160ms ease;
+    }
+    .cx-unit-card-actions .cxr-act:hover {
+        border-color: rgba(15, 23, 42, 0.12);
+    }
+    .cx-unit-card-actions .cxr-act--del {
+        background: rgba(239, 68, 68, 0.08);
+    }
+}
+
+@media (max-width: 576px) {
+    .units-mobile-card-list { gap: 0.75rem; }
+    .cx-unit-card-meta { grid-template-columns: 1fr 1fr; }
+}
+
+/* Dark mode — all item cards */
+[data-theme="dark"] .cx-item-card,
+[data-theme="dark"] .cx-category-card,
+[data-theme="dark"] .cx-unit-card {
+    background: var(--surface);
+    border-color: var(--border-color);
+}
+[data-theme="dark"] .cx-item-card-meta div,
+[data-theme="dark"] .cx-category-card-meta div,
+[data-theme="dark"] .cx-unit-card-meta div {
+    background: rgba(255,255,255,0.04);
+}
+
+/* Tiny phones */
+@media (max-width: 360px) {
+    .cx-item-card-meta,
+    .cx-category-card-meta,
+    .cx-unit-card-meta { grid-template-columns: 1fr; }
+
+    .cx-item-card-actions,
+    .cx-category-card-actions,
+    .cx-unit-card-actions { justify-content: flex-start; }
+}

@@ -1,0 +1,957 @@
+{% extends "layouts/dashboard.html" %}
+{% load static %}
+{% load humanize %}
+{% load capabilities_tags %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/sales.css' %}?v=3.0">
+<link rel="stylesheet" href="{% static 'css/sales_invoice_form.css' %}?v=1.0">
+<style>
+.cx-searchable-select { position: relative; }
+.cx-searchable-select-dropdown {
+  position: absolute; z-index: 1050; width: 100%;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border-light, #e5e7eb);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15,23,42,.12);
+  max-height: 220px; overflow-y: auto;
+  top: calc(100% + 4px);
+}
+.cx-searchable-option {
+  padding: .55rem 1rem; cursor: pointer; font-size: .875rem;
+  color: var(--text-primary, #111827);
+}
+.cx-searchable-option:hover { background: var(--surface-alt, #f3f4f6); }
+.cx-searchable-no-results { padding: .75rem 1rem; font-size: .8rem; color: var(--text-muted, #9ca3af); }
+</style>
+{% endblock %}
+
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<div class="cx-scene">
+
+<!-- ══════════════════════ HERO ══════════════════════ -->
+<div class="cx-hero">
+    <div class="cx-hero-inner">
+        <div class="cx-hero-left">
+            <div class="cx-hero-icon-wrap">
+                <i class="fas fa-file-invoice"></i>
+            </div>
+            <div>
+                <h1 class="cx-hero-title">
+                    {% if action == 'edit' %}تعديل فاتورة{% else %}فاتورة مبيعات جديدة{% endif %}
+                </h1>
+                {% if invoice %}
+                <p class="cx-hero-desc">{{ invoice.invoice_number }} — {{ invoice.get_status_display }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="cx-stats-inline sales-form-stats">
+        <span class="cx-stat-badge cx-stat-badge--primary">
+            <i class="fas fa-layer-group"></i>
+            <strong id="invoiceLineCount">0</strong>
+            <span>بند</span>
+        </span>
+        <span class="cx-stat-badge cx-stat-badge--info" id="paymentMethodBadge">
+            <i class="fas fa-money-check-dollar"></i>
+            <strong>نقداً</strong>
+        </span>
+        {% if invoice %}
+        <span class="cx-stat-badge cx-stat-badge--muted">
+            <i class="fas fa-hashtag"></i>
+            <strong>{{ invoice.invoice_number }}</strong>
+            <span>{{ invoice.get_status_display }}</span>
+        </span>
+        {% endif %}
+    </div>
+</div>
+
+<!-- ══════════════════════ FORM BODY ══════════════════════ -->
+<form id="invoiceForm">
+{% csrf_token %}
+
+<div class="row g-3">
+
+    <!-- ── الجانب الأيمن: رأس الفاتورة ── -->
+    <div class="col-lg-8">
+
+        <!-- بطاقة رأس الفاتورة -->
+        <div class="cx-panel mb-3 p-4">
+            <div class="cx-panel-header">
+                <h3 class="cx-panel-title"><i class="fas fa-info-circle me-2"></i>بيانات الفاتورة</h3>
+            </div>
+            <div class="cx-panel-body">
+                <p class="sales-panel-note">حدد بيانات العميل والدفع قبل إضافة البنود لتجنب أخطاء التسعير.</p>
+                <div class="row g-3">
+                    <!-- العميل -->
+                    <div class="col-md-3">
+                        <label class="cx-label">العميل</label>
+                        <div class="cx-searchable-select" id="customerSelectWrap">
+                            <input type="text" id="customerSearch" class="cx-input" placeholder="ابحث عن عميل..." autocomplete="off">
+                            <input type="hidden" id="customerId" name="customer_id" value="{% if invoice and invoice.customer_id %}{{ invoice.customer_id }}{% endif %}">
+                            <div id="customerDropdown" class="cx-searchable-select-dropdown" style="display:none;"></div>
+                        </div>
+                    </div>
+
+                    <!-- المندوب -->
+                    {% if plan_allows_agents %}
+                    <div class="col-md-3">
+                        <label class="cx-label">المندوب</label>
+                        <div class="cx-searchable-select" id="agentSelectWrap">
+                            <input type="text" id="agentSearch" class="cx-input" placeholder="ابحث عن مندوب..." autocomplete="off">
+                            <input type="hidden" id="agentId" name="agent_id" value="{% if invoice and invoice.agent_id %}{{ invoice.agent_id }}{% endif %}">
+                            <div id="agentDropdown" class="cx-searchable-select-dropdown" style="display:none;"></div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <input type="hidden" id="agentId" name="agent_id" value="">
+                    {% endif %}
+
+                    <!-- المخزن -->
+                    <div class="col-md-3">
+                        <label class="cx-label">المخزن <span class="text-danger">*</span></label>
+                        <select id="stockId" name="stock_id" class="cx-input" required>
+                            {% for s in stocks %}
+                            <option value="{{ s.id }}"
+                                {% if invoice and invoice.stock_id == s.id %}selected
+                                {% elif default_stock and default_stock.id == s.id %}selected{% endif %}>
+                                {{ s.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- تاريخ الفاتورة -->
+                    <div class="col-md-3">
+                        <label class="cx-label">تاريخ الفاتورة <span class="text-danger">*</span></label>
+                        <input type="date" id="invoiceDate" name="invoice_date" class="cx-input" required
+                               value="{{ invoice.invoice_date|date:'Y-m-d'|default:today }}">
+                    </div>
+
+                    <!-- ملاحظات -->
+                    <div class="col-12">
+                        <label class="cx-label">ملاحظات</label>
+                        <textarea id="notes" name="notes" class="cx-input" rows="2">{{ invoice.notes|default:'' }}</textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- بطاقة البنود -->
+        <div class="cx-panel mb-3 p-4">
+            <div class="cx-panel-header">
+                <h3 class="cx-panel-title"><i class="fas fa-list me-2"></i>بنود الفاتورة</h3>
+                <button type="button" class="cx-btn-secondary" onclick="openItemSearch()">
+                    <i class="fas fa-plus"></i> إضافة منتج
+                </button>
+            </div>
+            <div class="cx-panel-body p-0">
+                <div class="table-responsive sales-lines-table-wrap">
+                    <table class="cx-table sales-lines-table" id="linesTable">
+                        <thead>
+                            <tr>
+                                <th class="sales-th-product">المنتج</th>
+                                <th class="sales-th-qty">الكمية</th>
+                                <th class="sales-th-unit">الوحدة</th>
+                                <th class="sales-th-price">سعر الوحدة</th>
+                                <th class="sales-th-discount">خصم %</th>
+                                <th class="sales-th-tax">ضريبة %</th>
+                                <th class="sales-th-total">الإجمالي</th>
+                                <th class="sales-th-actions"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="linesBody">
+                        <!-- البنود تُضاف ديناميكياً -->
+                        </tbody>
+                    </table>
+                </div>
+                <div id="emptyLinesMsg" class="sales-empty-lines">
+                    <i class="fas fa-box-open"></i>
+                    <p>لم تتم إضافة منتجات بعد. اضغط «إضافة منتج».</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── الجانب الأيسر: الإجماليات والإجراءات ── -->
+    <div class="col-lg-4">
+
+        <!-- بطاقة الإجماليات -->
+        <div class="cx-panel mb-3 sticky-top sales-sticky-panel sales-summary-panel p-4">
+            <div class="cx-panel-header">
+                <h3 class="cx-panel-title"><i class="fas fa-calculator me-2"></i>الإجماليات</h3>
+            </div>
+            <div class="cx-panel-body">
+
+                <!-- خصم الفاتورة -->
+                <div class="row g-2 mb-3">
+                    <div class="col-5">
+                        <label class="cx-label">خصم الفاتورة</label>
+                        <select id="discountType" name="invoice_discount_type" class="cx-input" onchange="recalcTotals()">
+                            <option value="percent" {% if invoice and invoice.invoice_discount_type == 'percent' %}selected{% endif %}>نسبة %</option>
+                            <option value="amount" {% if invoice and invoice.invoice_discount_type == 'amount' %}selected{% endif %}>مبلغ ثابت</option>
+                        </select>
+                    </div>
+                    <div class="col-7">
+                        <label class="cx-label">&nbsp;</label>
+                        <input type="number" id="discountValue" name="invoice_discount_value"
+                               class="cx-input" min="0" step="0.01" value="{{ invoice.invoice_discount_value|default:'' }}" oninput="recalcTotals()">
+                    </div>
+                </div>
+
+                <!-- الأرقام -->
+                <div class="cx-totals-block">
+                    <div class="cx-totals-row">
+                        <span>المجموع الفرعي</span>
+                        <strong id="displaySubtotal">0.00</strong>
+                    </div>
+                    <div class="cx-totals-row">
+                        <span>الخصم</span>
+                        <strong id="displayDiscount" class="text-danger">0.00</strong>
+                    </div>
+                    <div class="cx-totals-row">
+                        <span>الضريبة</span>
+                        <strong id="displayTax">0.00</strong>
+                    </div>
+                    <div class="cx-totals-row cx-totals-row--grand">
+                        <span>الإجمالي النهائي</span>
+                        <strong id="displayGrandTotal">0.00</strong>
+                    </div>
+                    <div class="cx-totals-row text-muted sales-field-hidden" id="creditRow">
+                        <span>الجزء الآجل</span>
+                        <span id="displayCredit">0.00</span>
+                    </div>
+                </div>
+
+                <!-- طريقة الدفع وحقول الدفع -->
+                <hr style="margin:1rem 0;border-color:var(--border-color,#e5e7eb);">
+                <div class="row g-2">
+                    <div class="col-6">
+                        <label class="cx-label">نوع التسليم</label>
+                        <select id="deliveryType" name="delivery_type" class="cx-input">
+                            <option value="immediate" {% if not invoice or invoice.delivery_type == 'immediate' %}selected{% endif %}>تسليم فوري</option>
+                            <option value="deferred" {% if invoice and invoice.delivery_type == 'deferred' %}selected{% endif %}>تسليم لاحق</option>
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <label class="cx-label">طريقة الدفع</label>
+                        <select id="paymentMethod" name="payment_method" class="cx-input" onchange="handlePaymentMethodChange()">
+                            <option value="cash" {% if invoice and invoice.payment_method == 'cash' %}selected{% endif %}>نقداً</option>
+                            <option value="bank" {% if invoice and invoice.payment_method == 'bank' %}selected{% endif %}>تحويل بنكي</option>
+                            <option value="credit" {% if invoice and invoice.payment_method == 'credit' %}selected{% endif %}>آجل</option>
+                            <option value="mixed" {% if invoice and invoice.payment_method == 'mixed' %}selected{% endif %}>مختلط</option>
+                        </select>
+                    </div>
+                    <div class="col-12 sales-field-hidden" id="dueDateWrap">
+                        <label class="cx-label">تاريخ الاستحقاق</label>
+                        <input type="date" id="dueDate" name="due_date" class="cx-input"
+                               value="{{ invoice.due_date|date:'Y-m-d'|default:'' }}">
+                    </div>
+                    <div id="mixedPaymentWrap" class="col-12 sales-field-hidden">
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <label class="cx-label">نقداً</label>
+                                <input type="number" id="cashAmount" name="cash_amount" class="cx-input" min="0" step="0.01"
+                                       value="{{ invoice.cash_amount|default:'' }}" oninput="recalcTotals()">
+                            </div>
+                            <div class="col-6">
+                                <label class="cx-label">بنكياً</label>
+                                <input type="number" id="bankAmount" name="bank_amount" class="cx-input" min="0" step="0.01"
+                                       value="{{ invoice.bank_amount|default:'' }}" oninput="recalcTotals()">
+                            </div>
+                            <div class="col-12">
+                                <label class="cx-label">الآجل (محسوب)</label>
+                                <input type="text" id="creditAmount" class="cx-input sales-readonly-input" readonly>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 sales-field-hidden" id="bankRefWrap">
+                        <label class="cx-label">مرجع التحويل البنكي</label>
+                        <input type="text" id="bankReference" name="bank_reference" class="cx-input"
+                               value="{{ invoice.bank_reference|default:'' }}">
+                    </div>
+                </div>
+
+                <!-- أزرار الحفظ -->
+                <div class="d-grid gap-2 mt-3">
+                    <button type="button" class="cx-btn-secondary" onclick="submitForm('save_draft')">
+                        <i class="fas fa-save me-1"></i>
+                        حفظ كمسودة
+                    </button>
+                    <button type="button" class="cx-btn-add" onclick="submitForm('confirm')">
+                        <i class="fas fa-check me-1"></i>
+                        حفظ وتأكيد
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- معلومات العميل (تظهر عند الاختيار) -->
+        <div class="cx-panel sales-field-hidden p-4" id="customerInfoCard">
+            <div class="cx-panel-header">
+                <h3 class="cx-panel-title"><i class="fas fa-user me-2"></i>معلومات العميل</h3>
+            </div>
+            <div class="cx-panel-body">
+                <div class="cx-info-grid">
+                    <div class="cx-info-item">
+                        <span class="cx-info-label">المطالبات</span>
+                        <span class="cx-info-value" id="custBalance">—</span>
+                    </div>
+                    <div class="cx-info-item">
+                        <span class="cx-info-label">حد الائتمان</span>
+                        <span class="cx-info-value" id="custCreditLimit">—</span>
+                    </div>
+                    <div class="cx-info-item">
+                        <span class="cx-info-label">الهاتف</span>
+                        <span class="cx-info-value" id="custPhone">—</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+</form>
+
+<!-- ══════════════════════ ITEM SEARCH MODAL ══════════════════════ -->
+<div class="cx-modal-backdrop sales-field-hidden" id="itemSearchBackdrop">
+    <div class="cx-modal sales-modal-md">
+        <div class="cx-modal-header">
+            <h3 class="cx-modal-title">بحث وإضافة منتج</h3>
+            <button type="button" class="cx-modal-close" onclick="closeItemSearch()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="cx-modal-body">
+            <div class="sales-search-wrap">
+                <i class="fas fa-search sales-search-icon"></i>
+                <input type="text" id="itemSearchQuery" class="cx-input"
+                       placeholder="اسم المنتج، SKU، باركود..." oninput="searchItems()">
+            </div>
+            <div id="itemSearchResults" class="sales-search-results">
+                <div class="text-muted text-center py-3">ابدأ الكتابة للبحث...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+</div><!-- cx-scene -->
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ── بيانات مُسبقة من Django ───────────────────────────────
+const ITEM_INFO_URL = "{% url 'sales:item_info_api' %}";
+const STOCK_ITEMS_URL = "{% url 'sales:stock_items_api' %}";
+const CUSTOMER_INFO_URL = "{% url 'sales:customer_info_api' %}";
+const FORM_ACTION = "{{ action }}";
+const CUSTOMERS_DATA = [
+    { id: '', name: '— زبون عابر —' },
+    {% for c in customers %}{ id: '{{ c.id }}', name: '{{ c.name|escapejs }}' },{% endfor %}
+];
+const AGENTS_DATA = [
+    { id: '', name: '-- بدون مندوب --' },
+    {% for a in agents %}{ id: '{{ a.id }}', name: '{{ a.name|escapejs }}' },{% endfor %}
+];
+const INVOICE_ID = "{{ invoice.id|default:'' }}";
+const CAP = {
+    hasExpiryDates:  {{ tenant_capabilities.has_expiry_dates|yesno:"true,false" }},
+    hasBatchNumbers: {{ tenant_capabilities.has_batch_numbers|yesno:"true,false" }},
+    hasSerialNumbers:{{ tenant_capabilities.has_serial_numbers|yesno:"true,false" }},
+};
+
+{% if existing_lines %}
+const EXISTING_LINES = {{ existing_lines|safe }};
+{% else %}
+const EXISTING_LINES = [];
+{% endif %}
+
+// ────────────────────────────────────────────────────────────────
+// State
+// ────────────────────────────────────────────────────────────────
+let lineCounter = 0;
+
+// ────────────────────────────────────────────────────────────────
+// Init
+// ────────────────────────────────────────────────────────────────
+// ── Searchable Customer Select ────────────────────────────────────
+(function () {
+    const searchInput   = document.getElementById('customerSearch');
+    const hiddenInput   = document.getElementById('customerId');
+    const dropdown      = document.getElementById('customerDropdown');
+
+    function renderOptions(list) {
+        if (!list.length) {
+            dropdown.innerHTML = '<div class="cx-searchable-no-results">لا توجد نتائج</div>';
+        } else {
+            dropdown.innerHTML = list.map(c =>
+                `<div class="cx-searchable-option" data-id="${c.id}">${c.name}</div>`
+            ).join('');
+        }
+        dropdown.querySelectorAll('.cx-searchable-option').forEach(el => {
+            el.addEventListener('mousedown', function (e) {
+                e.preventDefault();
+                hiddenInput.value = this.dataset.id;
+                searchInput.value = this.textContent;
+                dropdown.style.display = 'none';
+                fetchCustomerInfo();
+            });
+        });
+    }
+
+    function openDropdown() {
+        const q = searchInput.value.toLowerCase();
+        const filtered = CUSTOMERS_DATA.filter(c => c.name.toLowerCase().includes(q));
+        renderOptions(filtered);
+        dropdown.style.display = 'block';
+    }
+
+    searchInput.addEventListener('focus', function () {
+        this.value   = '';
+        hiddenInput.value = '';
+        openDropdown();
+    });
+    searchInput.addEventListener('input', openDropdown);
+    searchInput.addEventListener('blur', function () {
+        setTimeout(() => { dropdown.style.display = 'none'; }, 150);
+    });
+
+    // Pre-fill if editing existing invoice
+    const preSelected = CUSTOMERS_DATA.find(c => c.id == hiddenInput.value);
+    if (preSelected) searchInput.value = preSelected.name;
+})();
+
+(function () {
+    const agentSearchInput = document.getElementById('agentSearch');
+    const agentHiddenInput = document.getElementById('agentId');
+    const agentDropdown = document.getElementById('agentDropdown');
+
+    if (!agentSearchInput || !agentHiddenInput || !agentDropdown) return;
+
+    function renderAgentOptions(list) {
+        if (!list.length) {
+            agentDropdown.innerHTML = '<div class="cx-searchable-no-results">لا توجد نتائج</div>';
+        } else {
+            agentDropdown.innerHTML = list.map(a => `<div class="cx-searchable-option" data-id="${a.id}">${a.name}</div>`).join('');
+        }
+        agentDropdown.querySelectorAll('.cx-searchable-option').forEach(el => {
+            el.addEventListener('mousedown', function (e) {
+                e.preventDefault();
+                agentHiddenInput.value = this.dataset.id;
+                agentSearchInput.value = this.textContent;
+                agentDropdown.style.display = 'none';
+            });
+        });
+    }
+
+    function openAgentDropdown() {
+        const q = agentSearchInput.value.toLowerCase();
+        const filtered = AGENTS_DATA.filter(a => a.name.toLowerCase().includes(q));
+        renderAgentOptions(filtered);
+        agentDropdown.style.display = 'block';
+    }
+
+    agentSearchInput.addEventListener('focus', function () {
+        this.value = '';
+        agentHiddenInput.value = '';
+        openAgentDropdown();
+    });
+    agentSearchInput.addEventListener('input', openAgentDropdown);
+    agentSearchInput.addEventListener('blur', function () {
+        setTimeout(() => { agentDropdown.style.display = 'none'; }, 150);
+    });
+
+    const preSelectedAgent = AGENTS_DATA.find(a => String(a.id) === String(agentHiddenInput.value));
+    if (preSelectedAgent) agentSearchInput.value = preSelectedAgent.name;
+})();
+
+document.addEventListener('DOMContentLoaded', function () {
+    handlePaymentMethodChange();
+
+    EXISTING_LINES.forEach(line => addLineToTable(line));
+
+    if (document.getElementById('customerId').value) {
+        fetchCustomerInfo();
+    }
+
+    recalcTotals();
+});
+
+// ────────────────────────────────────────────────────────────────
+// Payment Method UI
+// ────────────────────────────────────────────────────────────────
+function handlePaymentMethodChange() {
+    const pm = document.getElementById('paymentMethod').value;
+    toggleHidden('dueDateWrap', !(pm === 'credit' || pm === 'mixed'));
+    toggleHidden('mixedPaymentWrap', pm !== 'mixed');
+    toggleHidden('bankRefWrap', !(pm === 'bank' || pm === 'mixed'));
+    toggleHidden('creditRow', pm !== 'mixed');
+    updatePaymentMethodBadge(pm);
+    recalcTotals();
+}
+
+// ────────────────────────────────────────────────────────────────
+// Item Search Modal
+// ────────────────────────────────────────────────────────────────
+function openItemSearch() {
+    document.getElementById('itemSearchBackdrop').classList.remove('sales-field-hidden');
+    document.getElementById('itemSearchQuery').focus();
+    searchItems();
+}
+
+function closeItemSearch() {
+    document.getElementById('itemSearchBackdrop').classList.add('sales-field-hidden');
+    document.getElementById('itemSearchQuery').value = '';
+}
+
+let searchTimeout;
+function searchItems() {
+    clearTimeout(searchTimeout);
+    const q = document.getElementById('itemSearchQuery').value.trim();
+    document.getElementById('itemSearchResults').innerHTML =
+        '<div class="text-muted text-center py-3">جاري التحميل...</div>';
+    searchTimeout = setTimeout(() => {
+        const stockId = document.getElementById('stockId').value;
+        fetch(`${STOCK_ITEMS_URL}?stock_id=${stockId}&q=${encodeURIComponent(q)}`)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) return;
+            renderSearchResults(data.items);
+        });
+    }, q ? 300 : 0);
+}
+
+function renderSearchResults(items) {
+    const container = document.getElementById('itemSearchResults');
+    if (!items.length) {
+        container.innerHTML = '<div class="text-muted text-center py-3">لا توجد نتائج</div>';
+        return;
+    }
+    container.innerHTML = items.map(item => {
+        const isService = !!item.is_service;
+        const qtyClass = isService
+            ? 'sale-item-result__qty--ok'
+            : (item.available_qty > 0 ? 'sale-item-result__qty--ok' : 'sale-item-result__qty--empty');
+        const qtyLabel = isService ? 'خدمة (بدون مخزون)' : `متاح: ${EnjazIMS.formatQuantity(item.available_qty || 0)}`;
+
+        return `
+        <div class="sale-item-result" onclick="selectItem(${item.id})">
+            <div>
+                <div class="sale-item-result__name">${item.name}</div>
+                <div class="sale-item-result__sku">${item.sku}</div>
+            </div>
+            <div class="sale-item-result__meta">
+                <div class="sale-item-result__price">${EnjazIMS.formatMoney(item.selling_price || 0)}</div>
+                <div class="sale-item-result__qty ${qtyClass}">
+                    ${qtyLabel}
+                </div>
+            </div>
+        </div>
+    `;
+    }).join('');
+}
+
+function selectItem(itemId) {
+    const stockId = document.getElementById('stockId').value;
+    fetch(`${ITEM_INFO_URL}?item_id=${itemId}&stock_id=${stockId}`)
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) return;
+        const item = data.item;
+        addLineToTable({
+            item_id: item.id,
+            item_name: item.name,
+            item_sku: item.sku,
+            variant_id: '',
+            quantity: '1',
+            unit_price: item.selling_price,
+            discount_percent: '0',
+            tax_rate: item.tax_rate,
+            cost_price_snapshot: item.cost_price,
+            batch_number: '',
+            serial_number: '',
+            expiry_date: '',
+            item_type: item.item_type,
+            is_service: !!item.is_service,
+            available_qty: item.available_qty,
+            unit_id: item.unit_id || null,
+            unit_name: item.unit_name || '',
+            unit_factor: item.unit_factor || '1',
+            units: item.units || [],
+            track_batch: !!item.track_batch,
+            track_serial: !!item.track_serial,
+            track_expiry: !!item.track_expiry,
+        });
+        closeItemSearch();
+    });
+}
+
+// ────────────────────────────────────────────────────────────────
+// Line Management
+// ────────────────────────────────────────────────────────────────
+function addLineToTable(lineData) {
+    const id = ++lineCounter;
+    const tbody = document.getElementById('linesBody');
+    document.getElementById('emptyLinesMsg').style.display = 'none';
+
+    const row = document.createElement('tr');
+    row.id = `line-${id}`;
+    row.dataset.itemId = lineData.item_id;
+    row.dataset.variantId = lineData.variant_id || '';
+    row.dataset.costPrice = lineData.cost_price_snapshot || 0;
+    row.dataset.batchNumber = lineData.batch_number || '';
+    row.dataset.serialNumber = lineData.serial_number || '';
+    row.dataset.expiryDate = lineData.expiry_date || '';
+    row.dataset.unitId = lineData.unit_id || '';
+    row.dataset.unitFactor = lineData.unit_factor || '1';
+    row.dataset.trackBatch = lineData.track_batch ? '1' : '0';
+    row.dataset.trackSerial = lineData.track_serial ? '1' : '0';
+    row.dataset.trackExpiry = lineData.track_expiry ? '1' : '0';
+
+    const qty = EnjazIMS.parseNumber(lineData.quantity) || 1;
+    const price = EnjazIMS.parseNumber(lineData.unit_price) || 0;
+    const disc = EnjazIMS.parseNumber(lineData.discount_percent) || 0;
+    const tax = EnjazIMS.parseNumber(lineData.tax_rate) || 0;
+    const lineTotal = calcLineTotal(qty, price, disc, tax);
+
+    const showBatch  = CAP.hasBatchNumbers  && (lineData.track_batch  ?? true);
+    const showSerial = CAP.hasSerialNumbers && (lineData.track_serial ?? true);
+    const showExpiry = CAP.hasExpiryDates   && (lineData.track_expiry ?? true);
+
+    const trackingHtml = [
+        showBatch  ? `<div class="mt-1"><input type="text" class="cx-input cx-input--xs" id="batch-${id}" value="${(lineData.batch_number || '').replace(/"/g, '&quot;')}" placeholder="رقم الدفعة"></div>` : '',
+        showSerial ? `<div class="mt-1"><input type="text" class="cx-input cx-input--xs" id="serial-${id}" value="${(lineData.serial_number || '').replace(/"/g, '&quot;')}" placeholder="الرقم التسلسلي"></div>` : '',
+        showExpiry ? `<div class="mt-1"><input type="date" class="cx-input cx-input--xs" id="expiry-${id}" value="${lineData.expiry_date || ''}"></div>` : '',
+    ].join('');
+
+    const units = lineData.units || [];
+    let unitHtml = '';
+    if (units.length > 1) {
+        const opts = units.map(u =>
+            `<option value="${u.id}" data-factor="${u.factor}" ${String(u.id) === String(lineData.unit_id) ? 'selected' : ''}>${u.name}</option>`
+        ).join('');
+        unitHtml = `<select class="cx-input cx-input--xs line-unit-sel inv-unit-sel" id="unit-sel-${id}" onchange="onUnitChange(${id})">${opts}</select>`;
+    } else if (units.length === 1) {
+        unitHtml = `<span class="inv-unit-badge">${units[0].name}</span>`;
+    } else if (lineData.unit_name) {
+        unitHtml = `<span class="inv-unit-badge">${lineData.unit_name}</span>`;
+    }
+
+    row.innerHTML = `
+        <td>
+            <div class="sales-line-item-name">${lineData.item_name}</div>
+            <div class="sales-line-item-sku">${lineData.item_sku || ''}</div>
+            ${trackingHtml}
+        </td>
+        <td>
+            <input type="text" inputmode="decimal" class="cx-input cx-input--sm line-qty inv-num-field" id="qty-${id}"
+                   value="${qty}" oninput="updateLine(${id})">
+        </td>
+        <td class="inv-unit-cell" id="unit-cell-${id}">${unitHtml}</td>
+        <td>
+            <input type="text" inputmode="decimal" class="cx-input cx-input--sm line-price inv-num-field" id="price-${id}"
+                   value="${price || ''}" oninput="updateLine(${id})">
+        </td>
+        <td>
+            <input type="text" inputmode="decimal" class="cx-input cx-input--sm line-disc inv-num-field" id="disc-${id}"
+                   value="${disc || ''}" oninput="updateLine(${id})">
+        </td>
+        <td>
+            <input type="text" inputmode="decimal" class="cx-input cx-input--sm line-tax inv-num-field" id="tax-${id}"
+                   value="${tax || ''}" oninput="updateLine(${id})">
+        </td>
+        <td class="text-end" id="total-${id}">
+            <strong>${EnjazIMS.formatMoney(lineTotal)}</strong>
+        </td>
+        <td>
+            <button type="button" class="cx-btn-icon cx-btn-icon--danger" onclick="removeLine(${id})">
+                <i class="fas fa-trash"></i>
+            </button>
+        </td>
+    `;
+    tbody.appendChild(row);
+
+    row.querySelector('.line-qty').classList.add('sales-input-qty');
+    row.querySelector('.line-price').classList.add('sales-input-price');
+    row.querySelector('.line-disc').classList.add('sales-input-pct');
+    row.querySelector('.line-tax').classList.add('sales-input-pct');
+
+    updateLineCount();
+    recalcTotals();
+}
+
+function onUnitChange(id) {
+    const sel = document.getElementById(`unit-sel-${id}`);
+    if (!sel) return;
+    const opt = sel.options[sel.selectedIndex];
+    const row = document.getElementById(`line-${id}`);
+    const oldFactor = parseFloat(row.dataset.unitFactor) || 1;
+    const newFactor = parseFloat(opt.dataset.factor) || 1;
+    // Auto-adjust price: keep base price consistent across unit switches
+    if (oldFactor !== newFactor) {
+        const priceInput = document.getElementById(`price-${id}`);
+        const currentPrice = EnjazIMS.parseNumber(priceInput.value) || 0;
+        if (currentPrice > 0) {
+            priceInput.value = ((currentPrice / oldFactor) * newFactor).toFixed(2);
+        }
+    }
+    row.dataset.unitId = sel.value;
+    row.dataset.unitFactor = newFactor;
+    updateLine(id);
+}
+
+function calcLineTotal(qty, price, discPct, taxRate) {
+    const gross = qty * price;
+    const discAmt = gross * (discPct / 100);
+    const sub = gross - discAmt;
+    const tax = sub * (taxRate / 100);
+    return sub + tax;
+}
+
+function updateLine(id) {
+    const qty = EnjazIMS.parseNumber(document.getElementById(`qty-${id}`).value) || 0;
+    const price = EnjazIMS.parseNumber(document.getElementById(`price-${id}`).value) || 0;
+    const disc = EnjazIMS.parseNumber(document.getElementById(`disc-${id}`).value) || 0;
+    const tax = EnjazIMS.parseNumber(document.getElementById(`tax-${id}`).value) || 0;
+    const total = calcLineTotal(qty, price, disc, tax);
+    document.getElementById(`total-${id}`).innerHTML = `<strong>${EnjazIMS.formatMoney(total)}</strong>`;
+    recalcTotals();
+}
+
+function removeLine(id) {
+    document.getElementById(`line-${id}`).remove();
+    const tbody = document.getElementById('linesBody');
+    if (!tbody.children.length) {
+        document.getElementById('emptyLinesMsg').style.display = '';
+    }
+    updateLineCount();
+    recalcTotals();
+}
+
+// ────────────────────────────────────────────────────────────────
+// Totals Recalculation
+// ────────────────────────────────────────────────────────────────
+function recalcTotals() {
+    let subtotal = 0, taxTotal = 0;
+
+    document.querySelectorAll('#linesBody tr').forEach(row => {
+        const id = row.id.replace('line-', '');
+        const qty = EnjazIMS.parseNumber(document.getElementById(`qty-${id}`)?.value) || 0;
+        const price = EnjazIMS.parseNumber(document.getElementById(`price-${id}`)?.value) || 0;
+        const disc = EnjazIMS.parseNumber(document.getElementById(`disc-${id}`)?.value) || 0;
+        const tax = EnjazIMS.parseNumber(document.getElementById(`tax-${id}`)?.value) || 0;
+
+        const gross = qty * price;
+        const discAmt = gross * (disc / 100);
+        const sub = gross - discAmt;
+        const taxAmt = sub * (tax / 100);
+        subtotal += sub;
+        taxTotal += taxAmt;
+    });
+
+    const discType = document.getElementById('discountType').value;
+    const discVal = EnjazIMS.parseNumber(document.getElementById('discountValue').value) || 0;
+    let discAmt = discType === 'percent' ? subtotal * (discVal / 100) : discVal;
+    discAmt = Math.min(discAmt, subtotal);
+
+    const grandTotal = subtotal - discAmt + taxTotal;
+
+    document.getElementById('displaySubtotal').textContent = EnjazIMS.formatMoney(subtotal);
+    document.getElementById('displayDiscount').textContent = EnjazIMS.formatMoney(discAmt);
+    document.getElementById('displayTax').textContent = EnjazIMS.formatMoney(taxTotal);
+    document.getElementById('displayGrandTotal').textContent = EnjazIMS.formatMoney(grandTotal);
+
+    const pm = document.getElementById('paymentMethod').value;
+    if (pm === 'mixed') {
+        const cash = EnjazIMS.parseNumber(document.getElementById('cashAmount').value) || 0;
+        const bank = EnjazIMS.parseNumber(document.getElementById('bankAmount').value) || 0;
+        const credit = Math.max(0, grandTotal - cash - bank);
+        document.getElementById('creditAmount').value = credit.toFixed(2);
+        document.getElementById('displayCredit').textContent = EnjazIMS.formatMoney(credit);
+    }
+}
+
+// ────────────────────────────────────────────────────────────────
+// Customer Info
+// ────────────────────────────────────────────────────────────────
+function fetchCustomerInfo() {
+    const id = document.getElementById('customerId').value;
+    const card = document.getElementById('customerInfoCard');
+    if (!id) { card.classList.add('sales-field-hidden'); return; }
+
+    fetch(`${CUSTOMER_INFO_URL}?customer_id=${id}`)
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) return;
+        const c = data.customer;
+        document.getElementById('custBalance').textContent = EnjazIMS.formatMoney(c.current_balance || 0);
+        document.getElementById('custCreditLimit').textContent = EnjazIMS.formatMoney(c.credit_limit || 0);
+        document.getElementById('custPhone').textContent = c.phone || '—';
+        card.classList.remove('sales-field-hidden');
+    });
+}
+
+// ────────────────────────────────────────────────────────────────
+// Form Submit
+// ────────────────────────────────────────────────────────────────
+function collectLines() {
+    const lines = [];
+    document.querySelectorAll('#linesBody tr').forEach(row => {
+        const id = row.id.replace('line-', '');
+        const showBatch  = CAP.hasBatchNumbers  && row.dataset.trackBatch  !== '0';
+        const showSerial = CAP.hasSerialNumbers && row.dataset.trackSerial !== '0';
+        const showExpiry = CAP.hasExpiryDates   && row.dataset.trackExpiry !== '0';
+        lines.push({
+            item_id: row.dataset.itemId,
+            variant_id: row.dataset.variantId || null,
+            quantity: String(EnjazIMS.parseNumber(document.getElementById(`qty-${id}`).value || 0)),
+            unit_price: EnjazIMS.parseNumber(document.getElementById(`price-${id}`).value || 0).toFixed(2),
+            discount_percent: EnjazIMS.parseNumber(document.getElementById(`disc-${id}`).value || 0).toFixed(2),
+            tax_rate: EnjazIMS.parseNumber(document.getElementById(`tax-${id}`).value || 0).toFixed(2),
+            cost_price_snapshot: row.dataset.costPrice || '0',
+            batch_number: showBatch  ? (document.getElementById(`batch-${id}`)?.value || '') : '',
+            serial_number: showSerial ? (document.getElementById(`serial-${id}`)?.value || '') : '',
+            expiry_date: showExpiry ? (document.getElementById(`expiry-${id}`)?.value || null) : null,
+            unit_id: row.dataset.unitId || null,
+            unit_factor: row.dataset.unitFactor || '1',
+        });
+    });
+    return lines;
+}
+
+function submitForm(action) {
+    const lines = collectLines();
+    if (!lines.length) { showAlert('أضف منتجاً واحداً على الأقل', 'warning'); return; }
+    if (!document.getElementById('stockId').value) { showAlert('الرجاء اختيار المخزن', 'warning'); return; }
+
+    const submitButtons = Array.from(document.querySelectorAll('button[onclick^="submitForm("]'));
+    const originalLabels = submitButtons.map(btn => btn.innerHTML);
+    submitButtons.forEach(btn => {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>جاري الحفظ...';
+    });
+
+    const header = {
+        customer_id: document.getElementById('customerId').value || null,
+        agent_id: document.getElementById('agentId').value || null,
+        stock_id: document.getElementById('stockId').value,
+        invoice_date: document.getElementById('invoiceDate').value,
+        due_date: document.getElementById('dueDate').value || null,
+        payment_method: document.getElementById('paymentMethod').value,
+        delivery_type: document.getElementById('deliveryType').value,
+        invoice_discount_type: document.getElementById('discountType').value,
+        invoice_discount_value: EnjazIMS.parseNumber(document.getElementById('discountValue').value || 0).toFixed(2),
+        cash_amount: EnjazIMS.parseNumber(document.getElementById('cashAmount')?.value || 0).toFixed(2),
+        bank_amount: EnjazIMS.parseNumber(document.getElementById('bankAmount')?.value || 0).toFixed(2),
+        bank_reference: document.getElementById('bankReference')?.value || '',
+        notes: document.getElementById('notes').value,
+    };
+
+    const url = FORM_ACTION === 'edit' && INVOICE_ID
+        ? `/sales/${INVOICE_ID}/edit/`
+        : '/sales/create/';
+
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken'),
+        },
+        body: JSON.stringify({ header, lines, action }),
+    })
+    .then(async (r) => {
+        const contentType = r.headers.get('content-type') || '';
+        const data = contentType.includes('application/json') ? await r.json() : { success: false, message: 'استجابة غير متوقعة من الخادم' };
+        return { ok: r.ok, data };
+    })
+    .then(({ ok, data }) => {
+        if (!ok) {
+            showAlert(data.message || 'تعذر حفظ الفاتورة', 'danger');
+            submitButtons.forEach((btn, idx) => {
+                btn.disabled = false;
+                btn.innerHTML = originalLabels[idx];
+            });
+            return;
+        }
+        if (data.success) {
+            sessionStorage.setItem('__enjazFlash', JSON.stringify({
+                message: data.message || 'تم حفظ الفاتورة بنجاح',
+                type: 'success'
+            }));
+            window.location.href = data.redirect;
+        } else {
+            showAlert(data.message);
+            submitButtons.forEach((btn, idx) => {
+                btn.disabled = false;
+                btn.innerHTML = originalLabels[idx];
+            });
+        }
+    })
+    .catch(err => {
+        showAlert('حدث خطأ في الاتصال', 'danger');
+        submitButtons.forEach((btn, idx) => {
+            btn.disabled = false;
+            btn.innerHTML = originalLabels[idx];
+        });
+    });
+}
+
+// ────────────────────────────────────────────────────────────────
+// Helpers
+// ────────────────────────────────────────────────────────────────
+function getCookie(name) {
+    const v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
+    return v ? v[2] : null;
+}
+
+function showAlert(msg, type = 'danger') {
+    const mapped = type === 'danger' ? 'error' : type;
+    if (window.EnjazIMS && typeof EnjazIMS.toast === 'function') {
+        EnjazIMS.toast(msg, mapped);
+        return;
+    }
+
+    // Fallback: render inside the same container used globally in customers pages.
+    const host = document.getElementById('global-alerts') || document.body;
+    const cls = mapped === 'error' ? 'danger' : mapped;
+    const alert = document.createElement('div');
+    alert.className = `alert alert-${cls} alert-dismissible fade show`;
+    alert.setAttribute('role', 'alert');
+    alert.innerHTML = `${msg}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>`;
+    host.prepend(alert);
+    setTimeout(() => alert.remove(), 4000);
+}
+
+function updateLineCount() {
+    const count = document.querySelectorAll('#linesBody tr').length;
+    const badge = document.getElementById('invoiceLineCount');
+    if (badge) badge.textContent = String(count);
+}
+
+function updatePaymentMethodBadge(method) {
+    const badge = document.getElementById('paymentMethodBadge');
+    if (!badge) return;
+    const strong = badge.querySelector('strong');
+    const labels = {
+        cash: 'نقداً',
+        bank: 'تحويل بنكي',
+        credit: 'آجل',
+        mixed: 'مختلط'
+    };
+    strong.textContent = labels[method] || 'نقداً';
+}
+
+function toggleHidden(elementId, shouldHide) {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+    element.classList.toggle('sales-field-hidden', shouldHide);
+}
+
+document.getElementById('itemSearchBackdrop').addEventListener('click', function (e) {
+    if (e.target === this) closeItemSearch();
+});
+</script>
+{% endblock %}

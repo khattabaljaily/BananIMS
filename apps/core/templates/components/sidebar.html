@@ -1,0 +1,511 @@
+{% load static %}
+{% load humanize %}
+{% load capabilities_tags %}
+{% load permission_tags %}
+
+<aside class="sidebar">
+
+    <!-- Brand / Logo -->
+    <a class="sidebar-brand" href="{% url 'core:dashboard' %}">
+        <img src="{% static 'img/logo/logo-161616.png' %}" alt="إنجاز" class="navbar-logo logo-light">
+        <img src="{% static 'img/logo/logo-ffffff.png' %}" alt="إنجاز" class="navbar-logo logo-dark">
+        <span class="sidebar-brand-text">إنجاز</span>
+    </a>
+
+    {% if user.is_superuser or user.is_platform_staff %}
+    <!-- ══ ADMIN NAVIGATION ══════════════════════════════════════ -->
+
+    <!-- لوحة التحكم -->
+    <div class="sidebar-divider"></div>
+    <ul class="nav flex-column">
+        <li class="nav-item">
+            <a class="nav-link{% if request.resolver_match.url_name == 'admin_dashboard' %} active{% endif %}" href="{% url 'core:admin_dashboard' %}">
+                <span class="nav-icon nav-icon--dash"><i class="fas fa-gauge"></i></span>
+                لوحة مشرف النظام
+            </a>
+        </li>
+    </ul>
+
+    <!-- المشتركون والاشتراكات -->
+    {% if user.is_superuser or 'manage_tenants' in user.platform_permissions %}
+    <div class="sidebar-divider"></div>
+    <ul class="nav flex-column">
+        <li class="nav-item">
+            <a class="nav-link{% if request.resolver_match.url_name == 'tenant_list' %} active{% endif %}" href="{% url 'core:tenant_list' %}">
+                <span class="nav-icon"><i class="fas fa-building"></i></span>
+                إدارة الاشتراكات
+            </a>
+        </li>
+    </ul>
+    {% endif %}
+
+    <!-- المستخدمون -->
+    {% if user.is_superuser or 'manage_users' in user.platform_permissions %}
+    <div class="sidebar-divider"></div>
+    <ul class="nav flex-column">
+        <li class="nav-item">
+            <a class="nav-link{% if request.resolver_match.url_name == 'admin_users' %} active{% endif %}" href="{% url 'core:admin_users' %}">
+                <span class="nav-icon"><i class="fas fa-users-cog"></i></span>
+                المستخدمون
+            </a>
+        </li>
+    </ul>
+    {% endif %}
+
+    <!-- الدعم الفني -->
+    {% if user.is_superuser or 'manage_support' in user.platform_permissions %}
+    <div class="sidebar-divider"></div>
+    <ul class="nav flex-column">
+        <li class="nav-item has-submenu">
+            <a class="nav-link nav-link-toggle{% if 'system/support' in request.path %} submenu-active{% endif %}" href="#">
+                <span class="nav-icon"><i class="fas fa-headset"></i></span>
+                الدعم الفني
+                <span class="nav-arrow"><i class="fas fa-chevron-down"></i></span>
+            </a>
+            <ul class="nav-submenu">
+                <li><a href="{% url 'core:admin_support' %}" class="nav-sublink{% if request.resolver_match.url_name == 'admin_support' %} active{% endif %}"><i class="fas fa-ticket me-2"></i>كل التذاكر</a></li>
+                <li><a href="{% url 'core:admin_support' %}?status=open" class="nav-sublink"><i class="fas fa-circle-exclamation me-2"></i>التذاكر المفتوحة</a></li>
+            </ul>
+        </li>
+    </ul>
+    {% endif %}
+
+    <!-- التقارير -->
+    {% if user.is_superuser or 'view_reports' in user.platform_permissions %}
+    <div class="sidebar-divider"></div>
+    <ul class="nav flex-column">
+        <li class="nav-item has-submenu">
+            <a class="nav-link nav-link-toggle{% if 'system/reports' in request.path %} submenu-active{% endif %}" href="#">
+                <span class="nav-icon nav-icon--report"><i class="fas fa-chart-bar"></i></span>
+                التقارير
+                <span class="nav-arrow"><i class="fas fa-chevron-down"></i></span>
+            </a>
+            <ul class="nav-submenu">
+                <li><a href="{% url 'core:admin_report_subscriptions' %}" class="nav-sublink{% if request.resolver_match.url_name == 'admin_report_subscriptions' %} active{% endif %}"><i class="fas fa-file-invoice me-2"></i>تقرير الاشتراكات</a></li>
+                <li><a href="{% url 'core:admin_report_revenue' %}" class="nav-sublink{% if request.resolver_match.url_name == 'admin_report_revenue' %} active{% endif %}"><i class="fas fa-chart-line me-2"></i>الإيرادات الشهرية</a></li>
+                <li><a href="{% url 'core:admin_report_activity' %}" class="nav-sublink{% if request.resolver_match.url_name == 'admin_report_activity' %} active{% endif %}"><i class="fas fa-chart-column me-2"></i>نشاط المشتركين</a></li>
+            </ul>
+        </li>
+    </ul>
+    {% endif %}
+
+    <!-- النسخ الاحتياطي -->
+    {% if user.is_superuser or 'manage_backups' in user.platform_permissions %}
+    <div class="sidebar-divider"></div>
+    <ul class="nav flex-column">
+        <li class="nav-item">
+            <a class="nav-link{% if request.resolver_match.url_name == 'admin_backup' or request.resolver_match.url_name == 'admin_backup_detail' %} active{% endif %}" href="{% url 'core:admin_backup' %}">
+                <span class="nav-icon"><i class="fas fa-database"></i></span>
+                النسخ الاحتياطي
+            </a>
+        </li>
+    </ul>
+    {% endif %}
+
+    <!-- التسويق -->
+    {% if user.is_superuser or 'manage_marketing' in user.platform_permissions %}
+    <div class="sidebar-divider"></div>
+    <ul class="nav flex-column">
+        <li class="nav-item has-submenu">
+            <a class="nav-link nav-link-toggle{% if 'system/marketing' in request.path %} submenu-active{% endif %}" href="#">
+                <span class="nav-icon"><i class="fas fa-bullhorn"></i></span>
+                التسويق
+                <span class="nav-arrow"><i class="fas fa-chevron-down"></i></span>
+            </a>
+            <ul class="nav-submenu">
+                <li><a href="{% url 'core:admin_marketing_posts' %}" class="nav-sublink{% if request.resolver_match.url_name == 'admin_marketing_posts' %} active{% endif %}"><i class="fas fa-share-nodes me-2"></i>وسائل التواصل</a></li>
+            </ul>
+        </li>
+    </ul>
+    {% endif %}
+
+    <!-- النظام -->
+    <div class="sidebar-divider"></div>
+    <ul class="nav flex-column">
+        {% if user.is_superuser or 'view_audit_log' in user.platform_permissions %}
+        <li class="nav-item">
+            <a class="nav-link{% if request.resolver_match.url_name == 'admin_audit_log' %} active{% endif %}" href="{% url 'core:admin_audit_log' %}">
+                <span class="nav-icon"><i class="fas fa-clock-rotate-left"></i></span>
+                سجل النشاط
+            </a>
+        </li>
+        {% endif %}
+        {% if user.is_superuser %}
+        <li class="nav-item">
+            <a class="nav-link{% if request.resolver_match.url_name == 'admin_settings' %} active{% endif %}" href="{% url 'core:admin_settings' %}">
+                <span class="nav-icon"><i class="fas fa-sliders"></i></span>
+                إعدادات النظام
+            </a>
+        </li>
+        {% endif %}
+    </ul>
+
+    <!-- الإشعارات -->
+    {% if user.is_superuser or 'view_notifications' in user.platform_permissions %}
+    <ul class="nav flex-column mt-1">
+        <li class="nav-item">
+            <a class="nav-link{% if request.resolver_match.url_name == 'admin_notifications' %} active{% endif %}" href="{% url 'core:admin_notifications' %}">
+                <span class="nav-icon nav-icon--notif"><i class="fas fa-bell"></i></span>
+                الإشعارات
+                <span class="notif-admin-badge" id="adminNotifBadge" style="display:none;margin-right:auto;background:#ef4444;color:#fff;font-size:0.7rem;font-weight:700;padding:1px 6px;border-radius:20px;"></span>
+            </a>
+        </li>
+    </ul>
+    {% endif %}
+    {% else %}
+
+    <div class="sidebar-divider"></div>
+    <ul class="nav flex-column">
+        <li class="nav-item">
+            <a class="nav-link{% if request.resolver_match.url_name == 'dashboard' %} active{% endif %}" href="{% url 'core:dashboard' %}">
+                <span class="nav-icon nav-icon--dash"><i class="fas fa-gauge"></i></span>
+                لوحة التحكم
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link{% if request.resolver_match.url_name == 'analytics' %} active{% endif %}" href="{% url 'core:analytics' %}">
+                <span class="nav-icon" style="background:rgba(139,92,246,.12);color:#8b5cf6;"><i class="fas fa-chart-line"></i></span>
+                التحليلات المتقدمة
+            </a>
+        </li>
+    </ul>
+
+    <!-- ── Transactions ── -->
+    <div class="sidebar-divider"></div>
+    <ul class="nav flex-column">
+        <li class="nav-item has-submenu">
+            <a class="nav-link nav-link-toggle" href="#">
+                <span class="nav-icon nav-icon--sales"><i class="fas fa-receipt"></i></span>
+                المبيعات
+                <span class="nav-arrow"><i class="fas fa-chevron-down"></i></span>
+            </a>
+            <ul class="nav-submenu">
+                <li><a href="{% url 'sales:pos' %}" class="nav-sublink"><i class="fas fa-cash-register me-2"></i>نقطة البيع (POS)</a></li>
+                <li><a href="{% url 'sales:quote_list' %}" class="nav-sublink"><i class="fas fa-file-contract me-2"></i>عروض الأسعار</a></li>
+                <li><a href="{% url 'sales:invoice_create' %}" class="nav-sublink"><i class="fas fa-plus-circle me-2"></i>فاتورة مبيعات</a></li>
+                <li><a href="{% url 'sales:invoice_list' %}" class="nav-sublink"><i class="fas fa-list me-2"></i>قائمة الفواتير</a></li>
+                <li><a href="{% url 'sales:return_list' %}" class="nav-sublink"><i class="fas fa-rotate-left me-2"></i>مرتجعات</a></li>
+            </ul>
+        </li>
+        <li class="nav-item has-submenu">
+            <a class="nav-link nav-link-toggle" href="#">
+                <span class="nav-icon nav-icon--buy"><i class="fas fa-cart-arrow-down"></i></span>
+                المشتريات
+                <span class="nav-arrow"><i class="fas fa-chevron-down"></i></span>
+            </a>
+            <ul class="nav-submenu">
+                <li><a href="{% url 'purchases:rfq_list' %}" class="nav-sublink"><i class="fas fa-file-invoice me-2"></i>طلبات عروض الأسعار</a></li>
+                <li><a href="{% url 'purchases:order_create' %}" class="nav-sublink"><i class="fas fa-plus-circle me-2"></i>أمر شراء جديد</a></li>
+                <li><a href="{% url 'purchases:order_list' %}" class="nav-sublink"><i class="fas fa-list me-2"></i>قائمة أوامر الشراء</a></li>
+                <li><a href="{% url 'purchases:return_list' %}" class="nav-sublink"><i class="fas fa-rotate-left me-2"></i>مرتجعات</a></li>
+            </ul>
+        </li>
+    </ul>
+
+    <!-- ── Inventory ── -->
+    <div class="sidebar-divider"></div>
+    <ul class="nav flex-column">
+        <li class="nav-item has-submenu">
+            <a class="nav-link nav-link-toggle" href="#">
+                <span class="nav-icon nav-icon--stock"><i class="fas fa-box-open"></i></span>
+                المنتجات
+                <span class="nav-arrow"><i class="fas fa-chevron-down"></i></span>
+            </a>
+            <ul class="nav-submenu">
+                <li><a href="{% url 'items:category_list' %}" class="nav-sublink"><i class="fas fa-tags me-2"></i>التصنيفات</a></li>
+                <li><a href="{% url 'items:list' %}" class="nav-sublink"><i class="fas fa-list me-2"></i>قائمة المنتجات</a></li>
+                {% if tenant_capabilities|has_capability:"has_manufacturing" %}
+                <li><a href="{% url 'items:bom_list' %}" class="nav-sublink"><i class="fas fa-flask me-2"></i>وصفات التصنيع</a></li>
+                {% endif %}
+            </ul>
+        </li>
+        <li class="nav-item has-submenu">
+            <a class="nav-link nav-link-toggle" href="#">
+                <span class="nav-icon nav-icon--stock"><i class="fas fa-warehouse"></i></span>
+                المخازن
+                <span class="nav-arrow"><i class="fas fa-chevron-down"></i></span>
+            </a>
+            <ul class="nav-submenu">
+                <li><a href="{% url 'stocks:list' %}" class="nav-sublink"><i class="fas fa-warehouse me-2"></i>قائمة المخازن</a></li>
+                <li><a href="{% url 'stocks:quantities_list' %}" class="nav-sublink"><i class="fas fa-cubes me-2"></i>أرصدة المخزون</a></li>
+                <li><a href="{% url 'stocks:transfer_list' %}" class="nav-sublink"><i class="fas fa-arrows-left-right me-2"></i>تحويلات المخزون</a></li>
+                <li><a href="{% url 'stocks:stocktake_list' %}" class="nav-sublink"><i class="fas fa-clipboard-list me-2"></i>جرد المخزون</a></li>
+                {% if tenant_capabilities|has_capability:"has_manufacturing" %}
+                <li><a href="{% url 'stocks:manufacturing_list' %}" class="nav-sublink"><i class="fas fa-industry me-2"></i>أوامر التصنيع</a></li>
+                {% endif %}
+            </ul>
+        </li>
+        {% if tenant_capabilities|has_capability:"has_work_orders" %}
+        <li class="nav-item">
+            <a class="nav-link sidebar-link-muted" href="#">
+                <span class="nav-icon"><i class="fas fa-clipboard-list"></i></span>
+                أوامر العمل
+                <small class="nav-coming-soon">قريباً</small>
+            </a>
+        </li>
+        {% endif %}
+    </ul>
+
+    <!-- ── Contacts ── -->
+    <div class="sidebar-divider"></div>
+    <ul class="nav flex-column">
+        <li class="nav-item">
+            <a class="nav-link" href="{% url 'customers:list' %}">
+                <span class="nav-icon nav-icon--sales"><i class="fas fa-users"></i></span>
+                العملاء
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="{% url 'suppliers:list' %}">
+                <span class="nav-icon nav-icon--buy"><i class="fas fa-truck"></i></span>
+                الموردين
+            </a>
+        </li>
+        {% if plan_allows_agents %}
+        <li class="nav-item">
+            <a class="nav-link" href="{% url 'agents:list' %}">
+                <span class="nav-icon" style="background:rgba(99,102,241,.12);color:#6366f1;"><i class="fas fa-id-badge"></i></span>
+                المناديب
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="{% url 'agents:requests_list' %}">
+                <span class="nav-icon" style="background:rgba(99,102,241,.12);color:#6366f1;"><i class="fas fa-paper-plane"></i></span>
+                طلبات المناديب
+            </a>
+        </li>
+        {% endif %}
+    </ul>
+
+    <!-- ── Accounting ── -->
+    <div class="sidebar-divider"></div>
+    <ul class="nav flex-column">
+        <li class="nav-item">
+            <a class="nav-link{% if request.resolver_match.app_name == 'employees' and request.resolver_match.url_name == 'list' %} active{% endif %}" href="{% url 'employees:list' %}">
+                <span class="nav-icon nav-icon--emp"><i class="fas fa-users-gear"></i></span>
+                الموظفين
+            </a>
+        </li>
+        <li class="nav-item has-submenu">
+            <a class="nav-link nav-link-toggle" href="#">
+                <span class="nav-icon nav-icon--acct"><i class="fas fa-calculator"></i></span>
+                الحسابات والمالية
+                <span class="nav-arrow"><i class="fas fa-chevron-down"></i></span>
+            </a>
+            <ul class="nav-submenu">
+                <li><a href="{% url 'customers:payments' %}" class="nav-sublink"><i class="fas fa-hand-holding-dollar me-2"></i>مدفوعات العملاء</a></li>
+                <li><a href="{% url 'suppliers:payments' %}" class="nav-sublink"><i class="fas fa-truck-arrow-right me-2"></i>مدفوعات الموردين</a></li>
+                {% if plan_allows_agents %}<li><a href="{% url 'agents:payments' %}" class="nav-sublink"><i class="fas fa-id-badge me-2"></i>دفعات المناديب</a></li>{% endif %}
+                <li><a href="{% url 'expenses:list' %}" class="nav-sublink"><i class="fas fa-receipt me-2"></i>المصروفات</a></li>
+                <li><a href="{% url 'treasury:list' %}" class="nav-sublink"><i class="fas fa-vault me-2"></i>الخزائن</a></li>
+                <li><a href="{% url 'employees:advance_list' %}" class="nav-sublink"><i class="fas fa-hand-holding-dollar me-2"></i>سلف الموظفين</a></li>
+                <li><a href="{% url 'employees:incentive_list' %}" class="nav-sublink"><i class="fas fa-star me-2"></i>الحوافز والخصومات</a></li>
+                <li><a href="{% url 'employees:salary_list' %}" class="nav-sublink"><i class="fas fa-file-invoice-dollar me-2"></i>كشوف الرواتب</a></li>
+            </ul>
+        </li>
+    </ul>
+
+    <!-- ── Reports ── -->
+    <div class="sidebar-divider"></div>
+    <ul class="nav flex-column">
+        <li class="nav-item has-submenu">
+            <a class="nav-link nav-link-toggle" href="#">
+                <span class="nav-icon nav-icon--report"><i class="fas fa-chart-bar"></i></span>
+                التقارير
+                <span class="nav-arrow"><i class="fas fa-chevron-down"></i></span>
+            </a>
+            <ul class="nav-submenu">
+
+                <!-- تقارير المبيعات -->
+                <li class="nav-item has-submenu">
+                    <a class="nav-sublink nav-link-toggle" href="#">
+                        <i class="fas fa-receipt me-2"></i>تقارير المبيعات
+                        <span class="nav-arrow"><i class="fas fa-chevron-down"></i></span>
+                    </a>
+                    <ul class="nav-submenu">
+                        <li><a href="{% url 'reports:summary_report' %}" class="nav-sublink"><i class="fas fa-chart-pie me-2"></i>ملخص المبيعات</a></li>
+                        <li><a href="{% url 'reports:by_customer_report' %}" class="nav-sublink"><i class="fas fa-users me-2"></i>حسب العميل</a></li>
+                        <li><a href="{% url 'reports:by_item_report' %}" class="nav-sublink"><i class="fas fa-box me-2"></i>حسب المنتج</a></li>
+                        <li><a href="{% url 'reports:by_date_report' %}" class="nav-sublink"><i class="fas fa-calendar-days me-2"></i>حسب التاريخ</a></li>
+                        <li><a href="{% url 'reports:profit_margin_report' %}" class="nav-sublink"><i class="fas fa-percent me-2"></i>هامش الربح</a></li>
+                        <li><a href="{% url 'reports:by_payment_method_report' %}" class="nav-sublink"><i class="fas fa-credit-card me-2"></i>حسب طريقة الدفع</a></li>
+                        <li><a href="{% url 'reports:by_user_report' %}" class="nav-sublink"><i class="fas fa-user me-2"></i>حسب المستخدم</a></li>
+                    </ul>
+                </li>
+
+                <!-- تقارير المشتريات -->
+                <li class="nav-item has-submenu">
+                    <a class="nav-sublink nav-link-toggle" href="#">
+                        <i class="fas fa-cart-arrow-down me-2"></i>تقارير المشتريات
+                        <span class="nav-arrow"><i class="fas fa-chevron-down"></i></span>
+                    </a>
+                    <ul class="nav-submenu">
+                        <li><a href="{% url 'purchases:reports:summary_report' %}" class="nav-sublink"><i class="fas fa-chart-pie me-2"></i>ملخص المشتريات</a></li>
+                        <li><a href="{% url 'purchases:reports:by_supplier_report' %}" class="nav-sublink"><i class="fas fa-truck me-2"></i>حسب المورد</a></li>
+                        <li><a href="{% url 'purchases:reports:by_item_report' %}" class="nav-sublink"><i class="fas fa-box me-2"></i>حسب المنتج</a></li>
+                        <li><a href="{% url 'purchases:reports:by_date_report' %}" class="nav-sublink"><i class="fas fa-calendar-days me-2"></i>حسب التاريخ</a></li>
+                        <li><a href="{% url 'purchases:reports:price_history_report' %}" class="nav-sublink"><i class="fas fa-chart-line me-2"></i>تاريخ الأسعار</a></li>
+                        <li><a href="{% url 'purchases:reports:by_user_report' %}" class="nav-sublink"><i class="fas fa-user me-2"></i>حسب المستخدم</a></li>
+                    </ul>
+                </li>
+
+                <!-- تقارير المخزن -->
+                <li class="nav-item has-submenu">
+                    <a class="nav-sublink nav-link-toggle" href="#">
+                        <i class="fas fa-warehouse me-2"></i>تقارير المخزن
+                        <span class="nav-arrow"><i class="fas fa-chevron-down"></i></span>
+                    </a>
+                    <ul class="nav-submenu">
+                        <li><a href="{% url 'stocks:reports:summary_report' %}" class="nav-sublink"><i class="fas fa-chart-pie me-2"></i>ملخص المخزن</a></li>
+                        <li><a href="{% url 'stocks:reports:by_item_report' %}" class="nav-sublink"><i class="fas fa-box me-2"></i>حسب المنتج</a></li>
+                        <li><a href="{% url 'stocks:reports:by_category_report' %}" class="nav-sublink"><i class="fas fa-th me-2"></i>حسب الفئة</a></li>
+                        <li><a href="{% url 'stocks:reports:by_stock_report' %}" class="nav-sublink"><i class="fas fa-location-dot me-2"></i>حسب الموقع</a></li>
+                        <li><a href="{% url 'stocks:reports:item_movement_report' %}" class="nav-sublink"><i class="fas fa-arrows-up-down me-2"></i>حركة الأصناف</a></li>
+                        <li><a href="{% url 'stocks:reports:low_stock_report' %}" class="nav-sublink"><i class="fas fa-triangle-exclamation me-2"></i>مخزون منخفض</a></li>
+                        <li><a href="{% url 'stocks:reports:valuation_report' %}" class="nav-sublink"><i class="fas fa-coins me-2"></i>تقييم المخزون</a></li>
+                        <li><a href="{% url 'stocks:reports:non_moving_report' %}" class="nav-sublink"><i class="fas fa-hourglass me-2"></i>الأصناف الراكدة</a></li>
+                    </ul>
+                </li>
+
+                <!-- تقارير الحسابات -->
+                <li class="nav-item has-submenu">
+                    <a class="nav-sublink nav-link-toggle" href="#">
+                        <i class="fas fa-calculator me-2"></i>تقارير الحسابات
+                        <span class="nav-arrow"><i class="fas fa-chevron-down"></i></span>
+                    </a>
+                    <ul class="nav-submenu">
+                        <li class="nav-submenu-label">العملاء</li>
+                        <li><a href="{% url 'reports:customer_statement' %}" class="nav-sublink"><i class="fas fa-file-invoice-dollar me-2"></i>كشف حساب عميل</a></li>
+                        <li><a href="{% url 'reports:customer_balances' %}" class="nav-sublink"><i class="fas fa-users me-2"></i>مديونيات العملاء</a></li>
+                        <li><a href="{% url 'reports:payments_report' %}" class="nav-sublink"><i class="fas fa-money-bill-wave me-2"></i>مدفوعات العملاء</a></li>
+                        <li><a href="{% url 'reports:returns_report' %}" class="nav-sublink"><i class="fas fa-rotate-left me-2"></i>مرتجعات المبيعات</a></li>
+                        <li class="nav-submenu-label">الموردين</li>
+                        <li><a href="{% url 'purchases:reports:supplier_statement' %}" class="nav-sublink"><i class="fas fa-file-invoice-dollar me-2"></i>كشف حساب مورد</a></li>
+                        <li><a href="{% url 'purchases:reports:supplier_balances' %}" class="nav-sublink"><i class="fas fa-truck me-2"></i>مديونيات الموردين</a></li>
+                        <li><a href="{% url 'purchases:reports:payments_report' %}" class="nav-sublink"><i class="fas fa-money-bill-transfer me-2"></i>مدفوعات الموردين</a></li>
+                        <li><a href="{% url 'purchases:reports:returns_report' %}" class="nav-sublink"><i class="fas fa-rotate-right me-2"></i>مرتجعات المشتريات</a></li>
+                        {% if plan_allows_agents %}
+                        <li class="nav-submenu-label">المناديب</li>
+                        <li><a href="{% url 'agents:statement' %}" class="nav-sublink"><i class="fas fa-file-invoice-dollar me-2"></i>كشف حساب مندوب</a></li>
+                        <li><a href="{% url 'agents:balances' %}" class="nav-sublink"><i class="fas fa-id-badge me-2"></i>مستحقات المناديب</a></li>
+                        {% endif %}
+                        <li class="nav-submenu-label">المصروفات</li>
+                        <li><a href="{% url 'expenses:reports:summary_report' %}" class="nav-sublink"><i class="fas fa-chart-pie me-2"></i>ملخص المصروفات</a></li>
+                        <li><a href="{% url 'expenses:reports:details_report' %}" class="nav-sublink"><i class="fas fa-list-check me-2"></i>تفاصيل المصروفات</a></li>
+                        <li><a href="{% url 'expenses:reports:by_category_report' %}" class="nav-sublink"><i class="fas fa-tags me-2"></i>حسب الفئة</a></li>
+                        <li><a href="{% url 'expenses:reports:by_date_report' %}" class="nav-sublink"><i class="fas fa-calendar-days me-2"></i>حسب التاريخ</a></li>
+                        <li class="nav-submenu-label">الخزائن</li>
+                        <li><a href="{% url 'treasury:reports:balances_report' %}" class="nav-sublink"><i class="fas fa-vault me-2"></i>أرصدة الخزائن</a></li>
+                        <li><a href="{% url 'treasury:reports:movements_report' %}" class="nav-sublink"><i class="fas fa-arrows-left-right me-2"></i>حركة الخزائن</a></li>
+                        <li class="nav-submenu-label">المالية</li>
+                        <li><a href="{% url 'reports:income_statement' %}" class="nav-sublink"><i class="fas fa-chart-line me-2"></i>قائمة الدخل (ربح/خسارة)</a></li>
+                    </ul>
+                </li>
+
+            </ul>
+        </li>
+    </ul>
+
+    <!-- ── Users, Permissions & Settings ── -->
+    <div class="sidebar-divider"></div>
+    <ul class="nav flex-column">
+        <li class="nav-item has-submenu">
+            <a class="nav-link nav-link-toggle" href="#">
+                <span class="nav-icon"><i class="fas fa-users-gear"></i></span>
+                المستخدمين والصلاحيات
+                <span class="nav-arrow"><i class="fas fa-chevron-down"></i></span>
+            </a>
+            <ul class="nav-submenu">
+                <li><a href="{% url 'accounts:permission_group_list' %}" class="nav-sublink"><i class="fas fa-users-cog me-2"></i>إدارة المجموعات</a></li>
+                <li><a href="{% url 'accounts:user_list' %}" class="nav-sublink"><i class="fas fa-user-check me-2"></i>إدارة المستخدمين</a></li>
+                <li><a href="{% url 'accounts:activity_log' %}" class="nav-sublink{% if request.resolver_match.url_name == 'activity_log' %} active{% endif %}"><i class="fas fa-clock-rotate-left me-2"></i>سجل النشاط</a></li>
+            </ul>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link{% if request.resolver_match.url_name == 'subscription' %} active{% endif %}" href="{% url 'core:subscription' %}">
+                <span class="nav-icon"><i class="fas fa-credit-card"></i></span>
+                معلومات الاشتراك
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link{% if request.resolver_match.url_name == 'tenant_settings' %} active{% endif %}" href="{% url 'core:tenant_settings' %}">
+                <span class="nav-icon"><i class="fas fa-building"></i></span>
+                إعدادات النشاط التجاري
+            </a>
+        </li>
+        {% if plan_allows_store %}
+        <li class="nav-item">
+            <a class="nav-link{% if 'store' in request.path %} active{% endif %}" href="{% url 'store:manage_settings' %}">
+                <span class="nav-icon" style="background:linear-gradient(135deg,#6366f1,#7c3aed);color:#fff;"><i class="fas fa-store"></i></span>
+                المتجر الإلكتروني
+                {% if store_pending_count %}
+                <span style="margin-right:auto;background:#ef4444;color:#fff;border-radius:50%;min-width:18px;height:18px;font-size:.62rem;font-weight:700;display:inline-flex;align-items:center;justify-content:center;padding:0 4px;">{{ store_pending_count }}</span>
+                {% endif %}
+            </a>
+        </li>
+        {% endif %}
+    </ul>
+
+    <!-- الدعم الفني (للمشتركين) -->
+    <div class="sidebar-divider"></div>
+    <ul class="nav flex-column">
+        <li class="nav-item">
+            <a class="nav-link{% if 'support' in request.path %} active{% endif %}" href="{% url 'core:tenant_support' %}">
+                <span class="nav-icon" style="background:linear-gradient(135deg,#0ea5e9,#0284c7);color:#fff;"><i class="fas fa-headset"></i></span>
+                الدعم الفني
+            </a>
+        </li>
+    </ul>
+
+    <div class="sidebar-divider"></div>
+    <ul class="nav flex-column">
+        <li class="nav-item">
+            <a class="nav-link" href="{% url 'core:about' %}">
+                <span class="nav-icon"><i class="fas fa-info-circle"></i></span>
+                عن النظام
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="{% url 'core:terms_of_service' %}" target="_blank">
+                <span class="nav-icon"><i class="fas fa-file-contract"></i></span>
+                اتفاقية الاستخدام
+            </a>
+        </li>
+    </ul>
+
+    <!-- ── My Activity ── -->
+    {% if not user.is_tenant_admin %}
+    <div class="sidebar-divider"></div>
+    <ul class="nav flex-column">
+        <li class="nav-item">
+            <a class="nav-link{% if request.resolver_match.url_name == 'activity_log' %} active{% endif %}" href="{% url 'accounts:activity_log' %}">
+                <span class="nav-icon" style="background:linear-gradient(135deg,#6366f1,#4338ca);color:#fff;"><i class="fas fa-clock-rotate-left"></i></span>
+                سجل نشاطاتي
+            </a>
+        </li>
+    </ul>
+    {% endif %}
+
+    <!-- ── Notifications ── -->
+    {% if user|has_perm_key:'view_notifications' %}
+    <ul class="nav flex-column mt-1">
+        <li class="nav-item">
+            <a class="nav-link" href="{% url 'notifications:list' %}">
+                <span class="nav-icon nav-icon--notif"><i class="fas fa-bell"></i></span>
+                الإشعارات
+            </a>
+        </li>
+    </ul>
+    {% endif %}
+    {% endif %}
+
+    <!-- ── Footer ── -->
+    <div class="sidebar-footer">
+        <div class="sidebar-footer-avatar">{{ user.get_full_name|slice:':1'|default:user.username|slice:':1'|upper }}</div>
+        <div>
+            <div class="sidebar-footer-name">{{ user.get_full_name|default:user.username }}</div>
+            <div class="sidebar-footer-role">{% if user.is_superuser %}مشرف{% elif user.is_platform_staff %}مساعد منصة{% elif user.is_tenant_admin %}مدير{% else %}مستخدم{% endif %}</div>
+        </div>
+    </div>
+
+</aside>

@@ -1,0 +1,663 @@
+{% extends "layouts/dashboard.html" %}
+{% load static %}{% load humanize %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/sales.css' %}?v=3.2">
+<link rel="stylesheet" href="{% static 'css/sales_invoice_list.css' %}?v=1.1">
+{% endblock %}
+
+{% block page_header %}{% endblock %}
+
+{% block content %}
+<div class="cx-scene">
+
+<!-- ══════════════════════════ HERO ══════════════════════════ -->
+<div class="cx-hero">
+    <div class="cx-hero-inner">
+        <div class="cx-hero-left">
+            <div class="cx-hero-icon-wrap">
+                <i class="fas fa-receipt"></i>
+            </div>
+            <div>
+                <h1 class="cx-hero-title">فواتير المبيعات</h1>
+                <p class="cx-hero-desc">إنشاء وإدارة جميع فواتير البيع</p>
+            </div>
+        </div>
+        <div class="cx-hero-right">
+            <div class="cx-hero-actions">
+                <a href="{% url 'sales:invoice_create' %}" class="cx-btn-add" data-require-perm="add_sales">
+                    <i class="fas fa-plus"></i>
+                    <span>فاتورة جديدة</span>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="cx-stats-inline">
+        <span class="cx-stat-badge cx-stat-badge--primary">
+            <i class="fas fa-file-invoice"></i>
+            <strong>{{ stats.total }}</strong>
+            <span>إجمالي</span>
+        </span>
+        <span class="cx-stat-badge cx-stat-badge--success">
+            <i class="fas fa-check-circle"></i>
+            <strong>{{ stats.confirmed }}</strong>
+            <span>مؤكدة</span>
+        </span>
+        <span class="cx-stat-badge cx-stat-badge--pending">
+            <i class="fas fa-clock"></i>
+            <strong>{{ stats.pending_delivery }}</strong>
+            <span>قيد التسليم</span>
+        </span>
+        <span class="cx-stat-badge cx-stat-badge--muted">
+            <i class="fas fa-pencil"></i>
+            <strong>{{ stats.draft }}</strong>
+            <span>مسودة</span>
+        </span>
+        <span class="cx-stat-badge cx-stat-badge--danger">
+            <i class="fas fa-ban"></i>
+            <strong>{{ stats.cancelled }}</strong>
+            <span>ملغاة</span>
+        </span>
+        <span class="cx-stat-badge cx-stat-badge--warning">
+            <i class="fas fa-rotate-left"></i>
+            <strong>{{ stats.returned }}</strong>
+            <span>مرتجعة</span>
+        </span>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="cx-kpi-row">
+        <div class="cx-kpi-card">
+            <div class="cx-kpi-label">إجمالي المبيعات المؤكدة</div>
+            <div class="cx-kpi-value text-success">{{ stats.grand_total_sum|money }}</div>
+        </div>
+        <div class="cx-kpi-card">
+            <div class="cx-kpi-label">إجمالي المحصَّل</div>
+            <div class="cx-kpi-value text-primary">{{ stats.paid_total|money}}</div>
+        </div>
+        <div class="cx-kpi-card cx-kpi-card--warning">
+            <div class="cx-kpi-label">لم يُدفع بعد</div>
+            <div class="cx-kpi-value text-warning">{{ stats.unpaid_total|money}}</div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════ TABLE PANEL ══════════════════════════ -->
+<div class="cx-panel">
+    <div class="cx-toolbar">
+        <div class="cx-toolbar-search">
+            <i class="fas fa-search cx-toolbar-search-icon"></i>
+            <input type="text" id="saleSearchInput" class="cx-search-input" placeholder="رقم الفاتورة، اسم العميل...">
+        </div>
+        <div class="cx-toolbar-end sales-toolbar-end">
+
+            <select id="filterStatus" class="cx-select-sm">
+                <option value="">كل الحالات</option>
+                <option value="draft">مسودة</option>
+                <option value="pending_delivery">قيد التسليم</option>
+                <option value="confirmed">مؤكدة</option>
+                <option value="cancelled">ملغاة</option>
+                <option value="returned">مرتجعة</option>
+                <option value="partially_returned">مرتجعة جزئياً</option>
+            </select>
+
+            <select id="filterPayment" class="cx-select-sm">
+                <option value="">كل طرق الدفع</option>
+                <option value="cash">نقداً</option>
+                <option value="bank">بنكي</option>
+                <option value="credit">آجل</option>
+                <option value="mixed">مختلط</option>
+            </select>
+
+            <select id="filterCustomer" class="cx-select-sm">
+                <option value="">كل العملاء</option>
+                {% for c in customers %}
+                <option value="{{ c.id }}">{{ c.name }}</option>
+                {% endfor %}
+            </select>
+
+            {% if agents %}
+            <select id="filterAgent" class="cx-select-sm">
+                <option value="">كل المناديب</option>
+                {% for a in agents %}
+                <option value="{{ a.id }}" {% if active_agent_id == a.id|stringformat:"s" %}selected{% endif %}>{{ a.name }}</option>
+                {% endfor %}
+            </select>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="table-responsive cx-table-wrap">
+        <table id="invoicesTable" class="cx-table">
+            <thead>
+                <tr>
+                    <th>رقم الفاتورة</th>
+                    <th>التاريخ</th>
+                    <th>العميل</th>
+                    <th>الإجمالي</th>
+                    <th>الحالة</th>
+                    <th>الإجراءات</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+    <div id="invoicesCardsMobile" class="invoices-mobile-card-list d-none p-3" aria-live="polite"></div>
+</div>
+
+</div>
+
+<!-- ══════════════════════════ INVOICE VIEW MODAL ══════════════════════════ -->
+<div class="modal fade" id="viewInvoiceModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered cx-view-dialog sales-view-dialog">
+        <div class="modal-content cx-view-modal sales-view-modal">
+            <div class="cx-view-header">
+                <div class="cx-view-header-content">
+                    <div class="cx-view-avatar sales-view-avatar" id="viewInvoiceAvatar">
+                        <i class="fas fa-file-invoice"></i>
+                    </div>
+                    <div>
+                        <h5 class="cx-view-title" id="viewInvoiceNumber">—</h5>
+                        <p class="cx-view-subtitle" id="viewInvoiceStatus">—</p>
+                    </div>
+                </div>
+                <button type="button" class="cx-view-close" data-bs-dismiss="modal" aria-label="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div class="cx-view-body">
+                <div class="cx-view-section">
+                    <div class="cx-view-section-title">
+                        <i class="fas fa-circle-info"></i>
+                        بيانات الفاتورة
+                    </div>
+                    <div class="cx-info-grid sales-invoice-info-grid">
+                        <div class="cx-info-card">
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">التاريخ</span>
+                                <span class="cx-info-card-value" id="viewInvoiceDate">—</span>
+                            </div>
+                        </div>
+                        <div class="cx-info-card">
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">العميل</span>
+                                <span class="cx-info-card-value" id="viewInvoiceCustomer">—</span>
+                            </div>
+                        </div>
+                        <div class="cx-info-card">
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">المخزن</span>
+                                <span class="cx-info-card-value" id="viewInvoiceStock">—</span>
+                            </div>
+                        </div>
+                        <div class="cx-info-card">
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">طريقة الدفع</span>
+                                <span class="cx-info-card-value" id="viewInvoicePayment">—</span>
+                            </div>
+                        </div>
+                        <div class="cx-info-card">
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">الإجمالي</span>
+                                <span class="cx-info-card-value" id="viewInvoiceTotal">—</span>
+                            </div>
+                        </div>
+                        <div class="cx-info-card">
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">المدفوع</span>
+                                <span class="cx-info-card-value" id="viewInvoicePaid">—</span>
+                            </div>
+                        </div>
+                        <div class="cx-info-card">
+                            <div class="cx-info-card-content">
+                                <span class="cx-info-card-label">المتبقي</span>
+                                <span class="cx-info-card-value" id="viewInvoiceRemaining">—</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="cx-view-footer">
+                <button type="button" class="cx-btn-ghost" data-bs-dismiss="modal">إغلاق</button>
+                <a href="#" class="cx-btn-primary" id="viewInvoiceOpenPageBtn">
+                    <i class="fas fa-arrow-up-right-from-square me-1"></i>
+                    فتح صفحة الفاتورة
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="cx-modal-backdrop sales-field-hidden" id="invoiceActionModalBackdrop">
+    <div class="cx-modal sales-modal-sm">
+        <div class="cx-modal-header">
+            <h3 class="cx-modal-title" id="invoiceActionModalTitle">تأكيد الإجراء</h3>
+            <button type="button" class="cx-modal-close" onclick="closeInvoiceActionModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="cx-modal-body">
+            <p class="text-muted mb-3" id="invoiceActionModalMessage">هل تريد المتابعة؟</p>
+            <div id="invoiceActionReasonWrap" class="sales-field-hidden">
+                <label class="cx-label">السبب (اختياري)</label>
+                <textarea id="invoiceActionReason" class="cx-input" rows="3"></textarea>
+            </div>
+        </div>
+        <div class="cx-modal-footer">
+            <button type="button" class="cx-btn-secondary" onclick="closeInvoiceActionModal()">إلغاء</button>
+            <button type="button" class="cx-btn-danger" id="invoiceActionSubmitBtn" onclick="submitInvoiceAction()">
+                <i class="fas fa-check me-1"></i>تأكيد
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const hasPerm = window.hasPerm || (function(){ return false; });
+const SALES_API_URL = "{% url 'sales:invoice_api' %}";
+const INVOICE_BASE_URL = "/sales/";
+
+let salesTable;
+const invoiceRows = new Map();
+let pendingInvoiceAction = null;
+
+document.addEventListener('DOMContentLoaded', function () {
+    initTable();
+    initFilters();
+});
+
+/* ── Mobile card renderer ───────────────────────────────── */
+function renderMobileInvoiceCards(rows) {
+    const $cards = $('#invoicesCardsMobile');
+    if (!$cards.length) return;
+
+    if (!rows || !rows.length) {
+        $cards.html('<div class="cx-empty-state">لا توجد فواتير للعرض</div>');
+        return;
+    }
+
+    const statusBadgeMap = {
+        draft: 'muted',
+        pending_delivery: 'pending',
+        confirmed: 'success',
+        cancelled: 'danger',
+        returned: 'warning',
+        partially_returned: 'warning'
+    };
+
+    const paymentMethodMap = {
+        cash: 'نقداً',
+        bank: 'بنكي',
+        credit: 'آجل',
+        mixed: 'مختلط'
+    };
+
+    const cardsHtml = rows.map(function (r) {
+        const returnedAmt = EnjazIMS.parseNumber(r.returned_amount || 0);
+        const total = returnedAmt > 0
+            ? `<span style="text-decoration:line-through;color:#9ca3af;font-size:.8em;">${EnjazIMS.formatMoney(r.grand_total || 0)}</span> <span class="text-danger">${EnjazIMS.formatMoney(r.net_total || 0)}</span>`
+            : EnjazIMS.formatMoney(r.grand_total || 0);
+        const statusClass = statusBadgeMap[r.status] || r.status_color || 'muted';
+        const statusLabel = r.status_label || '—';
+        const paymentMethod = paymentMethodMap[r.payment_method] || r.payment_method || '—';
+        const viewBtn = `<button class="cxr-act cxr-act--view js-view-invoice" data-id="${r.id}" aria-label="عرض" title="عرض"><i class="fas fa-eye"></i></button>`;
+        const printBtn = `<a href="${INVOICE_BASE_URL}${r.id}/?print=1" target="_blank" rel="noopener" class="cxr-act" aria-label="طباعة" title="طباعة"><i class="fas fa-print"></i></a>`;
+        const editBtn = ['draft', 'confirmed'].includes(r.status) && hasPerm('change_sales')
+            ? `<a href="${INVOICE_BASE_URL}${r.id}/edit/" class="cxr-act" aria-label="تعديل" title="تعديل"><i class="fas fa-pencil"></i></a>`
+            : '';
+        const deleteBtn = r.status === 'draft' && hasPerm('delete_sales')
+            ? `<button class="cxr-act cxr-act--del" onclick="deleteDraftInvoice(${r.id})" aria-label="حذف المسودة" title="حذف المسودة"><i class="fas fa-trash"></i></button>`
+            : '';
+        const cancelBtn = r.status === 'confirmed' && hasPerm('delete_sales')
+            ? `<button class="cxr-act cxr-act--del" onclick="cancelInvoice(${r.id})" aria-label="إلغاء" title="إلغاء"><i class="fas fa-ban"></i></button>`
+            : '';
+        const detailBtn = `<a href="${INVOICE_BASE_URL}${r.id}/" class="cxr-act" aria-label="تفاصيل الفاتورة" title="تفاصيل الفاتورة"><i class="fas fa-file-invoice"></i></a>`;
+
+        return `<article class="cx-invoice-card">
+            <div class="cx-invoice-card-head">
+                <div class="cx-invoice-card-title-wrap">
+                    <h2 class="cx-invoice-card-title"><i class="fas fa-file-invoice-dollar me-2 text-muted"></i>فاتورة مبيعات</h2>
+                    <p class="cx-invoice-card-code"><code>${r.invoice_number || '—'}</code></p>
+                </div>
+                <span class="cx-badge cx-badge--${statusClass}">${statusLabel}</span>
+            </div>
+            <div class="cx-invoice-card-meta">
+                <div>
+                    <span class="cx-invoice-card-meta-label">التاريخ</span>
+                    <strong class="cx-invoice-card-meta-value">${r.invoice_date || '—'}</strong>
+                </div>
+                <div>
+                    <span class="cx-invoice-card-meta-label">العميل</span>
+                    <strong class="cx-invoice-card-meta-value">${r.customer || '—'}</strong>
+                </div>
+                <div>
+                    <span class="cx-invoice-card-meta-label">المخزن</span>
+                    <strong class="cx-invoice-card-meta-value">${r.stock || '—'}</strong>
+                </div>
+                <div>
+                    <span class="cx-invoice-card-meta-label">الإجمالي</span>
+                    <strong class="cx-invoice-card-meta-value">${total}</strong>
+                </div>
+            </div>
+            <div class="cx-invoice-card-actions">
+                ${viewBtn}
+                ${printBtn}
+                ${detailBtn}
+                ${editBtn}
+                ${deleteBtn}
+                ${cancelBtn}
+            </div>
+        </article>`;
+    }).join('');
+
+    $cards.html(cardsHtml);
+}
+
+function initTable() {
+    const paymentMethodMap = {
+        cash: 'نقداً',
+        bank: 'بنكي',
+        credit: 'آجل',
+        mixed: 'مختلط'
+    };
+
+    const statusBadgeMap = {
+        draft: 'muted',
+        pending_delivery: 'pending',
+        confirmed: 'success',
+        cancelled: 'danger',
+        returned: 'warning',
+        partially_returned: 'warning'
+    };
+
+    salesTable = $('#invoicesTable').DataTable({
+        processing: true,
+        serverSide: true,
+        searching: true,
+        ordering: true,
+        dom: '<"d-none"f><"d-none"l>rt<"cx-dt-bottom"ip>',
+        ajax: {
+            url: SALES_API_URL,
+            cache: false,
+            data: function (d) {
+                d.status = document.getElementById('filterStatus').value;
+                d.payment_method = document.getElementById('filterPayment').value;
+                d.customer_id = document.getElementById('filterCustomer').value;
+                const agentEl = document.getElementById('filterAgent');
+                d.agent = agentEl ? agentEl.value : '';
+            }
+        },
+        columns: [
+            {
+                data: 'invoice_number',
+                render: function (data) {
+                    return `<strong>${data || '—'}</strong>`;
+                }
+            },
+            {
+                data: 'invoice_date',
+                render: function (data) {
+                    return data || '—';
+                }
+            },
+            { data: 'customer', defaultContent: '—' },
+            {
+                data: 'grand_total',
+                className: 'text-end sales-money-col',
+                render: function (data, type, row) {
+                    const returnedAmt = EnjazIMS.parseNumber(row.returned_amount || 0);
+                    if (type === 'sort' || type === 'type') {
+                        return EnjazIMS.parseNumber(row.net_total || data);
+                    }
+                    if (returnedAmt > 0) {
+                        return `<span style="text-decoration:line-through;color:#9ca3af;font-size:.85em;">${EnjazIMS.formatMoney(data)}</span><br><span class="text-danger fw-bold">${EnjazIMS.formatMoney(row.net_total || 0)}</span><br><small class="text-muted" style="font-size:.7em;">مرتجع: ${EnjazIMS.formatMoney(returnedAmt)}</small>`;
+                    }
+                    return EnjazIMS.formatMoney(EnjazIMS.parseNumber(data));
+                }
+            },
+            {
+                data: 'status',
+                render: function (data, type, row) {
+                    const badge = statusBadgeMap[data] || row.status_color || 'muted';
+                    return `<span class="cx-badge cx-badge--${badge}">${row.status_label || '—'}</span>`;
+                }
+            },
+            {
+                data: null,
+                orderable: false,
+                searchable: false,
+                className: 'text-center',
+                render: function (data, type, row) {
+                    invoiceRows.set(String(row.id), row);
+                    return `
+                    <div class="cx-actions">
+                        <button type="button" class="cx-btn-icon js-view-invoice" data-id="${row.id}" title="عرض">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <a href="${INVOICE_BASE_URL}${row.id}/?print=1" target="_blank" rel="noopener" class="cx-btn-icon" title="طباعة">
+                            <i class="fas fa-print"></i>
+                        </a>
+                        <a href="${INVOICE_BASE_URL}${row.id}/" class="cx-btn-icon cx-btn-icon--success" title="تفاصيل الفاتورة">
+                            <i class="fas fa-file-invoice"></i>
+                        </a>
+                        ${['draft', 'confirmed'].includes(row.status) && hasPerm('change_sales') ? `
+                        <a href="${INVOICE_BASE_URL}${row.id}/edit/" class="cx-btn-icon" title="تعديل">
+                            <i class="fas fa-pencil"></i>
+                        </a>
+                        ` : '<span class="cx-btn-icon sales-btn-placeholder" aria-hidden="true"></span>'}
+                        ${row.status === 'draft' && hasPerm('delete_sales') ? `
+                        <button class="cx-btn-icon cx-btn-icon--danger" onclick="deleteDraftInvoice(${row.id})" title="حذف المسودة">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                        ` : '<span class="cx-btn-icon sales-btn-placeholder" aria-hidden="true"></span>'}
+                        ${row.status === 'confirmed' && hasPerm('delete_sales') ? `
+                        <button class="cx-btn-icon cx-btn-icon--danger" onclick="cancelInvoice(${row.id})" title="إلغاء">
+                            <i class="fas fa-ban"></i>
+                        </button>` : '<span class="cx-btn-icon sales-btn-placeholder" aria-hidden="true"></span>'}
+                    </div>`;
+                }
+            }
+        ],
+        language: {
+            processing: 'جاري المعالجة...',
+            search: 'بحث:',
+            lengthMenu: 'عرض _MENU_ سجل',
+            info: 'عرض _START_ إلى _END_ من أصل _TOTAL_ سجل',
+            infoEmpty: 'عرض 0 إلى 0 من أصل 0 سجل',
+            infoFiltered: '(تمت التصفية من _MAX_ سجل)',
+            infoPostFix: '',
+            loadingRecords: 'جاري التحميل...',
+            zeroRecords: 'لا توجد فواتير مطابقة',
+            emptyTable: 'لا توجد بيانات متاحة في الجدول',
+            paginate: {
+                first: 'الأول',
+                previous: 'السابق',
+                next: 'التالي',
+                last: 'الأخير'
+            },
+            aria: {
+                sortAscending: ': تفعيل للترتيب التصاعدي',
+                sortDescending: ': تفعيل للترتيب التنازلي'
+            }
+        },
+        order: [[1, 'desc']],
+        pageLength: 25,
+        drawCallback: function () {
+            renderMobileInvoiceCards(salesTable.rows({ page: 'current' }).data().toArray());
+        }
+    });
+}
+
+function initFilters() {
+    ['filterStatus', 'filterPayment', 'filterCustomer'].forEach(id => {
+        document.getElementById(id).addEventListener('change', () => salesTable.ajax.reload());
+    });
+    const agentFilterEl = document.getElementById('filterAgent');
+    if (agentFilterEl) agentFilterEl.addEventListener('change', () => salesTable.ajax.reload());
+    document.getElementById('saleSearchInput').addEventListener('input', function () {
+        salesTable.search(this.value).draw();
+    });
+
+    document.getElementById('invoicesTable').addEventListener('click', function (event) {
+        const btn = event.target.closest('.js-view-invoice');
+        if (!btn) return;
+        const row = invoiceRows.get(String(btn.dataset.id));
+        if (!row) return;
+        openInvoiceModal(row);
+    });
+
+    const mobileCards = document.getElementById('invoicesCardsMobile');
+    if (mobileCards) {
+        mobileCards.addEventListener('click', function (event) {
+            const btn = event.target.closest('.js-view-invoice');
+            if (!btn) return;
+            const row = invoiceRows.get(String(btn.dataset.id));
+            if (!row) return;
+            openInvoiceModal(row);
+        });
+    }
+}
+
+function openInvoiceModal(row) {
+    const paymentMethodMap = {
+        cash: 'نقداً',
+        bank: 'بنكي',
+        credit: 'آجل',
+        mixed: 'مختلط'
+    };
+
+    const num = (v) => {
+        return EnjazIMS.formatMoney(v);
+    };
+
+    const date = (v) => {
+        return v || '—';
+    };
+
+    document.getElementById('viewInvoiceNumber').textContent = row.invoice_number || '—';
+    document.getElementById('viewInvoiceStatus').textContent = row.status_label || '—';
+    document.getElementById('viewInvoiceDate').textContent = date(row.invoice_date);
+    document.getElementById('viewInvoiceCustomer').textContent = row.customer || '—';
+    document.getElementById('viewInvoiceStock').textContent = row.stock || '—';
+    document.getElementById('viewInvoicePayment').textContent = paymentMethodMap[row.payment_method] || row.payment_method || '—';
+    document.getElementById('viewInvoiceTotal').textContent = num(row.grand_total);
+    document.getElementById('viewInvoicePaid').textContent = num(row.paid_amount);
+    document.getElementById('viewInvoiceRemaining').textContent = num(row.remaining);
+    document.getElementById('viewInvoiceOpenPageBtn').href = `${INVOICE_BASE_URL}${row.id}/`;
+
+    const el = document.getElementById('viewInvoiceModal');
+    const modal = bootstrap.Modal.getOrCreateInstance(el);
+    modal.show();
+}
+
+function confirmInvoice(id) {
+    openInvoiceActionModal({
+        title: 'تأكيد الفاتورة',
+        message: 'سيتم اعتماد الفاتورة وتطبيق تأثيرها على المخزون والحسابات. هل تريد المتابعة؟',
+        confirmLabel: 'تأكيد الفاتورة',
+        confirmClass: 'cx-btn-add',
+        useReason: false,
+        run: () => fetch(`/sales/${id}/confirm/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCookie('csrftoken') }
+        })
+    });
+}
+
+function cancelInvoice(id) {
+    openInvoiceActionModal({
+        title: 'إلغاء الفاتورة',
+        message: 'سيتم إلغاء الفاتورة وعكس تأثيراتها. يمكنك إدخال سبب الإلغاء إذا أردت.',
+        confirmLabel: 'تأكيد الإلغاء',
+        confirmClass: 'cx-btn-danger',
+        useReason: true,
+        run: (reason) => fetch(`/sales/${id}/cancel/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ reason })
+        })
+    });
+}
+
+function deleteDraftInvoice(id) {
+    openInvoiceActionModal({
+        title: 'حذف مسودة الفاتورة',
+        message: 'سيتم حذف مسودة الفاتورة نهائياً. لا يمكن التراجع عن هذا الإجراء.',
+        confirmLabel: 'حذف المسودة',
+        confirmClass: 'cx-btn-danger',
+        useReason: false,
+        run: () => fetch(`/sales/${id}/delete-draft/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCookie('csrftoken') }
+        })
+    });
+}
+
+function openInvoiceActionModal(config) {
+    pendingInvoiceAction = config;
+    document.getElementById('invoiceActionModalTitle').textContent = config.title;
+    document.getElementById('invoiceActionModalMessage').textContent = config.message;
+    const reasonWrap = document.getElementById('invoiceActionReasonWrap');
+    const reasonInput = document.getElementById('invoiceActionReason');
+    const submitBtn = document.getElementById('invoiceActionSubmitBtn');
+    reasonInput.value = '';
+    reasonWrap.classList.toggle('sales-field-hidden', !config.useReason);
+    submitBtn.className = config.confirmClass;
+    submitBtn.innerHTML = `<i class="fas fa-check me-1"></i>${config.confirmLabel}`;
+    document.getElementById('invoiceActionModalBackdrop').classList.remove('sales-field-hidden');
+}
+
+function closeInvoiceActionModal() {
+    pendingInvoiceAction = null;
+    document.getElementById('invoiceActionModalBackdrop').classList.add('sales-field-hidden');
+}
+
+function submitInvoiceAction() {
+    if (!pendingInvoiceAction) return;
+    const submitBtn = document.getElementById('invoiceActionSubmitBtn');
+    const reason = document.getElementById('invoiceActionReason').value;
+    const originalHtml = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>جاري التنفيذ...';
+
+    Promise.resolve(pendingInvoiceAction.run(reason))
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            closeInvoiceActionModal();
+            showToast(data.message, 'success');
+            salesTable.ajax.reload(null, false);
+        } else {
+            showToast(data.message, 'danger');
+        }
+    })
+    .catch(() => showToast('حدث خطأ في الاتصال', 'danger'))
+    .finally(() => {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalHtml;
+    });
+}
+
+function getCookie(name) {
+    const v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
+    return v ? v[2] : null;
+}
+
+function showToast(message, type = 'success') {
+    const mapped = type === 'danger' ? 'error' : type;
+    if (window.EnjazIMS && typeof EnjazIMS.toast === 'function') {
+        EnjazIMS.toast(message, mapped);
+        return;
+    }
+    console.warn(message);
+}
+</script>
+{% endblock %}

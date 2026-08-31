@@ -1,0 +1,179 @@
+{% load static store_tags %}
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>إتمام الطلب — {{ store.display_name }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="{% static 'css/store_checkout.css' %}?v=3.0">
+<style>:root { --brand: {{ store.accent_color }}; }</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="sco-header">
+  <div class="sco-header__inner">
+    <a href="{% url 'store:cart' slug=store.slug %}" class="sco-back">
+      <i class="fas fa-arrow-right"></i>
+      <span>العودة للسلة</span>
+    </a>
+    <span class="sco-header__title">{{ store.display_name }}</span>
+    <div style="width:44px"></div>
+  </div>
+</header>
+
+<!-- Steps indicator -->
+<div class="sco-steps">
+  <div class="sco-step sco-step--done">
+    <span class="sco-step__dot"><i class="fas fa-check"></i></span>
+    <span class="sco-step__label">السلة</span>
+  </div>
+  <div class="sco-step__line"></div>
+  <div class="sco-step sco-step--active">
+    <span class="sco-step__dot">٢</span>
+    <span class="sco-step__label">تفاصيل الطلب</span>
+  </div>
+  <div class="sco-step__line"></div>
+  <div class="sco-step">
+    <span class="sco-step__dot">٣</span>
+    <span class="sco-step__label">التأكيد</span>
+  </div>
+</div>
+
+<form method="post" id="checkoutForm">
+{% csrf_token %}
+<div class="sco-wrap">
+
+  <!-- Left: info + payment -->
+  <div class="sco-col">
+
+    <!-- Customer info -->
+    <div class="sco-panel">
+      <h3 class="sco-panel__title"><i class="fas fa-user-circle"></i> بياناتك</h3>
+
+      <div class="sco-field">
+        <label class="sco-label">الاسم الكامل <span class="sco-req">*</span></label>
+        <input class="sco-input {% if errors.name %}sco-input--error{% endif %}"
+               type="text" name="name" value="{{ post.name|default:'' }}"
+               placeholder="محمد أحمد" required autocomplete="name">
+        {% if errors.name %}
+        <div class="sco-error"><i class="fas fa-exclamation-circle"></i> {{ errors.name }}</div>
+        {% endif %}
+      </div>
+
+      <div class="sco-field">
+        <label class="sco-label">رقم الهاتف <span class="sco-req">*</span></label>
+        <input class="sco-input sco-input--phone {% if errors.phone %}sco-input--error{% endif %}"
+               type="tel" name="phone" value="{{ post.phone|default:'' }}"
+               placeholder="0912345678" required autocomplete="tel">
+        {% if errors.phone %}
+        <div class="sco-error"><i class="fas fa-exclamation-circle"></i> {{ errors.phone }}</div>
+        {% endif %}
+      </div>
+
+      <div class="sco-field">
+        <label class="sco-label">العنوان <span class="sco-opt">(اختياري)</span></label>
+        <input class="sco-input" type="text" name="address"
+               value="{{ post.address|default:'' }}" placeholder="الحي، الشارع...">
+      </div>
+
+      <div class="sco-field" style="margin-bottom:0">
+        <label class="sco-label">ملاحظات <span class="sco-opt">(اختياري)</span></label>
+        <textarea class="sco-input sco-textarea" name="notes"
+                  rows="3" placeholder="أي تفاصيل إضافية...">{{ post.notes|default:'' }}</textarea>
+      </div>
+    </div>
+
+    <!-- Payment method -->
+    <div class="sco-panel">
+      <h3 class="sco-panel__title"><i class="fas fa-credit-card"></i> طريقة الدفع</h3>
+
+      <div class="sco-pm-list">
+
+        <label class="sco-pm {% if post.payment_method == 'bank' or not post.payment_method %}sco-pm--active{% endif %}">
+          <input type="radio" name="payment_method" value="bank"
+                 {% if post.payment_method == 'bank' or not post.payment_method %}checked{% endif %}>
+          <div class="sco-pm__icon sco-pm__icon--blue"><i class="fas fa-university"></i></div>
+          <div class="sco-pm__body">
+            <div class="sco-pm__name">تحويل بنكي</div>
+            <div class="sco-pm__desc">حوّل المبلغ وأرسل الإيصال</div>
+            {% if store.bank_details %}
+            <div class="sco-bank {% if post.payment_method == 'bank' or not post.payment_method %}sco-bank--show{% endif %}" id="bankDetails">
+              {{ store.bank_details }}
+            </div>
+            {% endif %}
+          </div>
+        </label>
+
+        <label class="sco-pm {% if post.payment_method == 'credit' %}sco-pm--active{% endif %}">
+          <input type="radio" name="payment_method" value="credit"
+                 {% if post.payment_method == 'credit' %}checked{% endif %}>
+          <div class="sco-pm__icon sco-pm__icon--amber"><i class="fas fa-file-invoice-dollar"></i></div>
+          <div class="sco-pm__body">
+            <div class="sco-pm__name">آجل</div>
+            <div class="sco-pm__desc">الدفع لاحقاً عند الاستلام</div>
+          </div>
+        </label>
+
+      </div>
+      {% if errors.payment_method %}
+      <div class="sco-error" style="margin-top:.5rem">{{ errors.payment_method }}</div>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <!-- Right: order summary -->
+  <div class="sco-col sco-col--sticky">
+    <div class="sco-panel sco-summary">
+      <h3 class="sco-panel__title"><i class="fas fa-receipt"></i> ملخص الطلب</h3>
+
+      <div class="sco-lines">
+        {% for row in cart_items %}
+        <div class="sco-line">
+          <span class="sco-line__name">{{ row.item.name }} <span class="sco-line__qty">× {{ row.qty|floatformat:0 }}</span></span>
+          <span class="sco-line__price">{{ row.line_total|format_price }}</span>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="sco-total">
+        <span>الإجمالي</span>
+        <span>{{ subtotal|format_price }} {{ store.tenant.currency|currency_ar }}</span>
+      </div>
+
+      {% if errors.min_order %}
+      <div class="sco-error" style="margin-top:.75rem">
+        <i class="fas fa-exclamation-circle"></i> {{ errors.min_order }}
+      </div>
+      {% endif %}
+
+      <button type="submit" class="sco-submit" id="submitBtn">
+        <i class="fas fa-check-circle"></i> تأكيد الطلب
+      </button>
+    </div>
+  </div>
+
+</div>
+</form>
+
+<script>
+document.querySelectorAll('input[name=payment_method]').forEach(function(radio) {
+  radio.addEventListener('change', function() {
+    document.querySelectorAll('.sco-pm').forEach(function(l) { l.classList.remove('sco-pm--active'); });
+    this.closest('.sco-pm').classList.add('sco-pm--active');
+    var bd = document.getElementById('bankDetails');
+    if (bd) bd.classList.toggle('sco-bank--show', this.value === 'bank');
+  });
+});
+document.getElementById('checkoutForm').addEventListener('submit', function() {
+  var btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الإرسال...';
+});
+</script>
+</body>
+</html>
