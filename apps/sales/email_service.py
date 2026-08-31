@@ -40,12 +40,12 @@ def send_invoice_email(invoice, recipient_email: str, request=None) -> tuple[boo
             logo_abs_url = request.build_absolute_uri(tenant.logo.url)
         else:
             logo_abs_url = request.build_absolute_uri(
-                settings.STATIC_URL + 'img/logo/logo-161616.png'
+                settings.STATIC_URL + 'img/logo/logo-dark.png'
             )
     else:
         logo_abs_url = ''
 
-    brand_color = (settings_obj.invoice_color or '#6366f1').strip()
+    brand_color = (settings_obj.invoice_color or '#132539').strip()
     context = {
         'invoice': invoice,
         'lines': lines,

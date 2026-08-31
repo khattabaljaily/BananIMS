@@ -55,7 +55,7 @@ class Migration(migrations.Migration):
                 ('display_name', models.CharField(blank=True, max_length=200, verbose_name='اسم المتجر')),
                 ('description', models.TextField(blank=True, verbose_name='وصف المتجر')),
                 ('cover_image', models.ImageField(blank=True, null=True, upload_to='store/covers/', verbose_name='صورة الغلاف')),
-                ('accent_color', models.CharField(default='#6366f1', max_length=7, verbose_name='اللون الرئيسي')),
+                ('accent_color', models.CharField(default='#132539', max_length=7, verbose_name='اللون الرئيسي')),
                 ('whatsapp', models.CharField(blank=True, help_text='للتواصل السريع مع العملاء', max_length=30, verbose_name='واتساب (اختياري)')),
                 ('show_out_of_stock', models.BooleanField(default=False, verbose_name='عرض المنتجات النافدة')),
                 ('min_order_amount', models.DecimalField(decimal_places=2, default=0, max_digits=12, verbose_name='الحد الأدنى للطلب')),

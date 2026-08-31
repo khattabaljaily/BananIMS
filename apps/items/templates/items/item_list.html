@@ -19,9 +19,9 @@
 .unit-type-btn i { font-size:1.1rem; }
 .unit-type-btn small { font-size:.68rem; font-weight:400; opacity:.7; }
 .unit-type-btn.active {
-  border-color:var(--indigo-500,#6366f1);
-  background:var(--indigo-50,#eef2ff);
-  color:var(--indigo-700,#4338ca);
+  border-color:var(--indigo-500,#132539);
+  background:var(--indigo-50,#eaf0f5);
+  color:var(--indigo-700,#0a1622);
 }
 /* ── Unit pair rows ───────────────────────────────────────── */
 .unit-pair {
@@ -43,8 +43,8 @@
 .unit-pair__prev-badge {
   display: inline-flex; align-items: center;
   height: 38px; padding: 0 .75rem;
-  background: #eef2ff; color: #4338ca;
-  border: 1px solid #c7d2fe; border-radius: .375rem;
+  background: #eaf0f5; color: #0a1622;
+  border: 1px solid #afc4d2; border-radius: .375rem;
   font-size: .82rem; font-weight: 700;
   white-space: nowrap;
 }
@@ -64,7 +64,7 @@
   font-size: .95rem; font-weight: 700; cursor: pointer;
   color: #495057; transition: background .12s, color .12s;
 }
-.unit-counter__btn:hover { background: #e9ecef; color: #4338ca; }
+.unit-counter__btn:hover { background: #e9ecef; color: #0a1622; }
 .unit-counter__val {
   width: 46px; border: none;
   border-left: 1px solid #ced4da; border-right: 1px solid #ced4da;
@@ -79,14 +79,14 @@
   margin-bottom: .05rem;
 }
 .unit-pair__remove:hover { color: #ef4444; background: #fee2e2; }
-[data-theme="dark"] .unit-pair__prev-badge { background: rgba(99,102,241,.18); color: #a5b4fc; border-color: rgba(99,102,241,.3); }
+[data-theme="dark"] .unit-pair__prev-badge { background: rgba(19,37,57,.18); color: #a5b4fc; border-color: rgba(19,37,57,.3); }
 [data-theme="dark"] .unit-counter { border-color: rgba(255,255,255,.15); }
 [data-theme="dark"] .unit-counter__btn { background: rgba(255,255,255,.07); color: #e2e8f0; }
-[data-theme="dark"] .unit-counter__btn:hover { background: rgba(99,102,241,.18); color: #a5b4fc; }
+[data-theme="dark"] .unit-counter__btn:hover { background: rgba(19,37,57,.18); color: #a5b4fc; }
 [data-theme="dark"] .unit-counter__val { background: rgba(255,255,255,.05); color: #f1f5f9; border-color: rgba(255,255,255,.1); }
 /* ── HC auto-calc hint ────────────────────────────────────── */
 .cx-hc-calc-hint {
-  font-size: .78rem; color: #6366f1; font-weight: 600;
+  font-size: .78rem; color: #132539; font-weight: 600;
   min-height: 1.1rem; margin-top: 3px; transition: opacity .15s;
 }
 [data-theme="dark"] .cx-hc-calc-hint { color: #a5b4fc; }
@@ -899,7 +899,7 @@
         const cardsHtml = rows.map(function (r) {
             const category = r.category || '—';
             const unit = r.unit || '—';
-            const selling = EnjazIMS.formatMoney(r.selling_price);
+            const selling = BananIMS.formatMoney(r.selling_price);
             const status = r.is_active
                 ? '<span class="cx-status cx-status--on"><span class="cx-status-dot"></span>نشط</span>'
                 : '<span class="cx-status cx-status--off"><span class="cx-status-dot"></span>موقوف</span>';
@@ -998,18 +998,18 @@
             },
             {
                 data: 'cost_price',
-                render: v => `<span class="cxr-bal">${EnjazIMS.formatMoney(v)}</span>`
+                render: v => `<span class="cxr-bal">${BananIMS.formatMoney(v)}</span>`
             },
             {
                 data: 'selling_price',
-                render: v => `<span class="cxr-bal cxr-bal--pos">${EnjazIMS.formatMoney(v)}</span>`
+                render: v => `<span class="cxr-bal cxr-bal--pos">${BananIMS.formatMoney(v)}</span>`
             },
             {% if hc_mode %}
             {
                 data: 'selling_price_hc',
                 render: function(v, t, r) {
                     if (!v) return '<span class="cxr-empty">—</span>';
-                    return `<span class="cxr-bal" style="color:#d97706;">${EnjazIMS.formatMoney(v)} ${curSym(r.hc_currency)}</span>`;
+                    return `<span class="cxr-bal" style="color:#d97706;">${BananIMS.formatMoney(v)} ${curSym(r.hc_currency)}</span>`;
                 }
             },
             {% endif %}
@@ -1264,7 +1264,7 @@
         setUnitMode('single');
         document.getElementById('singleUnitName').value = '';
         updateUnitsJson();
-        EnjazIMS.clearFormErrors($form);
+        BananIMS.clearFormErrors($form);
         ['#id_cost_price','#id_selling_price','#id_min_selling_price','#id_tax_rate','#id_min_quantity','#id_max_quantity'].forEach(function(sel) {
             var el = document.querySelector(sel);
             if (el && parseFloat(el.value) === 0) el.value = '';
@@ -1290,7 +1290,7 @@
         $.ajax({
             url: apiUrl(urlDetail, id), method: 'GET',
             success: function(resp) {
-                if (!resp.success) { EnjazIMS.toast(resp.message, 'error'); return; }
+                if (!resp.success) { BananIMS.toast(resp.message, 'error'); return; }
                 const d = resp.data;
                 $idInput.val(d.id);
                 $('#id_name').val(d.name || '');
@@ -1304,15 +1304,15 @@
                 if (d.item_units && d.item_units.length === 1) {
                     document.getElementById('singleUnitName').value = d.item_units[0].name;
                 }
-                $('#id_cost_price').val(EnjazIMS.parseNumber(d.cost_price) || '');
-                $('#id_selling_price').val(EnjazIMS.parseNumber(d.selling_price) || '');
-                $('#id_min_selling_price').val(EnjazIMS.parseNumber(d.min_selling_price) || '');
+                $('#id_cost_price').val(BananIMS.parseNumber(d.cost_price) || '');
+                $('#id_selling_price').val(BananIMS.parseNumber(d.selling_price) || '');
+                $('#id_min_selling_price').val(BananIMS.parseNumber(d.min_selling_price) || '');
                 {% if hc_mode %}
                 _syncHcPrices();
                 {% endif %}
-                $('#id_tax_rate').val(EnjazIMS.parseNumber(d.tax_rate) || '');
-                $('#id_min_quantity').val(EnjazIMS.parseNumber(d.min_quantity) || '');
-                $('#id_max_quantity').val(EnjazIMS.parseNumber(d.max_quantity) || '');
+                $('#id_tax_rate').val(BananIMS.parseNumber(d.tax_rate) || '');
+                $('#id_min_quantity').val(BananIMS.parseNumber(d.min_quantity) || '');
+                $('#id_max_quantity').val(BananIMS.parseNumber(d.max_quantity) || '');
                 $('#id_track_expiry').prop('checked', !!d.track_expiry);
                 $('#id_track_batch').prop('checked', !!d.track_batch);
                 $('#id_track_serial').prop('checked', !!d.track_serial);
@@ -1325,18 +1325,18 @@
                 $submitBtn.html('<i class="fas fa-check me-1"></i> حفظ التعديلات');
                 itemModal.show();
             },
-            error: function() { EnjazIMS.toast('تعذر تحميل البيانات', 'error'); }
+            error: function() { BananIMS.toast('تعذر تحميل البيانات', 'error'); }
         });
     }
 
     /* ── Save ──────────────────────────────────────────────── */
     $form.on('submit', function (e) {
         e.preventDefault();
-        EnjazIMS.clearFormErrors($form);
+        BananIMS.clearFormErrors($form);
         const id  = $idInput.val();
         const url = id ? apiUrl(urlUpdate, id) : urlCreate;
         const orig = $submitBtn.html();
-        EnjazIMS.showLoading($submitBtn);
+        BananIMS.showLoading($submitBtn);
 
         // استخدام FormData للدعم المستقبلي لرفع الصور
         const formData = new FormData($form[0]);
@@ -1344,20 +1344,20 @@
             url, method: 'POST', data: formData,
             processData: false, contentType: false,
             success: function(resp) {
-                EnjazIMS.hideLoading($submitBtn, orig);
+                BananIMS.hideLoading($submitBtn, orig);
                 if (resp.success) {
                     itemModal.hide();
                     dt.ajax.reload(null, false);
-                    EnjazIMS.toast(resp.message, 'success');
+                    BananIMS.toast(resp.message, 'success');
                     return;
                 }
-                EnjazIMS.showFormError($form, resp.message);
+                BananIMS.showFormError($form, resp.message);
             },
             error: function(xhr) {
-                EnjazIMS.hideLoading($submitBtn, orig);
+                BananIMS.hideLoading($submitBtn, orig);
                 const r = xhr.responseJSON || {};
-                if (r.errors) EnjazIMS.renderFieldErrors($form, r.errors);
-                EnjazIMS.showFormError($form, r.message || 'حدث خطأ');
+                if (r.errors) BananIMS.renderFieldErrors($form, r.errors);
+                BananIMS.showFormError($form, r.message || 'حدث خطأ');
             }
         });
     });
@@ -1375,10 +1375,10 @@
             url: apiUrl(urlDelete, id), method: 'POST',
             success: function(resp) {
                 deleteModal.hide();
-                if (resp.success) { dt.ajax.reload(null, false); EnjazIMS.toast(resp.message, 'success'); }
-                else EnjazIMS.toast(resp.message, 'error');
+                if (resp.success) { dt.ajax.reload(null, false); BananIMS.toast(resp.message, 'success'); }
+                else BananIMS.toast(resp.message, 'error');
             },
-            error: function(xhr) { EnjazIMS.toast(_xhrMsg(xhr, 'تعذر الحذف'), 'error'); }
+            error: function(xhr) { BananIMS.toast(_xhrMsg(xhr, 'تعذر الحذف'), 'error'); }
         });
     });
 
@@ -1391,11 +1391,11 @@
         $.ajax({
             url: apiUrl(urlDetail, id), method: 'GET',
             success: function(resp) {
-                if (!resp.success) { EnjazIMS.toast(resp.message, 'error'); return; }
+                if (!resp.success) { BananIMS.toast(resp.message, 'error'); return; }
                 const d = resp.data;
 
                 // بناء أيقونة Avatar بالحرف الأول
-                const colors = ['#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444'];
+                const colors = ['#132539','#faa71d','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444'];
                 const color  = colors[(d.name || 'أ').charCodeAt(0) % colors.length];
                 $('#viewItemAvatar').css('background', color).html(d.name.trim().charAt(0).toUpperCase());
 
@@ -1426,14 +1426,14 @@
                 }
 
                 $('#viewItemType').text(d.item_type || '—');
-                $('#viewItemCostPrice').text(EnjazIMS.formatMoney(d.cost_price));
-                $('#viewItemSellingPrice').text(EnjazIMS.formatMoney(d.selling_price));
+                $('#viewItemCostPrice').text(BananIMS.formatMoney(d.cost_price));
+                $('#viewItemSellingPrice').text(BananIMS.formatMoney(d.selling_price));
                 $('#viewItemTaxRate').text((d.tax_rate || '0') + '%');
-                $('#viewItemMinSelling').text(EnjazIMS.formatMoney(d.min_selling_price));
+                $('#viewItemMinSelling').text(BananIMS.formatMoney(d.min_selling_price));
                 {% if hc_mode %}
                 const hcSellingEl = document.getElementById('viewItemSellingHc');
                 if (hcSellingEl) {
-                    hcSellingEl.textContent = d.selling_price_hc ? EnjazIMS.formatMoney(d.selling_price_hc) + ' {{ hc_currency_symbol }}' : '—';
+                    hcSellingEl.textContent = d.selling_price_hc ? BananIMS.formatMoney(d.selling_price_hc) + ' {{ hc_currency_symbol }}' : '—';
                 }
                 {% endif %}
                 $('#viewItemDescription').text(d.description || '—');
@@ -1476,7 +1476,7 @@
                 $('#viewEditItemBtn').data('id', d.id);
                 viewModal.show();
             },
-            error: function() { EnjazIMS.toast('تعذر تحميل البيانات', 'error'); }
+            error: function() { BananIMS.toast('تعذر تحميل البيانات', 'error'); }
         });
     }
 
@@ -1500,7 +1500,7 @@
                     return;
                 }
 
-                $('#itemLedgerSubtitle').text(`${d.item_name || '—'} (${d.item_sku || '—'}) — الرصيد الحالي: ${EnjazIMS.formatQuantity(d.current_qty || 0)}`);
+                $('#itemLedgerSubtitle').text(`${d.item_name || '—'} (${d.item_sku || '—'}) — الرصيد الحالي: ${BananIMS.formatQuantity(d.current_qty || 0)}`);
 
                 if (!d.movements.length) {
                     $body.html('<tr><td colspan="7" class="text-center text-muted">لا توجد حركات</td></tr>');
@@ -1528,7 +1528,7 @@
                 };
 
                 const rows = d.movements.map(function(m) {
-                    const qty = EnjazIMS.parseNumber(m.quantity || 0);
+                    const qty = BananIMS.parseNumber(m.quantity || 0);
                     const isIn = m.direction === 'in';
                     const qtyClass = isIn ? 'text-success' : 'text-danger';
                     const qtyPrefix = isIn ? '+' : '-';
@@ -1545,8 +1545,8 @@
                             ${reversalBadge}
                         </td>
                         <td>${refLabel}</td>
-                        <td class="${qtyClass} fw-bold">${qtyPrefix}${EnjazIMS.formatQuantity(qty)}</td>
-                        <td>${EnjazIMS.formatQuantity(m.balance_after || 0)}</td>
+                        <td class="${qtyClass} fw-bold">${qtyPrefix}${BananIMS.formatQuantity(qty)}</td>
+                        <td>${BananIMS.formatQuantity(m.balance_after || 0)}</td>
                         <td style="font-size:.78rem;max-width:160px;">${m.notes || '—'}</td>
                     </tr>`;
                 }).join('');
@@ -1594,12 +1594,12 @@
 
     $('#confirmImportItemsBtn').on('click', function () {
         const file = $('#importItemsFile')[0].files[0];
-        if (!file) { EnjazIMS.toast('الرجاء اختيار ملف', 'error'); return; }
+        if (!file) { BananIMS.toast('الرجاء اختيار ملف', 'error'); return; }
         const fd = new FormData();
         fd.append('file', file);
         fd.append('csrfmiddlewaretoken', $('[name=csrfmiddlewaretoken]').first().val());
         const $btn = $(this);
-        EnjazIMS.showLoading($btn);
+        BananIMS.showLoading($btn);
         $.ajax({
             url: "{% url 'items:import_api' %}",
             method: 'POST',
@@ -1607,7 +1607,7 @@
             processData: false,
             contentType: false,
             success: function (resp) {
-                EnjazIMS.hideLoading($btn, '<i class="fas fa-upload me-1"></i> استيراد');
+                BananIMS.hideLoading($btn, '<i class="fas fa-upload me-1"></i> استيراد');
                 const cls = resp.success ? 'alert-success' : 'alert-danger';
                 let html = `<div class="alert ${cls} mb-0">${resp.message}</div>`;
                 if (resp.errors && resp.errors.length) {
@@ -1617,8 +1617,8 @@
                 if (resp.success && resp.imported > 0) dt.ajax.reload(null, false);
             },
             error: function () {
-                EnjazIMS.hideLoading($btn, '<i class="fas fa-upload me-1"></i> استيراد');
-                EnjazIMS.toast('حدث خطأ أثناء الاستيراد', 'error');
+                BananIMS.hideLoading($btn, '<i class="fas fa-upload me-1"></i> استيراد');
+                BananIMS.toast('حدث خطأ أثناء الاستيراد', 'error');
             }
         });
     });

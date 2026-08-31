@@ -1,5 +1,5 @@
 /* ============================================================
-   EnjazIMS — Store Storefront  v3.0
+   BananIMS — Store Storefront  v3.0
    ============================================================ */
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap');
 
@@ -252,7 +252,7 @@ body {
 }
 .sf-search__input:focus {
   border-color: var(--brand);
-  box-shadow: 0 0 0 3px rgba(99,102,241,.1);
+  box-shadow: 0 0 0 3px rgba(19,37,57,.1);
 }
 .sf-search__clear {
   position: absolute;

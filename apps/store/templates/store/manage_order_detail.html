@@ -71,10 +71,10 @@
     </div>
     <!-- إجمالي الطلب خارج الجدول لضمان الظهور على الموبايل -->
     <div class="d-flex justify-content-end mt-3 px-2">
-      <div style="background:#f0f0ff;border-radius:12px;padding:.875rem 1.25rem;border:1px solid #c7d2fe;min-width:240px;">
+      <div style="background:#f0f0ff;border-radius:12px;padding:.875rem 1.25rem;border:1px solid #afc4d2;min-width:240px;">
         <div class="d-flex justify-content-between align-items-center gap-4">
-          <span style="font-size:.9rem;color:#4338ca;font-weight:600;">الإجمالي النهائي</span>
-          <strong style="font-size:1.15rem;color:#6366f1;" dir="ltr">
+          <span style="font-size:.9rem;color:#0a1622;font-weight:600;">الإجمالي النهائي</span>
+          <strong style="font-size:1.15rem;color:#132539;" dir="ltr">
             {{ order.total_amount|format_price }} {{ order.tenant.currency|currency_ar }}
           </strong>
         </div>
@@ -144,7 +144,7 @@
         <div class="st-detail-row">
           <span class="st-detail-label">الفاتورة</span>
           <span class="st-detail-value">
-            <a href="/sales/{{ order.sale_invoice.pk }}/" style="color:#6366f1;font-weight:700;">
+            <a href="/sales/{{ order.sale_invoice.pk }}/" style="color:#132539;font-weight:700;">
               {{ order.sale_invoice.invoice_number }}
             </a>
           </span>
@@ -173,17 +173,17 @@ async function approveOrder(pk) {
       method: 'POST', headers: { 'X-CSRFToken': CSRF, 'X-Requested-With': 'XMLHttpRequest' }
     });
     if (r.status === 403) {
-      EnjazIMS.toast('ليس لديك صلاحية لقبول الطلبات', 'error'); return;
+      BananIMS.toast('ليس لديك صلاحية لقبول الطلبات', 'error'); return;
     }
     const d = await r.json();
     if (d.success) {
-      if (window.EnjazIMS) EnjazIMS.toast(d.message, 'success');
+      if (window.BananIMS) BananIMS.toast(d.message, 'success');
       setTimeout(() => { window.location.href = d.invoice_url; }, 600);
     } else {
-      if (window.EnjazIMS) EnjazIMS.toast(d.error || d.message || 'حدث خطأ', 'error');
+      if (window.BananIMS) BananIMS.toast(d.error || d.message || 'حدث خطأ', 'error');
     }
   } catch(e) {
-    if (window.EnjazIMS) EnjazIMS.toast('خطأ في الاتصال، يرجى المحاولة مرة أخرى', 'error');
+    if (window.BananIMS) BananIMS.toast('خطأ في الاتصال، يرجى المحاولة مرة أخرى', 'error');
   }
 }
 
@@ -193,17 +193,17 @@ async function rejectOrder(pk) {
       method: 'POST', headers: { 'X-CSRFToken': CSRF, 'X-Requested-With': 'XMLHttpRequest' }
     });
     if (r.status === 403) {
-      EnjazIMS.toast('ليس لديك صلاحية لرفض الطلبات', 'error'); return;
+      BananIMS.toast('ليس لديك صلاحية لرفض الطلبات', 'error'); return;
     }
     const d = await r.json();
     if (d.success) {
-      if (window.EnjazIMS) EnjazIMS.toast('تم رفض الطلب', 'warning');
+      if (window.BananIMS) BananIMS.toast('تم رفض الطلب', 'warning');
       setTimeout(() => location.reload(), 700);
     } else {
-      if (window.EnjazIMS) EnjazIMS.toast(d.error || d.message || 'حدث خطأ', 'error');
+      if (window.BananIMS) BananIMS.toast(d.error || d.message || 'حدث خطأ', 'error');
     }
   } catch(e) {
-    if (window.EnjazIMS) EnjazIMS.toast('خطأ في الاتصال، يرجى المحاولة مرة أخرى', 'error');
+    if (window.BananIMS) BananIMS.toast('خطأ في الاتصال، يرجى المحاولة مرة أخرى', 'error');
   }
 }
 </script>

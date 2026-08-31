@@ -11,11 +11,11 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='tenant',
             name='country',
-            field=models.CharField(blank=True, default='السودان', max_length=100, verbose_name='البلد'),
+            field=models.CharField(blank=True, default='قطر', max_length=100, verbose_name='البلد'),
         ),
         migrations.AlterField(
             model_name='tenant',
             name='timezone',
-            field=models.CharField(default='Africa/Khartoum', max_length=50, verbose_name='المنطقة الزمنية'),
+            field=models.CharField(default='Asia/Qatar', max_length=50, verbose_name='المنطقة الزمنية'),
         ),
     ]

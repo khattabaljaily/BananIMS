@@ -144,7 +144,7 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = 'ar'
-TIME_ZONE = 'Africa/Cairo'
+TIME_ZONE = 'Asia/Qatar'
 USE_I18N = True
 USE_TZ = True
 
@@ -175,7 +175,7 @@ EMAIL_HOST_USER     = _email_noreply.get('USER', '')
 EMAIL_HOST_PASSWORD = _email_noreply.get('PASSWORD', '')
 EMAIL_USE_SSL       = str(_email_cfg.get('EMAIL_USE_SSL', 'True')).lower() == 'true'
 EMAIL_USE_TLS       = False
-DEFAULT_FROM_EMAIL  = f'ENJAZ <{EMAIL_HOST_USER}>'
+DEFAULT_FROM_EMAIL  = f'BANAN <{EMAIL_HOST_USER}>'
 
 REST_FRAMEWORK = {
     'DEFAULT_RENDERER_CLASSES': [

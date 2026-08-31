@@ -7,9 +7,9 @@
 
     <!-- Brand / Logo -->
     <a class="sidebar-brand" href="{% url 'core:dashboard' %}">
-        <img src="{% static 'img/logo/logo-161616.png' %}" alt="إنجاز" class="navbar-logo logo-light">
-        <img src="{% static 'img/logo/logo-ffffff.png' %}" alt="إنجاز" class="navbar-logo logo-dark">
-        <span class="sidebar-brand-text">إنجاز</span>
+        <img src="{% static 'img/logo/logo-dark.png' %}" alt="بنان" class="navbar-logo logo-light">
+        <img src="{% static 'img/logo/logo-white.png' %}" alt="بنان" class="navbar-logo logo-dark">
+        <span class="sidebar-brand-text">بنان</span>
     </a>
 
     {% if user.is_superuser or user.is_platform_staff %}
@@ -164,7 +164,7 @@
         </li>
         <li class="nav-item">
             <a class="nav-link{% if request.resolver_match.url_name == 'analytics' %} active{% endif %}" href="{% url 'core:analytics' %}">
-                <span class="nav-icon" style="background:rgba(139,92,246,.12);color:#8b5cf6;"><i class="fas fa-chart-line"></i></span>
+                <span class="nav-icon" style="background:rgba(250,167,29,.12);color:#faa71d;"><i class="fas fa-chart-line"></i></span>
                 التحليلات المتقدمة
             </a>
         </li>
@@ -264,13 +264,13 @@
         {% if plan_allows_agents %}
         <li class="nav-item">
             <a class="nav-link" href="{% url 'agents:list' %}">
-                <span class="nav-icon" style="background:rgba(99,102,241,.12);color:#6366f1;"><i class="fas fa-id-badge"></i></span>
+                <span class="nav-icon" style="background:rgba(19,37,57,.12);color:#132539;"><i class="fas fa-id-badge"></i></span>
                 المناديب
             </a>
         </li>
         <li class="nav-item">
             <a class="nav-link" href="{% url 'agents:requests_list' %}">
-                <span class="nav-icon" style="background:rgba(99,102,241,.12);color:#6366f1;"><i class="fas fa-paper-plane"></i></span>
+                <span class="nav-icon" style="background:rgba(19,37,57,.12);color:#132539;"><i class="fas fa-paper-plane"></i></span>
                 طلبات المناديب
             </a>
         </li>
@@ -436,7 +436,7 @@
         {% if plan_allows_store %}
         <li class="nav-item">
             <a class="nav-link{% if 'store' in request.path %} active{% endif %}" href="{% url 'store:manage_settings' %}">
-                <span class="nav-icon" style="background:linear-gradient(135deg,#6366f1,#7c3aed);color:#fff;"><i class="fas fa-store"></i></span>
+                <span class="nav-icon" style="background:linear-gradient(135deg,#132539,#7c3aed);color:#fff;"><i class="fas fa-store"></i></span>
                 المتجر الإلكتروني
                 {% if store_pending_count %}
                 <span style="margin-right:auto;background:#ef4444;color:#fff;border-radius:50%;min-width:18px;height:18px;font-size:.62rem;font-weight:700;display:inline-flex;align-items:center;justify-content:center;padding:0 4px;">{{ store_pending_count }}</span>
@@ -479,7 +479,7 @@
     <ul class="nav flex-column">
         <li class="nav-item">
             <a class="nav-link{% if request.resolver_match.url_name == 'activity_log' %} active{% endif %}" href="{% url 'accounts:activity_log' %}">
-                <span class="nav-icon" style="background:linear-gradient(135deg,#6366f1,#4338ca);color:#fff;"><i class="fas fa-clock-rotate-left"></i></span>
+                <span class="nav-icon" style="background:linear-gradient(135deg,#132539,#0a1622);color:#fff;"><i class="fas fa-clock-rotate-left"></i></span>
                 سجل نشاطاتي
             </a>
         </li>

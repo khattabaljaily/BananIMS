@@ -43,7 +43,7 @@ class Migration(migrations.Migration):
                 ('created_at', models.DateTimeField(auto_now_add=True, db_index=True, verbose_name='تاريخ الإنشاء')),
                 ('updated_at', models.DateTimeField(auto_now=True, verbose_name='تاريخ التحديث')),
                 ('name', models.CharField(max_length=100, verbose_name='اسم اللون')),
-                ('hex_code', models.CharField(blank=True, default='#6366f1', max_length=7, verbose_name='الكود اللوني')),
+                ('hex_code', models.CharField(blank=True, default='#132539', max_length=7, verbose_name='الكود اللوني')),
                 ('is_active', models.BooleanField(default=True, verbose_name='نشط')),
                 ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(class)s_created', to=settings.AUTH_USER_MODEL, verbose_name='أنشئ بواسطة')),
                 ('tenant', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='core.tenant', verbose_name='المشترك')),

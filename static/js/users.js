@@ -167,7 +167,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         $.get(detailUrl, function (response) {
             if (!response.success) {
-                EnjazIMS.toast(response.message || 'تعذر جلب بيانات المستخدم', 'error');
+                BananIMS.toast(response.message || 'تعذر جلب بيانات المستخدم', 'error');
                 return;
             }
 
@@ -208,7 +208,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             userModal.show();
         }).fail(function () {
-            EnjazIMS.toast('تعذر جلب بيانات المستخدم', 'error');
+            BananIMS.toast('تعذر جلب بيانات المستخدم', 'error');
         });
     }
 
@@ -217,14 +217,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
         $.get(detailUrl, function (response) {
             if (!response.success) {
-                EnjazIMS.toast(response.message || 'تعذر جلب بيانات المستخدم', 'error');
+                BananIMS.toast(response.message || 'تعذر جلب بيانات المستخدم', 'error');
                 return;
             }
 
             const user = response.data;
             const name = user.first_name || user.username || '—';
             const initials = (user.first_name || user.username || '—').trim().charAt(0).toUpperCase();
-            const color = '#6366f1';
+            const color = '#132539';
             $('#viewUserAvatar').text(initials).css('background', color);
             $('#viewUserName').text(name);
             $('#viewUserSubtitle').html(`<code class="cxr-code">${user.username || '—'}</code>`);
@@ -239,7 +239,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 viewModal.show();
             }
         }).fail(function () {
-            EnjazIMS.toast('تعذر جلب بيانات المستخدم', 'error');
+            BananIMS.toast('تعذر جلب بيانات المستخدم', 'error');
         });
     }
 
@@ -317,14 +317,14 @@ document.addEventListener('DOMContentLoaded', function () {
                         if (deleteModal) {
                             deleteModal.hide();
                         }
-                        EnjazIMS.toast(response.message || 'تم حذف المستخدم', 'success');
+                        BananIMS.toast(response.message || 'تم حذف المستخدم', 'success');
                         usersTable.ajax.reload(null, false);
                         return;
                     }
-                    EnjazIMS.toast(response.message || 'تعذر حذف المستخدم', 'error');
+                    BananIMS.toast(response.message || 'تعذر حذف المستخدم', 'error');
                 },
                 error: function () {
-                    EnjazIMS.toast('تعذر حذف المستخدم', 'error');
+                    BananIMS.toast('تعذر حذف المستخدم', 'error');
                 }
             });
         });
@@ -333,8 +333,8 @@ document.addEventListener('DOMContentLoaded', function () {
     userForm.on('submit', function (event) {
         event.preventDefault();
         const busyText = userSubmitBtn.html();
-        EnjazIMS.clearFormErrors(userForm);
-        EnjazIMS.showLoading(userSubmitBtn);
+        BananIMS.clearFormErrors(userForm);
+        BananIMS.showLoading(userSubmitBtn);
 
         const userId = userIdInput.val();
         const url = userId ? `/accounts/users/api/${userId}/update/` : '/accounts/users/api/create/';
@@ -371,25 +371,25 @@ document.addEventListener('DOMContentLoaded', function () {
                 'X-Requested-With': 'XMLHttpRequest'
             },
             success: function (response) {
-                EnjazIMS.hideLoading(userSubmitBtn, busyText);
+                BananIMS.hideLoading(userSubmitBtn, busyText);
                 if (response.success) {
                     userModal.hide();
-                    EnjazIMS.toast(response.message, 'success');
+                    BananIMS.toast(response.message, 'success');
                     usersTable.ajax.reload();
                     return;
                 }
                 if (response.errors) {
-                    EnjazIMS.renderFieldErrors(userForm, response.errors);
+                    BananIMS.renderFieldErrors(userForm, response.errors);
                 }
-                EnjazIMS.showFormError(userForm, response.message || 'الرجاء التحقق من الحقول');
+                BananIMS.showFormError(userForm, response.message || 'الرجاء التحقق من الحقول');
             },
             error: function (xhr) {
-                EnjazIMS.hideLoading(userSubmitBtn, busyText);
+                BananIMS.hideLoading(userSubmitBtn, busyText);
                 const response = xhr.responseJSON || {};
                 if (response.errors) {
-                    EnjazIMS.renderFieldErrors(userForm, response.errors);
+                    BananIMS.renderFieldErrors(userForm, response.errors);
                 }
-                EnjazIMS.showFormError(userForm, response.message || 'تعذر حفظ البيانات');
+                BananIMS.showFormError(userForm, response.message || 'تعذر حفظ البيانات');
             }
         });
     });

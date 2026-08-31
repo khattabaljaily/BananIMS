@@ -65,7 +65,7 @@ def item_list(request):
     caps = _get_capabilities(tenant)
     from apps.core.utils import currency_symbol, CURRENCY_SYMBOLS
     hc_cur = tenant.hard_currency if tenant.hard_currency_mode else ''
-    local_cur = tenant.currency or 'SDG'
+    local_cur = tenant.currency or 'QAR'
     context = {
         'item_form': ItemForm(tenant=tenant, capabilities=caps),
         'hc_mode': tenant.hard_currency_mode,

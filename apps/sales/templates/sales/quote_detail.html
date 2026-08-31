@@ -381,7 +381,7 @@ function submitQuoteDecision() {
         .then(data => {
             if (data.success) {
                 closeQuoteDecisionModal();
-                sessionStorage.setItem('__enjazFlash', JSON.stringify({
+                sessionStorage.setItem('__bananFlash', JSON.stringify({
                     message: data.message || 'تمت العملية بنجاح',
                     type: 'success'
                 }));
@@ -419,8 +419,8 @@ function submitConvert() {
     const method = document.getElementById('convertPaymentMethod').value;
     const body = { payment_method: method };
     if (method === 'mixed') {
-        const cashAmount = EnjazIMS.parseNumber(document.getElementById('convertCashAmount').value || 0);
-        const bankAmount = EnjazIMS.parseNumber(document.getElementById('convertBankAmount').value || 0);
+        const cashAmount = BananIMS.parseNumber(document.getElementById('convertCashAmount').value || 0);
+        const bankAmount = BananIMS.parseNumber(document.getElementById('convertBankAmount').value || 0);
         body.cash_amount = cashAmount.toFixed(2);
         body.bank_amount = bankAmount.toFixed(2);
         body.bank_reference = document.getElementById('convertBankRef').value;
@@ -445,7 +445,7 @@ function submitConvert() {
         }
         const redirectUrl = data.invoice_url || data.redirect;
         if (!redirectUrl) throw new Error('تم التحويل لكن لم يتم استلام رابط الفاتورة');
-        sessionStorage.setItem('__enjazFlash', JSON.stringify({
+        sessionStorage.setItem('__bananFlash', JSON.stringify({
             message: data.message || 'تم تحويل العرض إلى فاتورة',
             type: 'success'
         }));
@@ -458,10 +458,10 @@ function submitConvert() {
 }
 
 function formatQuoteNumbers() {
-    if (!window.EnjazIMS) return false;
+    if (!window.BananIMS) return false;
     document.querySelectorAll('.js-quote-percent').forEach((el) => {
-        const value = EnjazIMS.parseNumber(el.dataset.value || 0);
-        el.textContent = `${EnjazIMS.formatQuantity(value, 2)}%`;
+        const value = BananIMS.parseNumber(el.dataset.value || 0);
+        el.textContent = `${BananIMS.formatQuantity(value, 2)}%`;
     });
     return true;
 }
@@ -473,8 +473,8 @@ window.addEventListener('load', formatQuoteNumbers);
 
 function showAlert(msg, type = 'danger') {
     const mapped = type === 'danger' ? 'error' : type;
-    if (window.EnjazIMS && typeof EnjazIMS.toast === 'function') {
-        EnjazIMS.toast(msg, mapped); return;
+    if (window.BananIMS && typeof BananIMS.toast === 'function') {
+        BananIMS.toast(msg, mapped); return;
     }
     console.warn(msg);
 }

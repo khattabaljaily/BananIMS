@@ -1,13 +1,13 @@
-# 🎨 دليل استخدام شعارات إنجاز
+# 🎨 دليل استخدام شعارات بنان
 
 ## 📁 الملفات المتوفرة
 
 ```
 static/img/logo/
-├── logo-161616.png  → أسود/رمادي داكن (#161616)
-├── logo-6547bd.png  → بنفسجي (#6547bd) - لون أساسي
-├── logo-cba03e.png  → ذهبي (#cba03e) - لون أساسي
-└── logo-ffffff.png  → أبيض (#ffffff)
+├── logo-dark.png  → أسود/رمادي داكن (#161616)
+├── logo-color.png  → بنفسجي (#6547bd) - لون أساسي
+├── logo-color.png  → ذهبي (#cba03e) - لون أساسي
+└── logo-white.png  → أبيض (#ffffff)
 ```
 
 ---
@@ -15,12 +15,12 @@ static/img/logo/
 ## 🎯 أماكن الاستخدام
 
 ### 1️⃣ Favicon (أيقونة الموقع)
-**الملف:** `logo-6547bd.png`  
+**الملف:** `logo-color.png`  
 **الموقع:** `<head>` في base.html
 
 ```html
-<link rel="icon" type="image/png" href="{% static 'img/logo/logo-6547bd.png' %}">
-<link rel="apple-touch-icon" href="{% static 'img/logo/logo-6547bd.png' %}">
+<link rel="icon" type="image/png" href="{% static 'img/logo/logo-color.png' %}">
+<link rel="apple-touch-icon" href="{% static 'img/logo/logo-color.png' %}">
 ```
 
 **السبب:** اللون البنفسجي هو أحد ألوان الشركة الأساسية، ويظهر بوضوح في جميع المتصفحات.
@@ -28,14 +28,14 @@ static/img/logo/
 ---
 
 ### 2️⃣ صفحة تسجيل الدخول (Login Page)
-**Light Mode:** `logo-6547bd.png` (بنفسجي)  
-**Dark Mode:** `logo-ffffff.png` (أبيض)
+**Light Mode:** `logo-color.png` (بنفسجي)  
+**Dark Mode:** `logo-white.png` (أبيض)
 
 ```html
 <!-- Light mode: Company color logo -->
-<img src="{% static 'img/logo/logo-6547bd.png' %}" alt="إنجاز" class="logo-light">
+<img src="{% static 'img/logo/logo-color.png' %}" alt="بنان" class="logo-light">
 <!-- Dark mode: White logo -->
-<img src="{% static 'img/logo/logo-ffffff.png' %}" alt="إنجاز" class="logo-dark">
+<img src="{% static 'img/logo/logo-white.png' %}" alt="بنان" class="logo-dark">
 ```
 
 **CSS:**
@@ -53,15 +53,15 @@ static/img/logo/
 ---
 
 ### 3️⃣ Navbar (شريط التنقل)
-**Light Mode:** `logo-161616.png` (أسود)  
-**Dark Mode:** `logo-ffffff.png` (أبيض)
+**Light Mode:** `logo-dark.png` (أسود)  
+**Dark Mode:** `logo-white.png` (أبيض)
 
 ```html
 <a class="navbar-brand d-flex align-items-center gap-2" href="...">
-    <img src="{% static 'img/logo/logo-161616.png' %}" 
-         alt="إنجاز" height="32" class="navbar-logo logo-light">
-    <img src="{% static 'img/logo/logo-ffffff.png' %}" 
-         alt="إنجاز" height="32" class="navbar-logo logo-dark">
+    <img src="{% static 'img/logo/logo-dark.png' %}" 
+         alt="بنان" height="32" class="navbar-logo logo-light">
+    <img src="{% static 'img/logo/logo-white.png' %}" 
+         alt="بنان" height="32" class="navbar-logo logo-dark">
 </a>
 ```
 
@@ -86,12 +86,12 @@ static/img/logo/
 ---
 
 ### 4️⃣ Dashboard / Welcome Section
-**الملف:** `logo-6547bd.png` أو `logo-cba03e.png`
+**الملف:** `logo-color.png` أو `logo-color.png`
 
 ```html
 <div class="welcome-card">
-    <img src="{% static 'img/logo/logo-6547bd.png' %}" alt="إنجاز" height="64">
-    <h1>مرحباً بك في نظام إنجاز</h1>
+    <img src="{% static 'img/logo/logo-color.png' %}" alt="بنان" height="64">
+    <h1>مرحباً بك في نظام بنان</h1>
 </div>
 ```
 
@@ -100,25 +100,25 @@ static/img/logo/
 ---
 
 ### 5️⃣ Sidebar (القائمة الجانبية)
-**Light Mode:** `logo-161616.png` (أسود)  
-**Dark Mode:** `logo-ffffff.png` (أبيض)
+**Light Mode:** `logo-dark.png` (أسود)  
+**Dark Mode:** `logo-white.png` (أبيض)
 
 ```html
 <div class="sidebar-logo">
-    <img src="{% static 'img/logo/logo-161616.png' %}" 
-         alt="إنجاز" class="logo-light">
-    <img src="{% static 'img/logo/logo-ffffff.png' %}" 
-         alt="إنجاز" class="logo-dark">
+    <img src="{% static 'img/logo/logo-dark.png' %}" 
+         alt="بنان" class="logo-light">
+    <img src="{% static 'img/logo/logo-white.png' %}" 
+         alt="بنان" class="logo-dark">
 </div>
 ```
 
 ---
 
 ### 6️⃣ Emails / PDF Reports
-**الملف:** `logo-6547bd.png` أو `logo-cba03e.png`
+**الملف:** `logo-color.png` أو `logo-color.png`
 
 ```html
-<img src="{{ STATIC_URL }}img/logo/logo-6547bd.png" alt="إنجاز" height="48">
+<img src="{{ STATIC_URL }}img/logo/logo-color.png" alt="بنان" height="48">
 ```
 
 **السبب:** ألوان الشركة الأساسية لعرض احترافي.
@@ -126,8 +126,8 @@ static/img/logo/
 ---
 
 ### 7️⃣ Loading Screen / Splash
-**Light Mode:** `logo-6547bd.png`  
-**Dark Mode:** `logo-ffffff.png`
+**Light Mode:** `logo-color.png`  
+**Dark Mode:** `logo-white.png`
 
 ---
 
@@ -192,9 +192,9 @@ function updateLogos() {
 
 **HTML:**
 ```html
-<img data-logo-light="{% static 'img/logo/logo-161616.png' %}"
-     data-logo-dark="{% static 'img/logo/logo-ffffff.png' %}"
-     alt="إنجاز">
+<img data-logo-light="{% static 'img/logo/logo-dark.png' %}"
+     data-logo-dark="{% static 'img/logo/logo-white.png' %}"
+     alt="بنان">
 ```
 
 ---
@@ -208,7 +208,7 @@ function updateLogos() {
 
 ### الوصولية (Accessibility):
 ```html
-<img src="..." alt="إنجاز - نظام إدارة المخزون ونقاط البيع" role="img">
+<img src="..." alt="بنان - نظام إدارة المخزون ونقاط البيع" role="img">
 ```
 
 ### SEO:

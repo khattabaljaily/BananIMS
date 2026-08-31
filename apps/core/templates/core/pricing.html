@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}خطط الأسعار | إنجاز{% endblock %}
+{% block title %}خطط الأسعار | بنان{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/pricing.css' %}?v=3.0">
@@ -13,8 +13,8 @@
     <!-- ─── Top Bar ──────────────────────────────────────────────── -->
     <nav class="pr-topbar">
         <a href="/" class="pr-topbar__brand">
-            <img src="{% static 'img/logo/logo-6547bd.png' %}" alt="إنجاز" height="30">
-            <span>إنجاز</span>
+            <img src="{% static 'img/logo/logo-color.png' %}" alt="بنان" height="30">
+            <span>بنان</span>
         </a>
         <div class="pr-topbar__links">
             <a href="{% url 'core:about' %}" class="pr-topbar__link">عن النظام</a>
@@ -131,7 +131,7 @@
     <section class="pr-features">
         <div class="pr-container">
             <div class="pr-section-head">
-                <span class="pr-section-kicker">لماذا إنجاز؟</span>
+                <span class="pr-section-kicker">لماذا بنان؟</span>
                 <h2 class="pr-section-title">ميزات النظام الشاملة</h2>
                 <p class="pr-section-sub">كل ما تحتاجه لإدارة نشاطك التجاري من مكان واحد.</p>
             </div>
@@ -189,14 +189,14 @@
                     <div class="pr-benefit__icon pr-benefit__icon--indigo">
                         <i class="fas fa-robot"></i>
                     </div>
-                    <h4 class="pr-benefit__title">مساعد ذكاء اصطناعي <span style="background:#6366f1;color:#fff;font-size:.6rem;padding:1px 6px;border-radius:20px;font-weight:800;vertical-align:middle;">جديد</span></h4>
+                    <h4 class="pr-benefit__title">مساعد ذكاء اصطناعي <span style="background:#132539;color:#fff;font-size:.6rem;padding:1px 6px;border-radius:20px;font-weight:800;vertical-align:middle;">جديد</span></h4>
                     <p class="pr-benefit__desc">تحليل يومي لأعمالك، توصيات فورية، وإجابات بلغتك من بياناتك الحقيقية.</p>
                 </div>
                 <div class="pr-benefit">
                     <div class="pr-benefit__icon pr-benefit__icon--violet">
                         <i class="fas fa-id-badge"></i>
                     </div>
-                    <h4 class="pr-benefit__title">إدارة المناديب <span style="background:#6366f1;color:#fff;font-size:.6rem;padding:1px 6px;border-radius:20px;font-weight:800;vertical-align:middle;">جديد</span></h4>
+                    <h4 class="pr-benefit__title">إدارة المناديب <span style="background:#132539;color:#fff;font-size:.6rem;padding:1px 6px;border-radius:20px;font-weight:800;vertical-align:middle;">جديد</span></h4>
                     <p class="pr-benefit__desc">حسابات لمناديبك بعمولة حسب الفاتورة أو التحصيل، وبوابة مستقلة لمتابعة فواتيرهم وحساباتهم.</p>
                 </div>
             </div>
@@ -211,7 +211,7 @@
                 <div class="pr-cta__orb pr-cta__orb--2"></div>
                 <div class="pr-cta__content">
                     <h2 class="pr-cta__title">جاهز للبدء؟</h2>
-                    <p class="pr-cta__desc">جرّب إنجاز مجاناً لمدة {{ trial_days }} أيام — بدون أي التزام.</p>
+                    <p class="pr-cta__desc">جرّب بنان مجاناً لمدة {{ trial_days }} أيام — بدون أي التزام.</p>
                     <a href="{% url 'accounts:register_step1' %}" class="pr-btn pr-btn--white pr-btn--lg">
                         <i class="fas fa-rocket"></i>
                         ابدأ الآن مجاناً
@@ -225,7 +225,7 @@
     <footer class="pr-footer">
         <div class="pr-container">
             <div class="pr-footer__inner">
-                <span class="pr-footer__copy">إنجاز &copy; 2026 — نظام إدارة المخزون</span>
+                <span class="pr-footer__copy">بنان &copy; 2026 — نظام إدارة المخزون</span>
                 <div class="pr-footer__links">
                     <a href="{% url 'core:about' %}">عن النظام</a>
                     <a href="{% url 'accounts:login' %}">تسجيل الدخول</a>

@@ -2011,7 +2011,7 @@ def tenant_create_api(request):
         msg = EmailMessage(
             subject=f'New Tenant Registered: {tenant.name}',
             body=html_body,
-            from_email='EnjazIMS <{}>'.format(settings.EMAIL_HOST_USER),
+            from_email='BananIMS <{}>'.format(settings.EMAIL_HOST_USER),
             to=['khattabaljaily@gmail.com'],
         )
         msg.content_subtype = 'html'

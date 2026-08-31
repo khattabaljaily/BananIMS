@@ -572,7 +572,7 @@
     <div class="modal-dialog modal-dialog-centered cx-confirm-dialog">
         <div class="modal-content cx-confirm-modal">
             <div class="cx-confirm-body">
-                <div class="cx-confirm-icon" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;">
+                <div class="cx-confirm-icon" style="background:linear-gradient(135deg,#132539,#faa71d);color:#fff;">
                     <i class="fas fa-user-secret"></i>
                 </div>
                 <h5 class="cx-confirm-title">الدخول كمدير المشترك</h5>
@@ -590,7 +590,7 @@
             <div class="cx-confirm-footer">
                 <button type="button" class="cx-btn-ghost" data-bs-dismiss="modal">إلغاء</button>
                 <button type="button" id="confirmLoginAsBtn"
-                    style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;border-radius:8px;padding:8px 20px;font-weight:600;">
+                    style="background:linear-gradient(135deg,#132539,#faa71d);color:#fff;border:none;border-radius:8px;padding:8px 20px;font-weight:600;">
                     <i class="fas fa-sign-in-alt me-1"></i> دخول
                 </button>
             </div>
@@ -827,7 +827,7 @@
         $('#admin_full_name, #admin_username, #admin_email, #admin_password, #admin_password2').val('');
         $('#admin_username').prop('readonly', false);
         $('#adminUserSectionNote').text('سيُنشأ حساب مدير تلقائياً');
-        EnjazIMS.clearFormErrors($form);
+        BananIMS.clearFormErrors($form);
     }
 
     function openCreate() {
@@ -856,7 +856,7 @@
         $.ajax({
             url: apiUrl(urlDetail, id), method: 'GET',
             success: function (resp) {
-                if (!resp.success) { EnjazIMS.toast(resp.message || 'تعذر التحميل', 'error'); return; }
+                if (!resp.success) { BananIMS.toast(resp.message || 'تعذر التحميل', 'error'); return; }
                 const d = resp.data;
                 $idInput.val(d.id);
                 $('#id_name').val(d.name || '');
@@ -892,35 +892,35 @@
                 $submitBtn.html('<i class="fas fa-check me-1"></i> حفظ التعديلات');
                 tenantModal.show();
             },
-            error: function () { EnjazIMS.toast('تعذر تحميل البيانات', 'error'); }
+            error: function () { BananIMS.toast('تعذر تحميل البيانات', 'error'); }
         });
     }
 
     /* ── Save ── */
     $form.on('submit', function (e) {
         e.preventDefault();
-        EnjazIMS.clearFormErrors($form);
+        BananIMS.clearFormErrors($form);
         const id  = $idInput.val();
         const url = id ? apiUrl(urlUpdate, id) : urlCreate;
         const orig = $submitBtn.html();
-        EnjazIMS.showLoading($submitBtn);
+        BananIMS.showLoading($submitBtn);
         $.ajax({
             url, method: 'POST', data: $form.serialize(),
             success: function (resp) {
-                EnjazIMS.hideLoading($submitBtn, orig);
+                BananIMS.hideLoading($submitBtn, orig);
                 if (resp.success) {
                     tenantModal.hide();
                     dt.ajax.reload(null, false);
-                    EnjazIMS.toast(resp.message || 'تم الحفظ', 'success');
+                    BananIMS.toast(resp.message || 'تم الحفظ', 'success');
                     return;
                 }
-                EnjazIMS.showFormError($form, resp.message || 'يرجى مراجعة الحقول');
+                BananIMS.showFormError($form, resp.message || 'يرجى مراجعة الحقول');
             },
             error: function (xhr) {
-                EnjazIMS.hideLoading($submitBtn, orig);
+                BananIMS.hideLoading($submitBtn, orig);
                 const r = xhr.responseJSON || {};
-                if (r.errors) EnjazIMS.renderFieldErrors($form, r.errors);
-                EnjazIMS.showFormError($form, r.message || 'حدث خطأ');
+                if (r.errors) BananIMS.renderFieldErrors($form, r.errors);
+                BananIMS.showFormError($form, r.message || 'حدث خطأ');
             }
         });
     });
@@ -930,10 +930,10 @@
         $.ajax({
             url: apiUrl(urlDetail, id), method: 'GET',
             success: function (resp) {
-                if (!resp.success) { EnjazIMS.toast(resp.message || 'تعذر التحميل', 'error'); return; }
+                if (!resp.success) { BananIMS.toast(resp.message || 'تعذر التحميل', 'error'); return; }
                 const d = resp.data;
 
-                const colors = ['#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444'];
+                const colors = ['#132539','#faa71d','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444'];
                 const color  = colors[(d.name || '').charCodeAt(0) % colors.length];
                 const initial = (d.name || '?').trim().charAt(0).toUpperCase();
                 $('#viewTenantAvatar').html(initial).css('background', color);
@@ -998,7 +998,7 @@
                 $('#viewEditTenantBtn').data('id', d.id);
                 viewModal.show();
             },
-            error: function () { EnjazIMS.toast('تعذر تحميل البيانات', 'error'); }
+            error: function () { BananIMS.toast('تعذر تحميل البيانات', 'error'); }
         });
     }
 
@@ -1028,12 +1028,12 @@
                     suspendModal.hide();
                     viewModal.hide();
                     dt.ajax.reload(null, false);
-                    EnjazIMS.toast(resp.message || 'تم التحديث', 'success');
+                    BananIMS.toast(resp.message || 'تم التحديث', 'success');
                     return;
                 }
-                EnjazIMS.toast(resp.message || 'تعذرت العملية', 'error');
+                BananIMS.toast(resp.message || 'تعذرت العملية', 'error');
             },
-            error: function (xhr) { EnjazIMS.toast(_xhrMsg(xhr, 'تعذرت العملية'), 'error'); }
+            error: function (xhr) { BananIMS.toast(_xhrMsg(xhr, 'تعذرت العملية'), 'error'); }
         });
     });
 
@@ -1048,15 +1048,15 @@
                 if (resp.success) {
                     deleteModal.hide();
                     dt.ajax.reload(null, false);
-                    EnjazIMS.toast(resp.message || 'تم الحذف', 'success');
+                    BananIMS.toast(resp.message || 'تم الحذف', 'success');
                     return;
                 }
-                EnjazIMS.toast(resp.message || 'تعذر الحذف', 'error');
+                BananIMS.toast(resp.message || 'تعذر الحذف', 'error');
             },
             error: function (xhr) {
                 let msg = 'تعذر الحذف';
                 try { msg = JSON.parse(xhr.responseText).message || msg; } catch (e) {}
-                EnjazIMS.toast(msg, 'error');
+                BananIMS.toast(msg, 'error');
             }
         });
     });
@@ -1118,7 +1118,7 @@
                 if (resp.success) {
                     renewModal.hide();
                     dt.ajax.reload(null, false);
-                    EnjazIMS.toast(resp.message || 'تم تجديد الاشتراك بنجاح', 'success');
+                    BananIMS.toast(resp.message || 'تم تجديد الاشتراك بنجاح', 'success');
                 } else {
                     $('#renewError').removeClass('d-none').text(resp.error || 'حدث خطأ');
                 }

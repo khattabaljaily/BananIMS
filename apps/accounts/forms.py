@@ -342,7 +342,7 @@ class Step3SettingsForm(forms.Form):
     currency = forms.CharField(
         label='العملة',
         max_length=3,
-        initial='SDG',
+        initial='QAR',
         widget=forms.TextInput(attrs={
             'class': 'form-control text-start',
             'dir': 'ltr',

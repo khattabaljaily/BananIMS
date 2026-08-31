@@ -538,14 +538,14 @@
 
             let balanceHtml;
             if (r.currency && r.hc_balance !== null && r.hc_balance !== undefined) {
-                const hcAmt = EnjazIMS.parseNumber(r.hc_balance);
+                const hcAmt = BananIMS.parseNumber(r.hc_balance);
                 const balCls = hcAmt > 0 ? 'cxr-bal--pos' : hcAmt < 0 ? 'cxr-bal--neg' : 'cxr-bal--zero';
-                balanceHtml = `<span class="cx-supplier-card-meta-value ${balCls}">${EnjazIMS.formatMoney(r.hc_balance)} <span style="font-size:.72rem;color:#4f46e5;">${r.currency}</span></span>`
-                            + `<span style="display:block;font-size:.7rem;color:var(--text-secondary);">(≈ ${EnjazIMS.formatMoney(r.current_balance)} ج.س)</span>`;
+                balanceHtml = `<span class="cx-supplier-card-meta-value ${balCls}">${BananIMS.formatMoney(r.hc_balance)} <span style="font-size:.72rem;color:#1d3a56;">${r.currency}</span></span>`
+                            + `<span style="display:block;font-size:.7rem;color:var(--text-secondary);">(≈ ${BananIMS.formatMoney(r.current_balance)} ج.س)</span>`;
             } else {
-                const n = EnjazIMS.parseNumber(r.current_balance);
+                const n = BananIMS.parseNumber(r.current_balance);
                 const balCls = n > 0 ? 'cxr-bal--pos' : n < 0 ? 'cxr-bal--neg' : 'cxr-bal--zero';
-                balanceHtml = `<strong class="cx-supplier-card-meta-value ${balCls}">${EnjazIMS.formatMoney(r.current_balance)}</strong>`;
+                balanceHtml = `<strong class="cx-supplier-card-meta-value ${balCls}">${BananIMS.formatMoney(r.current_balance)}</strong>`;
             }
 
             return `<article class="cx-supplier-card">
@@ -631,16 +631,16 @@
                 data: null,
                 render: function (_, __, r) {
                     if (r.currency && r.hc_balance !== null && r.hc_balance !== undefined) {
-                        const hcAmt = EnjazIMS.parseNumber(r.hc_balance);
-                        const localAmt = EnjazIMS.parseNumber(r.current_balance);
+                        const hcAmt = BananIMS.parseNumber(r.hc_balance);
+                        const localAmt = BananIMS.parseNumber(r.current_balance);
                         const cls = hcAmt > 0 ? 'cxr-bal--pos' : hcAmt < 0 ? 'cxr-bal--neg' : 'cxr-bal--zero';
-                        const hcFmt = EnjazIMS.formatMoney(r.hc_balance);
-                        const localFmt = EnjazIMS.formatMoney(r.current_balance);
-                        return `<span class="cxr-bal ${cls}">${hcFmt} <span style="font-size:.72rem;font-weight:600;color:#4f46e5;">${r.currency}</span></span><br><small style="color:var(--text-secondary);font-size:.72rem;">(≈ ${localFmt} ج.س)</small>`;
+                        const hcFmt = BananIMS.formatMoney(r.hc_balance);
+                        const localFmt = BananIMS.formatMoney(r.current_balance);
+                        return `<span class="cxr-bal ${cls}">${hcFmt} <span style="font-size:.72rem;font-weight:600;color:#1d3a56;">${r.currency}</span></span><br><small style="color:var(--text-secondary);font-size:.72rem;">(≈ ${localFmt} ج.س)</small>`;
                     }
-                    const n = EnjazIMS.parseNumber(r.current_balance);
+                    const n = BananIMS.parseNumber(r.current_balance);
                     const cls = n > 0 ? 'cxr-bal--pos' : n < 0 ? 'cxr-bal--neg' : 'cxr-bal--zero';
-                    return `<span class="cxr-bal ${cls}">${EnjazIMS.formatMoney(r.current_balance)}</span>`;
+                    return `<span class="cxr-bal ${cls}">${BananIMS.formatMoney(r.current_balance)}</span>`;
                 }
             },
             {
@@ -687,7 +687,7 @@
         $form[0].reset();
         $idInput.val('');
         $('#id_is_active').prop('checked', true);
-        EnjazIMS.clearFormErrors($form);
+        BananIMS.clearFormErrors($form);
         ['#id_opening_balance', '#id_credit_limit'].forEach(function(sel) {
             var el = document.querySelector(sel);
             if (el && parseFloat(el.value) === 0) el.value = '';
@@ -715,7 +715,7 @@
         $.ajax({
             url: apiUrl(urlDetail, id), method: 'GET',
             success: function (resp) {
-                if (!resp.success) { EnjazIMS.toast(resp.message || 'تعذر التحميل', 'error'); return; }
+                if (!resp.success) { BananIMS.toast(resp.message || 'تعذر التحميل', 'error'); return; }
                 const d = resp.data;
                 $idInput.val(d.id);
                 $('#id_name').val(d.name || '');
@@ -723,13 +723,13 @@
                 $('#id_email').val(d.email || '');
                 $('#id_city').val(d.city || '');
                 $('#id_address').val(d.address || '');
-                $('#id_opening_balance').val(EnjazIMS.parseNumber(d.opening_balance) || '');
-                $('#id_credit_limit').val(EnjazIMS.parseNumber(d.credit_limit) || '');
+                $('#id_opening_balance').val(BananIMS.parseNumber(d.opening_balance) || '');
+                $('#id_credit_limit').val(BananIMS.parseNumber(d.credit_limit) || '');
                 $('#id_notes').val(d.notes || '');
                 $('#id_is_active').prop('checked', !!d.is_active);
                 $('#id_currency').val(d.currency || '');
 
-                const colors = ['#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444'];
+                const colors = ['#132539','#faa71d','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444'];
                 const color  = colors[d.name.charCodeAt(0) % colors.length];
                 setModalSidebar(d.name, d.name.trim().charAt(0).toUpperCase(), color);
                 $('#customerModalTitle').text('تعديل بيانات المورد');
@@ -737,30 +737,30 @@
                 $submitBtn.html('<i class="fas fa-check me-1"></i> حفظ التعديلات');
                 customerModal.show();
             },
-            error: function () { EnjazIMS.toast('تعذر تحميل البيانات', 'error'); }
+            error: function () { BananIMS.toast('تعذر تحميل البيانات', 'error'); }
         });
     }
 
     /* ── Save ───────────────────────────────────────────────── */
     $form.on('submit', function (e) {
         e.preventDefault();
-        EnjazIMS.clearFormErrors($form);
+        BananIMS.clearFormErrors($form);
         const id = $idInput.val();
         const url = id ? apiUrl(urlUpdate, id) : urlCreate;
         const orig = $submitBtn.html();
-        EnjazIMS.showLoading($submitBtn);
+        BananIMS.showLoading($submitBtn);
         $.ajax({
             url, method: 'POST', data: $form.serialize(),
             success: function (resp) {
-                EnjazIMS.hideLoading($submitBtn, orig);
-                if (resp.success) { customerModal.hide(); dt.ajax.reload(null, false); EnjazIMS.toast(resp.message || 'تم الحفظ', 'success'); return; }
-                EnjazIMS.showFormError($form, resp.message || 'يرجى مراجعة الحقول');
+                BananIMS.hideLoading($submitBtn, orig);
+                if (resp.success) { customerModal.hide(); dt.ajax.reload(null, false); BananIMS.toast(resp.message || 'تم الحفظ', 'success'); return; }
+                BananIMS.showFormError($form, resp.message || 'يرجى مراجعة الحقول');
             },
             error: function (xhr) {
-                EnjazIMS.hideLoading($submitBtn, orig);
+                BananIMS.hideLoading($submitBtn, orig);
                 const r = xhr.responseJSON || {};
-                if (r.errors) EnjazIMS.renderFieldErrors($form, r.errors);
-                EnjazIMS.showFormError($form, r.message || 'حدث خطأ');
+                if (r.errors) BananIMS.renderFieldErrors($form, r.errors);
+                BananIMS.showFormError($form, r.message || 'حدث خطأ');
             }
         });
     });
@@ -778,10 +778,10 @@
         $.ajax({
             url: apiUrl(urlDelete, id), method: 'POST',
             success: function (resp) {
-                if (resp.success) { deleteModal.hide(); dt.ajax.reload(null, false); EnjazIMS.toast(resp.message || 'تم الحذف', 'success'); return; }
-                EnjazIMS.toast(resp.message || 'تعذر الحذف', 'error');
+                if (resp.success) { deleteModal.hide(); dt.ajax.reload(null, false); BananIMS.toast(resp.message || 'تم الحذف', 'success'); return; }
+                BananIMS.toast(resp.message || 'تعذر الحذف', 'error');
             },
-            error: function (xhr) { EnjazIMS.toast(_xhrMsg(xhr, 'تعذر الحذف'), 'error'); }
+            error: function (xhr) { BananIMS.toast(_xhrMsg(xhr, 'تعذر الحذف'), 'error'); }
         });
     });
 
@@ -790,11 +790,11 @@
         $.ajax({
             url: apiUrl(urlDetail, id), method: 'GET',
             success: function (resp) {
-                if (!resp.success) { EnjazIMS.toast(resp.message || 'تعذر التحميل', 'error'); return; }
+                if (!resp.success) { BananIMS.toast(resp.message || 'تعذر التحميل', 'error'); return; }
                 const d = resp.data;
                 
                 // Set avatar
-                const colors = ['#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444'];
+                const colors = ['#132539','#faa71d','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444'];
                 const color  = colors[d.name.charCodeAt(0) % colors.length];
                 const initial = d.name.trim().charAt(0).toUpperCase();
                 $('#viewCustomerAvatar').html(initial).css('background', color);
@@ -813,17 +813,17 @@
                 // Financial info
                 let balHtml;
                 if (d.currency && d.hc_balance !== null && d.hc_balance !== undefined) {
-                    const hcAmt = EnjazIMS.parseNumber(d.hc_balance);
+                    const hcAmt = BananIMS.parseNumber(d.hc_balance);
                     const balCls = hcAmt > 0 ? 'text-success' : hcAmt < 0 ? 'text-danger' : '';
-                    balHtml = `<strong class="${balCls}">${EnjazIMS.formatMoney(d.hc_balance)} <span style="font-size:.78rem;color:#4f46e5;">${d.currency}</span></strong>`
-                             + `<br><small style="color:var(--text-secondary);font-size:.75rem;">(≈ ${EnjazIMS.formatMoney(d.current_balance)} ج.س)</small>`;
+                    balHtml = `<strong class="${balCls}">${BananIMS.formatMoney(d.hc_balance)} <span style="font-size:.78rem;color:#1d3a56;">${d.currency}</span></strong>`
+                             + `<br><small style="color:var(--text-secondary);font-size:.75rem;">(≈ ${BananIMS.formatMoney(d.current_balance)} ج.س)</small>`;
                 } else {
-                    const bal = EnjazIMS.parseNumber(d.current_balance);
+                    const bal = BananIMS.parseNumber(d.current_balance);
                     const balCls = bal > 0 ? 'text-success' : bal < 0 ? 'text-danger' : '';
-                    balHtml = `<strong class="${balCls}">${EnjazIMS.formatMoney(d.current_balance)}</strong>`;
+                    balHtml = `<strong class="${balCls}">${BananIMS.formatMoney(d.current_balance)}</strong>`;
                 }
                 $('#viewBalance').html(balHtml);
-                $('#viewCreditLimit').html(`<strong>${EnjazIMS.formatMoney(d.credit_limit)}</strong>`);
+                $('#viewCreditLimit').html(`<strong>${BananIMS.formatMoney(d.credit_limit)}</strong>`);
                 
                 // Additional info
                 $('#viewNotes').text(d.notes || '—');
@@ -837,7 +837,7 @@
                 
                 viewModal.show();
             },
-            error: function () { EnjazIMS.toast('تعذر تحميل البيانات', 'error'); }
+            error: function () { BananIMS.toast('تعذر تحميل البيانات', 'error'); }
         });
     }
 
@@ -856,7 +856,7 @@
         if (t === 'payment')    return { amtColor:'#11998e', badgeBg:'rgba(17,153,142,.13)', badgeColor:'#0d7a72', rowBg:'rgba(16,185,129,.07)' };
         if (t === 'return')     return { amtColor:'#0891b2', badgeBg:'rgba(8,145,178,.13)',  badgeColor:'#0369a1', rowBg:'rgba(6,182,212,.07)'  };
         if (t === 'invoice')    return { amtColor:'#dc2626', badgeBg:'rgba(239,68,68,.11)',  badgeColor:'#dc2626', rowBg:'rgba(239,68,68,.05)'  };
-        if (t === 'opening')    return { amtColor:'#6366f1', badgeBg:'rgba(99,102,241,.13)', badgeColor:'#4f46e5', rowBg:'rgba(99,102,241,.06)' };
+        if (t === 'opening')    return { amtColor:'#132539', badgeBg:'rgba(19,37,57,.13)', badgeColor:'#1d3a56', rowBg:'rgba(19,37,57,.06)' };
         if (t === 'adjustment') return { amtColor:'#d97706', badgeBg:'rgba(251,191,36,.18)', badgeColor:'#b45309', rowBg:'rgba(251,191,36,.06)' };
         return { amtColor:'inherit', badgeBg:'rgba(107,114,128,.1)', badgeColor:'#6b7280', rowBg:'' };
     }
@@ -866,11 +866,11 @@
         const amtColor = s.amtColor, badgeBg = s.badgeBg, badgeColor = s.badgeColor;
         const amtFmt  = isHCSup
             ? fmtCur(tx.hc_amount, supCur)
-            : EnjazIMS.formatMoney(Math.abs(EnjazIMS.parseNumber(tx.amount || 0)));
+            : BananIMS.formatMoney(Math.abs(BananIMS.parseNumber(tx.amount || 0)));
         const amtLabel = isHCSup ? `المبلغ (${supCur})` : 'المبلغ (ج.س)';
         const balFmt  = isHCSup
             ? fmtCur(tx.hc_running_balance, supCur)
-            : EnjazIMS.formatMoney(Math.abs(EnjazIMS.parseNumber(tx.running_balance || 0)));
+            : BananIMS.formatMoney(Math.abs(BananIMS.parseNumber(tx.running_balance || 0)));
         const balLabel = isHCSup ? `المديونية (${supCur})` : 'المديونية (ج.س)';
         const editedBadge = tx.is_edited ? `<span style="font-size:.65rem;font-weight:700;padding:.15rem .45rem;border-radius:5px;background:rgba(251,191,36,.2);color:#b45309;margin-right:.35rem;">تم التعديل</span>` : '';
         const notesLine = tx.notes && tx.notes !== '—'
@@ -886,7 +886,7 @@
             </div>
             <div style="display:flex;justify-content:space-between;padding:.3rem 0 0;">
                 <span style="font-size:.72rem;color:var(--text-secondary);">${balLabel}</span>
-                <span style="font-weight:700;color:#6366f1;">${balFmt}</span>
+                <span style="font-weight:700;color:#132539;">${balFmt}</span>
             </div>
             ${notesLine}
         </div>`;
@@ -931,10 +931,10 @@
                     const s = ledgerStyle(tx);
                     const mainAmt = isHCSup
                         ? fmtCur(tx.hc_amount, supCur)
-                        : EnjazIMS.formatMoney(Math.abs(EnjazIMS.parseNumber(tx.amount || 0)));
+                        : BananIMS.formatMoney(Math.abs(BananIMS.parseNumber(tx.amount || 0)));
                     const balCol = isHCSup
-                        ? `<td style="font-weight:700;color:#6366f1;">${fmtCur(tx.hc_running_balance, supCur)}</td>`
-                        : `<td style="color:#6366f1;">${EnjazIMS.formatMoney(Math.abs(EnjazIMS.parseNumber(tx.running_balance || 0)))}</td>`;
+                        ? `<td style="font-weight:700;color:#132539;">${fmtCur(tx.hc_running_balance, supCur)}</td>`
+                        : `<td style="color:#132539;">${BananIMS.formatMoney(Math.abs(BananIMS.parseNumber(tx.running_balance || 0)))}</td>`;
                     const editedBadge = tx.is_edited ? `<span style="font-size:.65rem;font-weight:700;padding:.15rem .4rem;border-radius:5px;background:rgba(251,191,36,.2);color:#b45309;margin-left:.3rem;">تم التعديل</span>` : '';
                     const typeCell = `<span style="font-size:.75rem;font-weight:700;padding:.2rem .5rem;border-radius:6px;background:${s.badgeBg};color:${s.badgeColor};">${tx.entry_type_label || tx.entry_type || '—'}</span>${editedBadge}`;
                     return `<tr style="background:${s.rowBg}">
@@ -961,17 +961,17 @@
             url: apiUrl(urlDetail, id),
             method: 'GET',
             success: function(resp) {
-                if (!resp.success) { EnjazIMS.toast(resp.message || 'تعذر التحميل', 'error'); return; }
+                if (!resp.success) { BananIMS.toast(resp.message || 'تعذر التحميل', 'error'); return; }
                 const d = resp.data;
                 // Show initial subtitle with local balance; transactions callback will correct it for HC suppliers
                 const balFmt = d.currency
                     ? '...'
-                    : EnjazIMS.formatMoney(d.current_balance || 0);
+                    : BananIMS.formatMoney(d.current_balance || 0);
                 $('#supplierLedgerSubtitle').text(`${d.name || '—'} (${d.code || '—'}) — المديونية الحالية: ${balFmt}`);
                 loadSupplierTransactions(id, d.name || '—', d.code || '—');
                 ledgerModal.show();
             },
-            error: function() { EnjazIMS.toast('تعذر تحميل البيانات', 'error'); }
+            error: function() { BananIMS.toast('تعذر تحميل البيانات', 'error'); }
         });
     }
 
@@ -1078,13 +1078,13 @@
             'text/csv'
         ];
         if (!validTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls|csv)$/i)) {
-            EnjazIMS.toast('نوع الملف غير مدعوم. الرجاء اختيار ملف Excel أو CSV', 'error');
+            BananIMS.toast('نوع الملف غير مدعوم. الرجاء اختيار ملف Excel أو CSV', 'error');
             return;
         }
 
         // Validate file size (5MB)
         if (file.size > 5 * 1024 * 1024) {
-            EnjazIMS.toast('حجم الملف كبير جداً. الحد الأقصى 5 MB', 'error');
+            BananIMS.toast('حجم الملف كبير جداً. الحد الأقصى 5 MB', 'error');
             return;
         }
 
@@ -1136,18 +1136,18 @@
                         dt.ajax.reload();
                     }
                     const toastType = resp.imported > 0 ? 'success' : 'error';
-                    EnjazIMS.toast(resp.message || 'تم استيراد الموردين بنجاح', toastType);
+                    BananIMS.toast(resp.message || 'تم استيراد الموردين بنجاح', toastType);
                     if (resp.errors && resp.errors.length > 0) {
                         const errHtml = resp.errors.map(e => `<div>• ${e}</div>`).join('');
-                        EnjazIMS.toast(errHtml, 'error');
+                        BananIMS.toast(errHtml, 'error');
                     }
                 } else {
-                    EnjazIMS.toast(resp.message || 'فشل الاستيراد', 'error');
+                    BananIMS.toast(resp.message || 'فشل الاستيراد', 'error');
                 }
             },
             error: function(xhr) {
                 const msg = xhr.responseJSON?.message || 'حدث خطأ أثناء الاستيراد';
-                EnjazIMS.toast(msg, 'error');
+                BananIMS.toast(msg, 'error');
             }
         });
     });
@@ -1161,7 +1161,7 @@
     // Export customers
     $('#btnExportSuppliers').on('click', function() {
         window.location.href = '{% url "suppliers:export_api" %}';
-        EnjazIMS.toast('جاري تصدير البيانات...', 'info');
+        BananIMS.toast('جاري تصدير البيانات...', 'info');
     });
 
 })();

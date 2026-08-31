@@ -1,4 +1,4 @@
-// EnjazIMS - Main JavaScript
+// BananIMS - Main JavaScript
 // ================================
 
 // Sidebar toggle (mobile)
@@ -167,11 +167,11 @@ function getCookie(name) {
 
 // Initialize numeric input conversion
 document.addEventListener('DOMContentLoaded', function () {
-    EnjazIMS.initNumericInputs();
+    BananIMS.initNumericInputs();
 });
 
 // Utility functions
-const EnjazIMS = {
+const BananIMS = {
     // Show loading spinner
     showLoading: function(element) {
         $(element).prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> جاري التحميل...');
@@ -236,7 +236,7 @@ const EnjazIMS = {
 
     rememberToast: function(message, type = 'success') {
         try {
-            sessionStorage.setItem('__enjazFlash', JSON.stringify({ message, type }));
+            sessionStorage.setItem('__bananFlash', JSON.stringify({ message, type }));
         } catch (e) {
             // ignore storage errors
         }
@@ -244,15 +244,15 @@ const EnjazIMS = {
 
     consumeRememberedToast: function() {
         try {
-            const flashRaw = sessionStorage.getItem('__enjazFlash');
+            const flashRaw = sessionStorage.getItem('__bananFlash');
             if (!flashRaw) return;
             const flash = JSON.parse(flashRaw);
             if (flash?.message) {
                 this.toast(flash.message, flash.type || 'success');
             }
-            sessionStorage.removeItem('__enjazFlash');
+            sessionStorage.removeItem('__bananFlash');
         } catch (e) {
-            sessionStorage.removeItem('__enjazFlash');
+            sessionStorage.removeItem('__bananFlash');
         }
     },
 
@@ -309,11 +309,11 @@ const EnjazIMS = {
     
     // Confirm delete action — returns a Promise (use with await)
     confirmDelete: function(message = 'هل أنت متأكد من الحذف؟') {
-        return EnjazIMS.confirmAction(message, 'تأكيد الحذف');
+        return BananIMS.confirmAction(message, 'تأكيد الحذف');
     },
 
     // Modal-based confirmation — returns a Promise that resolves true/false.
-    // Usage: EnjazIMS.confirmAction('رسالة').then(ok => { if (ok) ... });
+    // Usage: BananIMS.confirmAction('رسالة').then(ok => { if (ok) ... });
     confirmAction: function(message, title, confirmText) {
         return new Promise(function(resolve) {
             // Determine icon, colour and button label from title keywords
@@ -332,13 +332,13 @@ const EnjazIMS = {
                 iconClass = 'fa-check-circle'; iconColor = '#10b981'; iconBg = 'rgba(16,185,129,0.1)';
                 btnColor  = '#10b981'; btnLabel = confirmText || 'نعم، تأكيد';
             } else {
-                iconClass = 'fa-circle-question'; iconColor = '#6366f1'; iconBg = 'rgba(99,102,241,0.1)';
-                btnColor  = '#6366f1'; btnLabel = confirmText || 'نعم، متابعة';
+                iconClass = 'fa-circle-question'; iconColor = '#132539'; iconBg = 'rgba(19,37,57,0.1)';
+                btnColor  = '#132539'; btnLabel = confirmText || 'نعم، متابعة';
             }
 
             // Create a simple overlay modal that works on all devices
             const overlay = document.createElement('div');
-            overlay.id = 'enjazConfirmOverlay';
+            overlay.id = 'bananConfirmOverlay';
             overlay.style.cssText = `
                 position: fixed;
                 top: 0;
@@ -374,8 +374,8 @@ const EnjazIMS = {
                     </p>
                 </div>
                 <div style="display: flex; align-items: center; justify-content: center; gap: 0.75rem; padding: 1rem 1.75rem; border-top: 1px solid #e5e7eb; background: #f9fafb;">
-                    <button type="button" class="cx-btn-ghost" id="enjazConfirmNo" style="padding: 0.5rem 1rem; border: 1px solid #d1d5db; border-radius: 8px; background: white; color: #6b7280; font-size: 0.875rem; cursor: pointer;">تراجع</button>
-                    <button type="button" id="enjazConfirmYes" style="padding: 0.5rem 1rem; border: none; border-radius: 8px; background: ${btnColor}; color: white; font-size: 0.875rem; cursor: pointer; font-weight: 600;">${btnLabel}</button>
+                    <button type="button" class="cx-btn-ghost" id="bananConfirmNo" style="padding: 0.5rem 1rem; border: 1px solid #d1d5db; border-radius: 8px; background: white; color: #6b7280; font-size: 0.875rem; cursor: pointer;">تراجع</button>
+                    <button type="button" id="bananConfirmYes" style="padding: 0.5rem 1rem; border: none; border-radius: 8px; background: ${btnColor}; color: white; font-size: 0.875rem; cursor: pointer; font-weight: 600;">${btnLabel}</button>
                 </div>
             `;
 
@@ -386,8 +386,8 @@ const EnjazIMS = {
             document.body.style.overflow = 'hidden';
 
             function cleanup() {
-                document.getElementById('enjazConfirmYes').removeEventListener('click', onYes);
-                document.getElementById('enjazConfirmNo').removeEventListener('click', onNo);
+                document.getElementById('bananConfirmYes').removeEventListener('click', onYes);
+                document.getElementById('bananConfirmNo').removeEventListener('click', onNo);
                 document.body.removeChild(overlay);
                 document.body.style.overflow = '';
             }
@@ -402,8 +402,8 @@ const EnjazIMS = {
                 resolve(false);
             }
 
-            document.getElementById('enjazConfirmYes').addEventListener('click', onYes);
-            document.getElementById('enjazConfirmNo').addEventListener('click', onNo);
+            document.getElementById('bananConfirmYes').addEventListener('click', onYes);
+            document.getElementById('bananConfirmNo').addEventListener('click', onNo);
 
             // Close on overlay click
             overlay.addEventListener('click', function(e) {
@@ -498,7 +498,7 @@ const EnjazIMS = {
 
         numericInputs.forEach(input => {
             input.addEventListener('input', function(e) {
-                const converted = EnjazIMS.convertArabicNumerals(e.target.value);
+                const converted = BananIMS.convertArabicNumerals(e.target.value);
                 if (converted !== e.target.value) {
                     e.target.value = converted;
                 }
@@ -506,7 +506,7 @@ const EnjazIMS = {
 
             input.addEventListener('paste', function(e) {
                 setTimeout(() => {
-                    const converted = EnjazIMS.convertArabicNumerals(e.target.value);
+                    const converted = BananIMS.convertArabicNumerals(e.target.value);
                     if (converted !== e.target.value) {
                         e.target.value = converted;
                     }
@@ -562,7 +562,7 @@ const EnjazIMS = {
     }
 };
 
-window.EnjazIMS = EnjazIMS;
+window.BananIMS = BananIMS;
 
 // jQuery AJAX hooks for GSpinner + backwards-compat alias
 $(document)
@@ -587,14 +587,14 @@ $(document).ready(function() {
     }
 
     // Number steppers — initial page load
-    EnjazIMS.initNumberSteppers();
+    BananIMS.initNumberSteppers();
 
     // Re-run steppers when DOM changes (dynamic invoice lines, modals, etc.)
     let _stepperTimer = null;
     new MutationObserver(function(muts) {
         if (!muts.some(m => m.addedNodes.length)) return;
         clearTimeout(_stepperTimer);
-        _stepperTimer = setTimeout(function() { EnjazIMS.initNumberSteppers(); }, 120);
+        _stepperTimer = setTimeout(function() { BananIMS.initNumberSteppers(); }, 120);
     }).observe(document.body, { childList: true, subtree: true });
 
     // Numeric-only filter for invoice line fields (.inv-num-field)
@@ -633,7 +633,7 @@ $(document).ready(function() {
     $('.btn-delete').on('click', async function(e) {
         e.preventDefault();
         const href = $(this).attr('href') || $(this).data('href');
-        const confirmed = await EnjazIMS.confirmAction('هل أنت متأكد من الحذف؟', 'تأكيد الحذف');
+        const confirmed = await BananIMS.confirmAction('هل أنت متأكد من الحذف؟', 'تأكيد الحذف');
         if (confirmed && href) {
             window.location.href = href;
         }
@@ -642,16 +642,16 @@ $(document).ready(function() {
     // Current year in footer
     $('#current-year').text(new Date().getFullYear());
 
-    const pendingMessages = window.__enjazPendingMessages || [];
+    const pendingMessages = window.__bananPendingMessages || [];
     if (pendingMessages.length) {
         pendingMessages.forEach((entry) => {
             if (!entry || !entry.message) return;
-            EnjazIMS.toast(entry.message, entry.type || 'info');
+            BananIMS.toast(entry.message, entry.type || 'info');
         });
-        window.__enjazPendingMessages = [];
+        window.__bananPendingMessages = [];
     }
 
-    EnjazIMS.consumeRememberedToast();
+    BananIMS.consumeRememberedToast();
 
     // AJAX auth forms (login/register)
     $('.js-auth-ajax').on('submit', function(e) {
@@ -661,8 +661,8 @@ $(document).ready(function() {
         const submitBtn = form.find('button[type=submit]');
         const originalText = submitBtn.html();
 
-        EnjazIMS.clearFormErrors(form);
-        EnjazIMS.showLoading(submitBtn);
+        BananIMS.clearFormErrors(form);
+        BananIMS.showLoading(submitBtn);
 
         $.ajax({
             url: form.attr('action') || window.location.href,
@@ -673,7 +673,7 @@ $(document).ready(function() {
                 'X-Requested-With': 'XMLHttpRequest'
             },
             success: function(response) {
-                EnjazIMS.hideLoading(submitBtn, originalText);
+                BananIMS.hideLoading(submitBtn, originalText);
 
                 if (response.success) {
                     if (response.redirect_url) {
@@ -683,21 +683,21 @@ $(document).ready(function() {
                 }
 
                 if (response.errors) {
-                    EnjazIMS.renderFieldErrors(form, response.errors);
+                    BananIMS.renderFieldErrors(form, response.errors);
 
                     const hasNonFieldErrors = Array.isArray(response.errors.__all__) && response.errors.__all__.length;
                     if (hasNonFieldErrors) {
-                        EnjazIMS.showFormError(form, response.message || response.errors.__all__.join('<br>'));
+                        BananIMS.showFormError(form, response.message || response.errors.__all__.join('<br>'));
                     } else {
-                        EnjazIMS.showFormError(form, 'يرجى مراجعة الحقول المحددة أدناه');
+                        BananIMS.showFormError(form, 'يرجى مراجعة الحقول المحددة أدناه');
                     }
                     return;
                 }
 
-                EnjazIMS.showFormError(form, response.message || 'يرجى التحقق من الحقول المطلوبة');
+                BananIMS.showFormError(form, response.message || 'يرجى التحقق من الحقول المطلوبة');
             },
             error: function(xhr) {
-                EnjazIMS.hideLoading(submitBtn, originalText);
+                BananIMS.hideLoading(submitBtn, originalText);
 
                 const response = xhr.responseJSON || {};
 
@@ -707,18 +707,18 @@ $(document).ready(function() {
                 }
 
                 if (response.errors) {
-                    EnjazIMS.renderFieldErrors(form, response.errors);
+                    BananIMS.renderFieldErrors(form, response.errors);
 
                     const hasNonFieldErrors = Array.isArray(response.errors.__all__) && response.errors.__all__.length;
                     if (hasNonFieldErrors) {
-                        EnjazIMS.showFormError(form, response.message || response.errors.__all__.join('<br>'));
+                        BananIMS.showFormError(form, response.message || response.errors.__all__.join('<br>'));
                     } else {
-                        EnjazIMS.showFormError(form, 'يرجى مراجعة الحقول المحددة أدناه');
+                        BananIMS.showFormError(form, 'يرجى مراجعة الحقول المحددة أدناه');
                     }
                     return;
                 }
 
-                EnjazIMS.showFormError(form, response.message || 'تعذر إرسال النموذج، حاول مرة أخرى');
+                BananIMS.showFormError(form, response.message || 'تعذر إرسال النموذج، حاول مرة أخرى');
             }
         });
     });
@@ -734,31 +734,31 @@ function handleAjaxForm(formId, onSuccess) {
         const submitBtn = form.find('button[type=submit]');
         const originalText = submitBtn.html();
         
-        EnjazIMS.showLoading(submitBtn);
+        BananIMS.showLoading(submitBtn);
         
         $.ajax({
             url: form.attr('action'),
             method: form.attr('method') || 'POST',
             data: form.serialize(),
             success: function(response) {
-                EnjazIMS.hideLoading(submitBtn, originalText);
+                BananIMS.hideLoading(submitBtn, originalText);
                 
                 if (response.success) {
-                    EnjazIMS.toast(response.message, 'success');
+                    BananIMS.toast(response.message, 'success');
                     if (onSuccess) onSuccess(response);
                 } else {
-                    EnjazIMS.toast(response.message || 'حدث خطأ', 'error');
+                    BananIMS.toast(response.message || 'حدث خطأ', 'error');
                 }
             },
             error: function(xhr) {
-                EnjazIMS.hideLoading(submitBtn, originalText);
+                BananIMS.hideLoading(submitBtn, originalText);
                 
                 let message = 'حدث خطأ في الاتصال';
                 if (xhr.responseJSON && xhr.responseJSON.message) {
                     message = xhr.responseJSON.message;
                 }
                 
-                EnjazIMS.toast(message, 'error');
+                BananIMS.toast(message, 'error');
             }
         });
     });

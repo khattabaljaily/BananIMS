@@ -393,22 +393,22 @@
             <div class="ts-card__body">
                 <form id="tenantColorForm" class="ts-color-form">
                     <div class="ts-color-picker-wrap">
-                        <div class="ts-color-swatch" id="colorSwatch" style="background:{{ tenant_settings.invoice_color|default:'#6366f1' }}"></div>
+                        <div class="ts-color-swatch" id="colorSwatch" style="background:{{ tenant_settings.invoice_color|default:'#132539' }}"></div>
                         <input type="color" id="invoiceColorPicker" name="invoice_color"
-                               value="{{ tenant_settings.invoice_color|default:'#6366f1' }}"
+                               value="{{ tenant_settings.invoice_color|default:'#132539' }}"
                                class="ts-color-native">
                         <input class="form-control ts-input ts-color-hex" id="invoiceColorHex"
                                name="invoice_color_hex" maxlength="7"
-                               value="{{ tenant_settings.invoice_color|default:'#6366f1' }}"
-                               placeholder="#6366f1">
+                               value="{{ tenant_settings.invoice_color|default:'#132539' }}"
+                               placeholder="#132539">
                     </div>
                     <div class="ts-color-presets">
-                        <button type="button" class="ts-color-preset" data-color="#6366f1" style="background:#6366f1" title="بنفسجي"></button>
+                        <button type="button" class="ts-color-preset" data-color="#132539" style="background:#132539" title="بنفسجي"></button>
                         <button type="button" class="ts-color-preset" data-color="#0ea5e9" style="background:#0ea5e9" title="أزرق"></button>
                         <button type="button" class="ts-color-preset" data-color="#10b981" style="background:#10b981" title="أخضر"></button>
                         <button type="button" class="ts-color-preset" data-color="#f59e0b" style="background:#f59e0b" title="ذهبي"></button>
                         <button type="button" class="ts-color-preset" data-color="#ef4444" style="background:#ef4444" title="أحمر"></button>
-                        <button type="button" class="ts-color-preset" data-color="#8b5cf6" style="background:#8b5cf6" title="بنفسجي غامق"></button>
+                        <button type="button" class="ts-color-preset" data-color="#faa71d" style="background:#faa71d" title="بنفسجي غامق"></button>
                         <button type="button" class="ts-color-preset" data-color="#ec4899" style="background:#ec4899" title="وردي"></button>
                         <button type="button" class="ts-color-preset" data-color="#1a1a2e" style="background:#1a1a2e" title="أسود"></button>
                     </div>
@@ -564,9 +564,9 @@ function saveSection(section, formId, btn) {
     .then(function (r) { return r.json(); })
     .then(function (data) {
         if (!data.success) throw new Error(data.message || 'تعذر الحفظ');
-        EnjazIMS.toast(data.message || 'تم الحفظ', 'success');
+        BananIMS.toast(data.message || 'تم الحفظ', 'success');
     })
-    .catch(function (err) { EnjazIMS.toast(err.message || 'حدث خطأ', 'error'); })
+    .catch(function (err) { BananIMS.toast(err.message || 'حدث خطأ', 'error'); })
     .finally(function () { btn.disabled = false; btn.innerHTML = original; });
 }
 
@@ -605,7 +605,7 @@ var CURRENCY_AR          = {{ currency_ar_json|safe }};
 function updateTenantTimezone() {
     var sel = document.getElementById('tenantCountrySelect');
     var tz  = document.querySelector('input[name="timezone"]');
-    if (sel && tz) tz.value = COUNTRY_TIMEZONE_MAP[sel.value] || COUNTRY_TIMEZONE_MAP['السودان'];
+    if (sel && tz) tz.value = COUNTRY_TIMEZONE_MAP[sel.value] || COUNTRY_TIMEZONE_MAP['قطر'];
 }
 function updateTenantCurrency() {
     var sel  = document.getElementById('tenantCountrySelect');
@@ -669,7 +669,7 @@ function saveTenantColor() {
 
     function uploadLogo(file) {
         if (file.size > 2 * 1024 * 1024) {
-            EnjazIMS.toast('حجم الملف يتجاوز 2 ميجابايت', 'error');
+            BananIMS.toast('حجم الملف يتجاوز 2 ميجابايت', 'error');
             input.value = '';
             return;
         }
@@ -712,9 +712,9 @@ function saveTenantColor() {
             }
             img.src = d.logo_url + '?t=' + Date.now();
             img.style.display = '';
-            EnjazIMS.toast(d.message, 'success');
+            BananIMS.toast(d.message, 'success');
         })
-        .catch(function (err) { EnjazIMS.toast(err.message || 'حدث خطأ', 'error'); })
+        .catch(function (err) { BananIMS.toast(err.message || 'حدث خطأ', 'error'); })
         .finally(function () {
             if (dropZone) dropZone.style.opacity = '';
             input.value = '';
@@ -723,7 +723,7 @@ function saveTenantColor() {
 
     function deleteLogo() {
         // placeholder — reload page or call delete API if exists
-        EnjazIMS.toast('لا تتوفر وظيفة الحذف حالياً', 'info');
+        BananIMS.toast('لا تتوفر وظيفة الحذف حالياً', 'info');
     }
 
     if (deleteBtn) deleteBtn.addEventListener('click', deleteLogo);

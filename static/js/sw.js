@@ -1,5 +1,5 @@
-/* EnjazIMS Service Worker — app-shell only, no data caching */
-const CACHE = 'enjaz-shell-v1';
+/* BananIMS Service Worker — app-shell only, no data caching */
+const CACHE = 'banan-shell-v1';
 const SHELL = [
   '/static/css/main.css',
   '/static/css/layout.css',

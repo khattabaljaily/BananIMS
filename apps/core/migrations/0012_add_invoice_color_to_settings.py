@@ -13,7 +13,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='settings',
             name='invoice_color',
-            field=models.CharField(default='#6366f1', max_length=7, verbose_name='لون الفاتورة'),
+            field=models.CharField(default='#132539', max_length=7, verbose_name='لون الفاتورة'),
         ),
         migrations.AlterField(
             model_name='platformsettings',

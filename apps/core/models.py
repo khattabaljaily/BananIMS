@@ -147,7 +147,7 @@ class Tenant(models.Model):
     # Settings
     timezone = models.CharField('المنطقة الزمنية', max_length=50, default=DEFAULT_TIMEZONE)
     language = models.CharField('اللغة', max_length=10, default='ar')
-    currency = models.CharField('العملة', max_length=3, default='SDG')
+    currency = models.CharField('العملة', max_length=3, default='QAR')
 
     # Hard Currency Mode
     hard_currency_mode = models.BooleanField('وضع العملة الصعبة', default=False)
@@ -297,7 +297,7 @@ class Settings(models.Model):
     # Invoice Settings
     invoice_prefix = models.CharField('بادئة الفاتورة', max_length=10, default='INV')
     invoice_footer = models.TextField('تذييل الفاتورة', blank=True)
-    invoice_color = models.CharField('لون الفاتورة', max_length=7, default='#6366f1')
+    invoice_color = models.CharField('لون الفاتورة', max_length=7, default='#132539')
     print_sale_invoice = models.BooleanField('طباعة فاتورة البيع', default=True)
     print_purchase_invoice = models.BooleanField('طباعة فاتورة الشراء', default=True)
     print_agent_name = models.BooleanField('طباعة اسم المندوب في الفاتورة', default=False)
@@ -352,11 +352,11 @@ class PlatformSettings(models.Model):
     ]
 
     # ── هوية المنصة ─────────────────────────────
-    platform_name    = models.CharField('اسم المنصة', max_length=100, default='EnjazIMS')
+    platform_name    = models.CharField('اسم المنصة', max_length=100, default='BananIMS')
     platform_tagline = models.CharField('الشعار النصي', max_length=200, blank=True)
     platform_logo    = models.ImageField('الشعار', upload_to='platform/', blank=True, null=True)
     platform_favicon = models.ImageField('الأيقونة', upload_to='platform/', blank=True, null=True)
-    primary_color    = models.CharField('اللون الأساسي', max_length=7, default='#6366f1')
+    primary_color    = models.CharField('اللون الأساسي', max_length=7, default='#132539')
     footer_text      = models.CharField('نص الفوتر', max_length=300, blank=True)
 
     # ── وضع الصيانة ─────────────────────────────
@@ -374,9 +374,9 @@ class PlatformSettings(models.Model):
                                            choices=ANNOUNCEMENT_TYPES, default='info')
 
     # ── الإعدادات الافتراضية للمشتركين الجدد ───
-    default_currency       = models.CharField('العملة الافتراضية', max_length=3, default='SDG')
+    default_currency       = models.CharField('العملة الافتراضية', max_length=3, default='QAR')
     default_timezone       = models.CharField('المنطقة الزمنية الافتراضية', max_length=50,
-                                              default='Africa/Khartoum')
+                                              default='Asia/Qatar')
     default_tax_enabled    = models.BooleanField('تفعيل الضريبة افتراضياً', default=False)
     default_tax_value      = models.DecimalField('نسبة الضريبة الافتراضية %',
                                                  max_digits=5, decimal_places=2, default=0)

@@ -687,7 +687,7 @@ def download_template(request):
     response.write('﻿')
     writer = csv.writer(response)
     writer.writerow(['الاسم', 'الهاتف', 'البريد', 'المدينة', 'العنوان', 'المستحقات الافتتاحية'])
-    writer.writerow(['أحمد محمد', '0912345678', 'ahmed@example.com', 'الخرطوم', 'شارع النيل', '0'])
+    writer.writerow(['أحمد محمد', '55512345', 'ahmed@example.com', 'الدوحة', 'شارع الكورنيش', '0'])
     return response
 
 

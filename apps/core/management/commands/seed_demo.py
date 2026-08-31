@@ -17,7 +17,7 @@ from django.db import transaction
 
 User = get_user_model()
 
-DEMO_SLUG     = 'enjaz-demo-promo'
+DEMO_SLUG     = 'banan-demo-promo'
 DEMO_PASSWORD = 'Demo@1234'
 MEDIA_ITEMS   = None   # resolved at runtime
 
@@ -198,7 +198,7 @@ class Command(BaseCommand):
             defaults=dict(
                 invoice_prefix='NJM',
                 invoice_footer='شكراً لتعاملكم معنا — النجم للتجارة العامة',
-                invoice_color='#6366f1',
+                invoice_color='#132539',
                 low_stock_alert=True,
             ),
         )
@@ -593,7 +593,7 @@ class Command(BaseCommand):
         store = StoreSettings.objects.create(
             tenant=tenant, is_enabled=True,
             display_name='متجر النجم', description='أفضل المنتجات بأفضل الأسعار',
-            accent_color='#6366f1', show_prices=True,
+            accent_color='#132539', show_prices=True,
             show_stock_quantity=False, status_override='open',
         )
         for i, status in enumerate(['pending','approved','pending']):
@@ -621,7 +621,7 @@ class Command(BaseCommand):
             ('online_order',   'high',   'طلب جديد من المتجر',           'طلب #ORD-00003 بقيمة 7,000 SDG — في انتظار الموافقة'),
             ('overdue_invoice','medium', 'فاتورة متأخرة السداد',          'فاتورة «مؤسسة البركة» متأخرة 12 يوماً'),
             ('transfer_done',  'low',    'اكتمل تحويل المخزون',           'تم تأكيد التحويل TRF-001 إلى مخزن الطابق الثاني'),
-            ('general',        'low',    'مرحباً في إنجاز IMS',           'حسابك جاهز — ابدأ بإضافة منتجاتك ومبيعاتك'),
+            ('general',        'low',    'مرحباً في بنان IMS',           'حسابك جاهز — ابدأ بإضافة منتجاتك ومبيعاتك'),
         ]
         for ntype, priority, title, msg in data:
             Notification.objects.create(

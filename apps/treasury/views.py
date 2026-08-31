@@ -46,7 +46,7 @@ def treasury_list(request):
     hc_treasury = Treasury.objects.for_tenant(tenant).filter(is_hard_currency=True).first()
     other_treasuries = Treasury.objects.for_tenant(tenant).filter(is_active=True)
 
-    local_cur = tenant.currency or 'SDG'
+    local_cur = tenant.currency or 'QAR'
     hc_cur = tenant.hard_currency if tenant.hard_currency_mode else ''
 
     context = {
@@ -120,7 +120,7 @@ def treasury_table_api(request):
 
     queryset = queryset.order_by(order_field)[start:start + length]
 
-    local_currency = tenant.currency or 'SDG'
+    local_currency = tenant.currency or 'QAR'
     data = [
         {
             'id': treasury.id,

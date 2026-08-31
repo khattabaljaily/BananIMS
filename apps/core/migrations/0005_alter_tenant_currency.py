@@ -13,6 +13,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='tenant',
             name='currency',
-            field=models.CharField(default='SDG', max_length=3, verbose_name='العملة'),
+            field=models.CharField(default='QAR', max_length=3, verbose_name='العملة'),
         ),
     ]

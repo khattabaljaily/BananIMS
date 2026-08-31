@@ -1,6 +1,6 @@
-# EnjazIMS — Inventory & Sales Management System
+# BananIMS — Inventory & Sales Management System
 
-A multi-tenant SaaS system for inventory and sales management, initially targeting the Sudanese market with full Arabic (RTL) support.
+A multi-tenant SaaS system for inventory and sales management, initially targeting the Qatari and Gulf market with full Arabic (RTL) support.
 
 ---
 
@@ -75,7 +75,7 @@ python manage.py runserver
 ## Project Structure
 
 ```
-EnjazIMS/
+BananIMS/
 ├── PROJECT/          # Django settings
 ├── apps/
 │   ├── core/         # Tenant, middleware, backup, support tickets

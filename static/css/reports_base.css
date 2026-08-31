@@ -1,5 +1,5 @@
 /* =============================================================
-   Reports Base CSS — EnjazIMS  v4.0
+   Reports Base CSS — BananIMS  v4.0
    All report templates share this stylesheet.
    Uses CSS variables from main.css → adapts to dark & light mode.
    ============================================================= */
@@ -15,8 +15,8 @@
     padding: 1.5rem 1.75rem;
     position: relative;
     overflow: hidden;
-    background: linear-gradient(135deg, #6366f1 0%, #4338ca 60%, #3730a3 100%);
-    box-shadow: 0 8px 32px rgba(99, 102, 241, 0.28), 0 2px 8px rgba(67, 56, 202, 0.15);
+    background: linear-gradient(135deg, #132539 0%, #0a1622 60%, #3730a3 100%);
+    box-shadow: 0 8px 32px rgba(19,37,57, 0.28), 0 2px 8px rgba(10,22,34, 0.15);
 }
 .rpt-hero::before {
     content: '';
@@ -46,7 +46,7 @@
 .rpt-hero--expenses,
 .rpt-hero--treasury,
 .rpt-hero--accounting {
-    background: linear-gradient(135deg, #6366f1 0%, #4338ca 60%, #3730a3 100%);
+    background: linear-gradient(135deg, #132539 0%, #0a1622 60%, #3730a3 100%);
 }
 
 .rpt-hero-inner {
@@ -154,8 +154,8 @@
 }
 .rpt-filters .form-control:focus,
 .rpt-filters .form-select:focus {
-    border-color: #6366f1;
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+    border-color: #132539;
+    box-shadow: 0 0 0 3px rgba(19,37,57, 0.12);
     outline: none;
     background: var(--bg-primary);
     color: var(--text-primary);
@@ -176,7 +176,7 @@
     opacity: 0.9;
     color: white;
     transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+    box-shadow: 0 4px 14px rgba(19,37,57, 0.35);
 }
 .rpt-filter-btn--sales,
 .rpt-filter-btn--purchases,
@@ -184,7 +184,7 @@
 .rpt-filter-btn--expenses,
 .rpt-filter-btn--treasury,
 .rpt-filter-btn--accounting {
-    background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%);
+    background: linear-gradient(135deg, #132539 0%, #0a1622 100%);
 }
 
 /* ── KPI Cards Grid ──────────────────────────────────────────── */
@@ -250,7 +250,7 @@
 .rpt-kpi--purple .rpt-kpi-icon  { background: rgba(102, 126, 234, .12); color: #667eea; }
 .rpt-kpi--purple .rpt-kpi-value { color: #667eea; }
 
-.rpt-kpi--violet::before { background: linear-gradient(90deg, #764ba2, #6366f1); }
+.rpt-kpi--violet::before { background: linear-gradient(90deg, #764ba2, #132539); }
 .rpt-kpi--violet .rpt-kpi-icon  { background: rgba(118, 75, 162, .12); color: #764ba2; }
 .rpt-kpi--violet .rpt-kpi-value { color: #764ba2; }
 
@@ -312,7 +312,7 @@
 .rpt-panel-header--accounting {
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-color);
-    border-right: 4px solid #6366f1;
+    border-right: 4px solid #132539;
 }
 .rpt-panel-title {
     font-size: 0.93rem;
@@ -323,13 +323,13 @@
     align-items: center;
     gap: 0.5rem;
 }
-.rpt-panel-title i { color: #6366f1; }
+.rpt-panel-title i { color: #132539; }
 .rpt-panel-body { padding: 0; }
 
 /* ── Tables ──────────────────────────────────────────────────── */
 .rpt-panel .table { margin: 0; }
 .rpt-panel .table thead tr {
-    background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%);
+    background: linear-gradient(135deg, #132539 0%, #0a1622 100%);
 }
 .rpt-panel .table thead th {
     background: transparent;
@@ -351,12 +351,12 @@
 }
 .rpt-panel .table tbody tr:last-child td { border-bottom: none; }
 .rpt-panel .table tbody tr:nth-child(even) { background: var(--bg-secondary); }
-.rpt-panel .table tbody tr:hover { background: rgba(99, 102, 241, 0.05); }
+.rpt-panel .table tbody tr:hover { background: rgba(19,37,57, 0.05); }
 .rpt-panel .table tbody tr.rpt-total-row td {
-    background: linear-gradient(90deg, rgba(99,102,241,.07) 0%, rgba(67,56,202,.04) 100%) !important;
+    background: linear-gradient(90deg, rgba(19,37,57,.07) 0%, rgba(10,22,34,.04) 100%) !important;
     font-weight: 800;
     font-size: 0.9rem;
-    border-top: 2px solid #6366f1 !important;
+    border-top: 2px solid #132539 !important;
     border-bottom: none;
     color: var(--text-primary) !important;
 }
@@ -375,7 +375,7 @@
     line-height: 1.4;
     white-space: nowrap;
 }
-.rpt-badge--invoice  { background: rgba(99,102,241,.12);  color: #6366f1; }
+.rpt-badge--invoice  { background: rgba(19,37,57,.12);  color: #132539; }
 .rpt-badge--payment  { background: rgba(17,153,142,.12);  color: #11998e; }
 .rpt-badge--return   { background: rgba(239,68,68,.12);   color: #ef4444; }
 .rpt-badge--receipt  { background: rgba(16,185,129,.12);  color: #10b981; }
@@ -386,7 +386,7 @@
 /* Colored amounts */
 .rpt-pos { color: #11998e !important; font-weight: 700; }
 .rpt-neg { color: #ef4444 !important; font-weight: 700; }
-.rpt-bal { color: #6366f1 !important; font-weight: 700; }
+.rpt-bal { color: #132539 !important; font-weight: 700; }
 .rpt-dim { color: var(--text-tertiary) !important; font-size: 0.82rem; }
 
 /* Alert row backgrounds */
@@ -526,7 +526,7 @@
        Appears above the report title. Shows system name and the
        date the report was printed (set via data-print-date attr). */
     .printable-scene::before {
-        content: 'EnjazIMS — نظام إدارة المخزون   ·   ' attr(data-print-date);
+        content: 'BananIMS — نظام إدارة المخزون   ·   ' attr(data-print-date);
         display: block !important;
         text-align: center;
         font-size: 8pt;
@@ -542,7 +542,7 @@
         background: none !important;
         box-shadow: none !important;
         border: none !important;
-        border-bottom: 2pt solid #6366f1 !important;
+        border-bottom: 2pt solid #132539 !important;
         border-radius: 0 !important;
         padding: 0.7rem 0 1rem !important;
         margin-bottom: 1.25rem !important;
@@ -633,7 +633,7 @@
     .rpt-panel-header--accounting {
         background: #f6f6f9 !important;
         border-bottom: 1pt solid #d1d5db !important;
-        border-right: 3pt solid #6366f1 !important;
+        border-right: 3pt solid #132539 !important;
         border-left: none !important;
         padding: 5pt 10pt !important;
         -webkit-print-color-adjust: exact !important;
@@ -648,7 +648,7 @@
 
     /* ── 7. Tables → crisp, color-accurate ─────────────────── */
     .rpt-panel .table thead tr {
-        background: #6366f1 !important;
+        background: #132539 !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
     }
@@ -682,7 +682,7 @@
         color: #1a1a2e !important;
         font-size: 10pt !important;
         font-weight: 800 !important;
-        border-top: 1.5pt solid #6366f1 !important;
+        border-top: 1.5pt solid #132539 !important;
         border-bottom: none !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
@@ -705,7 +705,7 @@
         border: 0.5pt solid currentColor !important;
         opacity: 0.9;
     }
-    .rpt-badge--invoice  { color: #5b5bd6 !important; background: rgba(99,102,241,.07) !important; }
+    .rpt-badge--invoice  { color: #5b5bd6 !important; background: rgba(19,37,57,.07) !important; }
     .rpt-badge--payment  { color: #059669 !important; background: rgba(16,185,129,.07) !important; }
     .rpt-badge--return   { color: #dc2626 !important; background: rgba(239,68,68,.07)  !important; }
     .rpt-badge--receipt  { color: #059669 !important; background: rgba(16,185,129,.07) !important; }
@@ -723,10 +723,10 @@
     td[style*="color:#4facfe"], td[style*="color: #4facfe"] { color: #2563eb !important; }
     td[style*="color:#f59e0b"], td[style*="color: #f59e0b"] { color: #b45309 !important; }
     td[style*="color:#10b981"], td[style*="color: #10b981"] { color: #059669 !important; }
-    td[style*="color:#6366f1"], td[style*="color: #6366f1"] { color: #5b5bd6 !important; }
+    td[style*="color:#132539"], td[style*="color: #132539"] { color: #5b5bd6 !important; }
 
     /* ── 10. Section row backgrounds ────────────────────────── */
-    tr[style*="rgba(99,102,241"] {
+    tr[style*="rgba(19,37,57"] {
         background: #f0f0ff !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;

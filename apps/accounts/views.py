@@ -492,8 +492,8 @@ def permission_group_delete_api(request, pk):
 
 
 
-REGISTRATION_WHATSAPP_NUMBER = '249110100110'
-REGISTRATION_CONTACT_EMAIL = 'info@enjaztechnology.com'
+REGISTRATION_WHATSAPP_NUMBER = '97433933700'
+REGISTRATION_CONTACT_EMAIL = 'info@banantechnology.com'
 REGISTRATION_REQUEST_RECIPIENT = 'khattabaljaily@gmail.com'
 
 
@@ -763,7 +763,7 @@ def register_step3(request):
                         msg = EmailMessage(
                             subject=f'New Tenant Registered: {tenant.name}',
                             body=html_body,
-                            from_email='EnjazIMS <{}>'.format(django_settings.EMAIL_HOST_USER),
+                            from_email='BananIMS <{}>'.format(django_settings.EMAIL_HOST_USER),
                             to=['khattabaljaily@gmail.com'],
                         )
                         msg.content_subtype = 'html'
@@ -979,7 +979,7 @@ def password_reset_request(request):
                 reverse('accounts:password_reset_confirm', kwargs={'uidb64': uid, 'token': token})
             )
 
-            subject = 'إعادة تعيين كلمة المرور - منصة إنجاز'
+            subject = 'إعادة تعيين كلمة المرور - منصة بنان'
             message = render_to_string('accounts/email/password_reset_email.html', {
                 'user': user,
                 'reset_url': reset_url,

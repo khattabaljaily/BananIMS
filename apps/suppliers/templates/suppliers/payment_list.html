@@ -146,7 +146,7 @@
                                         </div>
                                         <div class="col-md-6" id="paymentModalHcPreviewRow" style="display:none;">
                                             <label class="cx-label" id="paymentModalHcPreviewLabel">المعادل بالعملة المحلية</label>
-                                            <div class="cx-input text-end" id="paymentModalHcPreview" style="background:var(--bg-secondary);color:var(--indigo-600,#4f46e5);font-weight:700;">—</div>
+                                            <div class="cx-input text-end" id="paymentModalHcPreview" style="background:var(--bg-secondary);color:var(--indigo-600,#1d3a56);font-weight:700;">—</div>
                                         </div>
                                         {% endif %}
                                         <div class="col-12">
@@ -346,7 +346,7 @@
                 render: (v, type, row) => {
                     const amount = Math.abs(parseFloat(v || 0));
                     const currency = row.currency || '';
-                    return `${EnjazIMS.formatMoney(amount)}${currency ? ` ${currency}` : ''}`;
+                    return `${BananIMS.formatMoney(amount)}${currency ? ` ${currency}` : ''}`;
                 }
             },
             { data: 'payment_method' },
@@ -451,7 +451,7 @@
     (function() {
         function renderSupDrop(list) {
             paymentSupplierDrop.innerHTML = list.length
-                ? list.map(s => `<div class="pay-sup-opt" data-id="${s.id}" data-name="${s.name.replace(/"/g,'&quot;')}" data-currency="${s.currency||''}" data-balance="${s.balance}" data-hc-balance="${s.hcBalance||0}" style="padding:8px 12px;cursor:pointer;">${s.name}${s.currency ? `<span style="margin-right:6px;font-size:0.7rem;background:#eef2ff;color:#4f46e5;padding:1px 5px;border-radius:4px;">${s.currency}</span>` : ''}</div>`).join('')
+                ? list.map(s => `<div class="pay-sup-opt" data-id="${s.id}" data-name="${s.name.replace(/"/g,'&quot;')}" data-currency="${s.currency||''}" data-balance="${s.balance}" data-hc-balance="${s.hcBalance||0}" style="padding:8px 12px;cursor:pointer;">${s.name}${s.currency ? `<span style="margin-right:6px;font-size:0.7rem;background:#eaf0f5;color:#1d3a56;padding:1px 5px;border-radius:4px;">${s.currency}</span>` : ''}</div>`).join('')
                 : '<div style="padding:8px 12px;color:#6c757d;">لا توجد نتائج</div>';
             paymentSupplierDrop.querySelectorAll('.pay-sup-opt').forEach(el => {
                 el.addEventListener('mousedown', function(e) {
@@ -529,13 +529,13 @@
                 {% if hc_mode %}
                 // Also show local equivalent at current rate
                 const localBal = hcBal * CURRENT_RATE;
-                const localFmt = EnjazIMS.formatMoney(localBal);
+                const localFmt = BananIMS.formatMoney(localBal);
                 paymentModalSupplierBalance.innerHTML = `<span>${hcFmt} ${selectedPaymentSupplier.currency}</span><br><small style="color:#6c757d;font-size:0.75rem;">≈ ${localFmt} ج.س</small>`;
                 {% else %}
                 paymentModalSupplierBalance.textContent = hcFmt + ' ' + selectedPaymentSupplier.currency;
                 {% endif %}
             } else {
-                paymentModalSupplierBalance.textContent = EnjazIMS.formatMoney(selectedPaymentSupplier.balance || 0);
+                paymentModalSupplierBalance.textContent = BananIMS.formatMoney(selectedPaymentSupplier.balance || 0);
             }
         } else {
             paymentModalSupplierName.textContent = '—';
@@ -634,7 +634,7 @@
 
     function savePayment() {
         const supplierId = paymentModalSupplier.value;
-        const amount = EnjazIMS.parseNumber(paymentModalAmount.value);
+        const amount = BananIMS.parseNumber(paymentModalAmount.value);
         const paymentDate = paymentModalDate.value;
         const method = paymentModalMethodInput.value;
         const treasuryId = paymentModalTreasury.value;
@@ -645,12 +645,12 @@
         const isHCSupplier = !!(selectedPaymentSupplier && selectedPaymentSupplier.currency);
         const isHCTreasury = selectedTreasuryIsHC();
         const payInHC = isHCSupplier && isHCTreasury;
-        if (!supplierId) return EnjazIMS.toast('اختر المورد', 'error');
-        if (!paymentDate) return EnjazIMS.toast('اختر التاريخ', 'error');
-        if (!amount || amount <= 0) return EnjazIMS.toast('أدخل مبلغاً صحيحاً', 'error');
+        if (!supplierId) return BananIMS.toast('اختر المورد', 'error');
+        if (!paymentDate) return BananIMS.toast('اختر التاريخ', 'error');
+        if (!amount || amount <= 0) return BananIMS.toast('أدخل مبلغاً صحيحاً', 'error');
         // Rate required only when HC supplier paying from local treasury
         if (isHCSupplier && !isHCTreasury && HC_MODE && (!exchangeRate || exchangeRate <= 0)) {
-            return EnjazIMS.toast('أدخل سعر الصرف لحساب المعادل بالعملة الصعبة', 'error');
+            return BananIMS.toast('أدخل سعر الصرف لحساب المعادل بالعملة الصعبة', 'error');
         }
         // Balance check
         if (selectedPaymentSupplier) {
@@ -662,12 +662,12 @@
                 if (hcEquiv > hcBal + 0.005) {
                     const fmt = hcEquiv.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
                     const balFmt = hcBal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-                    return EnjazIMS.toast(`المبلغ (${fmt}${cur}) يتجاوز المديونية (${balFmt}${cur})`, 'error');
+                    return BananIMS.toast(`المبلغ (${fmt}${cur}) يتجاوز المديونية (${balFmt}${cur})`, 'error');
                 }
             } else {
                 const bal = selectedPaymentSupplier.balance || 0;
                 if (amount > bal + 0.005) {
-                    return EnjazIMS.toast(`المبلغ يتجاوز المديونية (${EnjazIMS.formatMoney(bal)})`, 'error');
+                    return BananIMS.toast(`المبلغ يتجاوز المديونية (${BananIMS.formatMoney(bal)})`, 'error');
                 }
             }
         }
@@ -694,15 +694,15 @@
         })
         .then(data => {
             if (!data.success) {
-                EnjazIMS.toast(data.message || 'تعذر حفظ الدفعة', 'error');
+                BananIMS.toast(data.message || 'تعذر حفظ الدفعة', 'error');
                 return;
             }
             paymentModal.hide();
             paymentsTable.ajax.reload(null, false);
-            EnjazIMS.toast(data.message || 'تم تسجيل الدفعة بنجاح', 'success');
+            BananIMS.toast(data.message || 'تم تسجيل الدفعة بنجاح', 'success');
         })
         .catch(error => {
-            EnjazIMS.toast(error.message || 'خطأ في الاتصال', 'error');
+            BananIMS.toast(error.message || 'خطأ في الاتصال', 'error');
         })
         .finally(() => {
             paymentModalSaveBtn.disabled = false;
@@ -723,7 +723,7 @@
             })
             .then(data => {
                 if (!data.success) {
-                    EnjazIMS.toast(data.message || 'تعذر تحميل تفاصيل الدفعة', 'error');
+                    BananIMS.toast(data.message || 'تعذر تحميل تفاصيل الدفعة', 'error');
                     return;
                 }
                 const payment = data.data;
@@ -733,7 +733,7 @@
                 paymentDetailsFields.date.textContent = payment.entry_date;
                 paymentDetailsFields.supplier.textContent = payment.supplier;
                 const paymentCurrency = payment.currency || '';
-                paymentDetailsFields.amount.textContent = `${EnjazIMS.formatMoney(Math.abs(parseFloat(payment.amount) || 0))}${paymentCurrency ? ` ${paymentCurrency}` : ''}`;
+                paymentDetailsFields.amount.textContent = `${BananIMS.formatMoney(Math.abs(parseFloat(payment.amount) || 0))}${paymentCurrency ? ` ${paymentCurrency}` : ''}`;
                 paymentDetailsFields.method.textContent = payment.payment_method;
                 paymentDetailsFields.treasury.textContent = payment.cash_treasury || '—';
                 paymentDetailsFields.notes.textContent = payment.notes;
@@ -742,7 +742,7 @@
                 paymentDetailsFields.canceledNote.textContent = payment.cancellation_note || '—';
                 paymentDetailsModal.show();
             })
-            .catch(error => EnjazIMS.toast(error.message || 'خطأ في الاتصال', 'error'));
+            .catch(error => BananIMS.toast(error.message || 'خطأ في الاتصال', 'error'));
             return;
         }
 
@@ -769,15 +769,15 @@
         })
         .then(data => {
             if (!data.success) {
-                EnjazIMS.toast(data.message || 'تعذر إلغاء الدفعة', 'error');
+                BananIMS.toast(data.message || 'تعذر إلغاء الدفعة', 'error');
                 return;
             }
             paymentCancelConfirmModal.hide();
             paymentCancelTargetId = null;
             paymentsTable.ajax.reload(null, false);
-            EnjazIMS.toast(data.message || 'تم إلغاء الدفعة بنجاح', 'success');
+            BananIMS.toast(data.message || 'تم إلغاء الدفعة بنجاح', 'success');
         })
-        .catch(error => EnjazIMS.toast(error.message || 'خطأ في الاتصال', 'error'))
+        .catch(error => BananIMS.toast(error.message || 'خطأ في الاتصال', 'error'))
         .finally(() => {
             paymentCancelConfirmBtn.disabled = false;
             paymentCancelConfirmBtn.innerHTML = 'تأكيد الإلغاء';

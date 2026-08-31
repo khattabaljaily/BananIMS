@@ -63,9 +63,9 @@
 }
 
 .subscription-plan-badge {
-    color: var(--primary, #6366f1);
-    background: rgba(99,102,241,0.1);
-    border: 1px solid rgba(99,102,241,0.2);
+    color: var(--primary, #132539);
+    background: rgba(19,37,57,0.1);
+    border: 1px solid rgba(19,37,57,0.2);
 }
 
 .subscription-status-badge { margin-bottom: 0.8rem; }
