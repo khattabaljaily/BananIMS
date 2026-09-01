@@ -873,6 +873,19 @@
 
 .footer-subtitle { color: var(--text-secondary); font-size: 0.7rem; margin-top: 0.15rem; }
 
+.footer-developer { margin-top: 0.35rem; }
+.footer-developer a {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    color: var(--text-secondary); font-size: 0.7rem; text-decoration: none;
+    transition: color 0.15s;
+}
+.footer-developer a:hover { color: var(--text-primary); }
+.footer-developer-logo { height: 14px; width: auto; }
+.footer-developer-logo.logo-dark  { display: none; }
+.footer-developer-logo.logo-light { display: inline-block; }
+[data-theme="dark"] .footer-developer-logo.logo-light { display: none; }
+[data-theme="dark"] .footer-developer-logo.logo-dark  { display: inline-block; }
+
 /* ── Content ─────────────────────────────────── */
 .content { max-width: 100%; }
 

@@ -897,6 +897,18 @@ body { font-family: 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif;
 .ab-footer__links a { color: var(--ab-yellow-dim); font-size: .82rem; text-decoration: none; transition: color .2s; }
 .ab-footer__links a:hover { color: var(--ab-yellow); }
 
+.ab-footer__dev {
+  margin-top: 16px; padding-top: 16px;
+  border-top: 1px solid rgba(255,255,255,.06);
+  text-align: center;
+}
+.ab-footer__dev a {
+  display: inline-flex; align-items: center; gap: 8px;
+  color: var(--ab-yellow-dim); font-size: .8rem; text-decoration: none; transition: color .2s;
+}
+.ab-footer__dev a:hover { color: var(--ab-yellow); }
+.ab-footer__dev-logo { height: 18px; width: auto; opacity: .9; }
+
 /* ═══════════════════════════════════════════════════════════════
    RESPONSIVE
    ══════════════════════════════════════════════════════════════ */
