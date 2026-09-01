@@ -1,5 +1,5 @@
 /* BananIMS Service Worker — app-shell only, no data caching */
-const CACHE = 'banan-shell-v1';
+const CACHE = 'banan-shell-v2';
 const SHELL = [
   '/static/css/main.css',
   '/static/css/layout.css',
@@ -34,14 +34,16 @@ self.addEventListener('fetch', e => {
   /* Only handle same-origin GET requests */
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
 
-  /* Static assets — cache first */
+  /* Static assets — network first, cache only as an offline fallback.
+     (Cache-first here meant CSS/JS edits could never be seen again
+     without clearing site data, since the cached copy would win forever.) */
   if (url.pathname.startsWith('/static/')) {
     e.respondWith(
-      caches.match(request).then(cached => cached || fetch(request).then(res => {
+      fetch(request).then(res => {
         const clone = res.clone();
         caches.open(CACHE).then(c => c.put(request, clone));
         return res;
-      }))
+      }).catch(() => caches.match(request))
     );
     return;
   }
