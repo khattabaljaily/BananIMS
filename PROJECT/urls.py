@@ -35,7 +35,6 @@ urlpatterns = [
     path('employees/', include('apps.employees.urls')),
 ]
 
-# Serve media files in development
+# Serve media files in development (static files are handled by WhiteNoiseMiddleware)
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATICFILES_DIRS[0] if settings.STATICFILES_DIRS else settings.STATIC_ROOT)

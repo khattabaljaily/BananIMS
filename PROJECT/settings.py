@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+    'whitenoise.runserver_nostatic',
     'django.contrib.staticfiles',
     'rest_framework',
     'corsheaders',
@@ -86,6 +87,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -151,9 +153,27 @@ USE_TZ = True
 STATIC_URL  = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 MEDIA_URL   = 'media/'
 MEDIA_ROOT  = BASE_DIR / 'media'
+
+if DEBUG:
+    # Serve straight from STATICFILES_DIRS with no content-hashed filenames,
+    # so `{% static %}` URLs stay stable across edits (no manifest needed).
+    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
+    # WhiteNoiseMiddleware reads files via the same finders (no collectstatic
+    # required) and re-checks them on every request, so edits show up on a
+    # normal refresh instead of requiring a hard refresh.
+    WHITENOISE_USE_FINDERS = True
+    WHITENOISE_AUTOREFRESH = True
+    # Force the browser to revalidate on every load instead of guessing its
+    # own cache lifetime — this is what actually eliminates the "hard
+    # refresh to see changes" problem in local dev.
+    WHITENOISE_MAX_AGE = 0
+else:
+    # Content-hashed filenames: the URL itself changes when a file's content
+    # changes, so it's safe for WhiteNoise to send far-future cache headers —
+    # browsers never need a hard refresh to see a deployed change.
+    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
