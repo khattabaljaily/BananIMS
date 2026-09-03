@@ -1914,6 +1914,34 @@ def tenant_create_api(request):
         import logging
         logging.getLogger(__name__).error('tenant notification email failed: %s', _email_err, exc_info=True)
 
+    # Send welcome email to the new tenant admin
+    if email:
+        try:
+            from django.core.mail import EmailMessage
+            from django.template.loader import render_to_string
+            from django.urls import reverse
+            from django.utils import timezone
+
+            welcome_html = render_to_string('accounts/email/welcome_tenant_email.html', {
+                'tenant': tenant,
+                'admin_full_name': full_name or username,
+                'admin_username': username,
+                'admin_email': email,
+                'created_at': timezone.now(),
+                'login_url': request.build_absolute_uri(reverse('accounts:login')),
+            })
+            welcome_msg = EmailMessage(
+                subject='🎉 مرحباً بك في Banan',
+                body=welcome_html,
+                from_email='BananIMS <{}>'.format(settings.EMAIL_HOST_USER),
+                to=[email],
+            )
+            welcome_msg.content_subtype = 'html'
+            welcome_msg.send(fail_silently=False)
+        except Exception as _welcome_err:
+            import logging
+            logging.getLogger(__name__).error('welcome email failed: %s', _welcome_err, exc_info=True)
+
     return JsonResponse({
         'success': True,
         'message': f'تم إنشاء المشترك "{tenant.name}" ومدير النشاط "{username}" بنجاح',

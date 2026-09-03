@@ -758,6 +758,32 @@ def register_step3(request):
                         import logging
                         logging.getLogger(__name__).error('registration email failed: %s', _email_err, exc_info=True)
 
+                    # 7. Send welcome email to the new tenant admin
+                    try:
+                        from django.core.mail import EmailMessage
+                        from django.template.loader import render_to_string
+                        from django.utils import timezone as tz
+                        from django.conf import settings as django_settings
+                        welcome_html = render_to_string('accounts/email/welcome_tenant_email.html', {
+                            'tenant': tenant,
+                            'admin_full_name': user.get_full_name() or step1_data['username'],
+                            'admin_username': step1_data['username'],
+                            'admin_email': step1_data.get('email', ''),
+                            'created_at': tz.now(),
+                            'login_url': request.build_absolute_uri(reverse('accounts:login')),
+                        })
+                        welcome_msg = EmailMessage(
+                            subject='🎉 مرحباً بك في Banan',
+                            body=welcome_html,
+                            from_email='BananIMS <{}>'.format(django_settings.EMAIL_HOST_USER),
+                            to=[step1_data['email']],
+                        )
+                        welcome_msg.content_subtype = 'html'
+                        welcome_msg.send(fail_silently=False)
+                    except Exception as _welcome_err:
+                        import logging
+                        logging.getLogger(__name__).error('welcome email failed: %s', _welcome_err, exc_info=True)
+
                     if _wants_json(request):
                         return JsonResponse({
                             'success': True,

@@ -1,0 +1,300 @@
+{% load humanize %}
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مرحباً بك في Banan</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #2d3748;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            direction: rtl;
+            text-align: right;
+            unicode-bidi: embed;
+        }
+
+        .email-wrapper {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            direction: rtl;
+            text-align: right;
+        }
+
+        .email-container {
+            background: #ffffff;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            margin: 20px 0;
+            direction: rtl;
+            text-align: right;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #0a534e 0%, #7c3aed 100%);
+            padding: 40px 30px;
+            text-align: center;
+            position: relative;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="%23ffffff" opacity="0.1"/><circle cx="75" cy="75" r="1" fill="%23ffffff" opacity="0.1"/><circle cx="50" cy="10" r="0.5" fill="%23ffffff" opacity="0.1"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+            opacity: 0.3;
+        }
+
+        .logo {
+            font-size: 32px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 2;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            letter-spacing: -1px;
+        }
+
+        .subtitle {
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.9);
+            margin: 8px 0;
+            position: relative;
+            z-index: 2;
+        }
+
+        .content {
+            padding: 40px 30px;
+            direction: rtl;
+            text-align: right;
+        }
+
+        .greeting {
+            font-size: 18px;
+            color: #1a202c;
+            margin-bottom: 25px;
+            font-weight: 600;
+            direction: rtl;
+            text-align: right;
+        }
+
+        .message {
+            font-size: 16px;
+            color: #4a5568;
+            margin-bottom: 20px;
+            line-height: 1.7;
+            direction: rtl;
+            text-align: right;
+        }
+
+        .action-section {
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            border-radius: 16px;
+            padding: 30px;
+            margin: 30px 0;
+            text-align: center;
+            border: 1px solid #e2e8f0;
+        }
+
+        .action-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #0a534e 0%, #7c3aed 100%);
+            color: #ffffff !important;
+            text-decoration: none;
+            padding: 18px 36px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 16px;
+            box-shadow: 0 8px 20px rgba(10, 83, 78, 0.3);
+            transition: all 0.3s ease;
+            margin: 20px 0;
+            border: none;
+            cursor: pointer;
+        }
+
+        .info-section {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 4px 20px;
+            margin: 25px 0;
+            border-right: 4px solid #0a534e;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 14px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            font-size: 13px;
+            color: #718096;
+            font-weight: 600;
+        }
+
+        .info-value {
+            font-size: 14px;
+            color: #1a202c;
+            font-weight: 700;
+        }
+
+        .trial-box {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            border: 2px solid #f59e0b;
+            border-radius: 12px;
+            padding: 20px 25px;
+            margin: 30px 0;
+        }
+
+        .trial-title {
+            font-weight: 700;
+            color: #92400e;
+            margin-bottom: 6px;
+            font-size: 15px;
+        }
+
+        .trial-text {
+            color: #92400e;
+            margin: 0;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .footer {
+            background: #f8fafc;
+            padding: 30px;
+            text-align: center;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .footer p {
+            margin: 8px 0;
+            color: #718096;
+            font-size: 13px;
+        }
+
+        .signature {
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .signature-name {
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 5px;
+        }
+
+        @media (max-width: 600px) {
+            .email-wrapper { padding: 10px; }
+            .email-container { border-radius: 12px; }
+            .header { padding: 30px 20px; }
+            .content { padding: 25px 20px; }
+            .logo { font-size: 28px; }
+            .action-button { padding: 16px 28px; font-size: 15px; }
+        }
+
+        @media (prefers-color-scheme: dark) {
+            body { background: #1a202c; }
+            .email-container { background: #2d3748; color: #e2e8f0; }
+            .content { color: #e2e8f0; }
+            .greeting { color: #f7fafc; }
+            .message { color: #cbd5e0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-wrapper" dir="rtl">
+        <div class="email-container" dir="rtl">
+            <!-- Header -->
+            <div class="header">
+                <div class="logo">Banan</div>
+                <div class="subtitle">🎉 أهلاً بك في منصتك الجديدة</div>
+            </div>
+
+            <!-- Content -->
+            <div class="content">
+                <div class="greeting">مرحباً {{ admin_full_name }}،</div>
+
+                <div class="message">
+                    تم إنشاء حساب "<strong>{{ tenant.name }}</strong>" بنجاح على منصة Banan لإدارة الأعمال.
+                    حسابك جاهز الآن ويمكنك تسجيل الدخول والبدء مباشرة.
+                </div>
+
+                <!-- Info Section -->
+                <div class="info-section" dir="rtl">
+                    <div class="info-row">
+                        <span class="info-label">اسم النشاط</span>
+                        <span class="info-value">{{ tenant.name }}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">اسم المستخدم</span>
+                        <span class="info-value">{{ admin_username }}</span>
+                    </div>
+                    {% if admin_email %}
+                    <div class="info-row">
+                        <span class="info-label">البريد الإلكتروني</span>
+                        <span class="info-value">{{ admin_email }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="info-row">
+                        <span class="info-label">الباقة</span>
+                        <span class="info-value">{{ tenant.get_subscription_plan_display }}</span>
+                    </div>
+                </div>
+
+                <!-- Action Section -->
+                <div class="action-section">
+                    <a href="{{ login_url }}" class="action-button">🚀 تسجيل الدخول الآن</a>
+                </div>
+
+                {% if tenant.subscription_expires %}
+                <div class="trial-box">
+                    <div class="trial-title">⏳ الفترة التجريبية</div>
+                    <div class="trial-text">
+                        حسابك التجريبي فعّال حتى تاريخ {{ tenant.subscription_expires|date:"j F Y" }}.
+                        يمكنك الترقية لأي باقة أخرى في أي وقت من إعدادات الاشتراك.
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="message">
+                    إذا كان لديك أي أسئلة أو تحتاج مساعدة، فريقنا جاهز لمساعدتك.
+                </div>
+
+                <!-- Signature -->
+                <div class="signature">
+                    <div class="signature-name">مع خالص التحية،</div>
+                    <div style="color: #4a5568; font-size: 16px; margin-top: 8px;">
+                        فريق Banan
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="footer">
+                <p>هذا البريد الإلكتروني مرسل تلقائياً من Banan</p>
+                <p>يرجى عدم الرد عليه مباشرة</p>
+                <p style="margin-top: 15px; color: #a0aec0; font-size: 12px;">
+                    &copy; {{ created_at|date:"Y" }} Banan - جميع الحقوق محفوظة
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
