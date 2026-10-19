@@ -84,7 +84,7 @@
             </a>
             <ul class="nav-submenu">
                 <li><a href="{% url 'core:admin_report_subscriptions' %}" class="nav-sublink{% if request.resolver_match.url_name == 'admin_report_subscriptions' %} active{% endif %}"><i class="fas fa-file-invoice me-2"></i>تقرير الاشتراكات</a></li>
-                <li><a href="{% url 'core:admin_report_revenue' %}" class="nav-sublink{% if request.resolver_match.url_name == 'admin_report_revenue' %} active{% endif %}"><i class="fas fa-chart-line me-2"></i>الإيرادات الشهرية</a></li>
+                <li><a href="{% url 'core:admin_report_revenue' %}" class="nav-sublink{% if request.resolver_match.url_name == 'admin_report_revenue' %} active{% endif %}"><i class="fas fa-chart-line me-2"></i>نمو المشتركين والاستخدام</a></li>
                 <li><a href="{% url 'core:admin_report_activity' %}" class="nav-sublink{% if request.resolver_match.url_name == 'admin_report_activity' %} active{% endif %}"><i class="fas fa-chart-column me-2"></i>نشاط المشتركين</a></li>
             </ul>
         </li>

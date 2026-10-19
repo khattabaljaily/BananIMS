@@ -376,9 +376,6 @@ def admin_dashboard(request):
         created_at__date__lte=today - timedelta(days=3)
     ).select_related('tenant').order_by('created_at')[:8]
 
-    from apps.core.pricing import tenant_monthly_fee
-    mrr = sum(tenant_monthly_fee(t) for t in Tenant.objects.filter(is_active=True))
-
     stats = {
         'total_clients': total_clients,
         'active_clients': active_clients,
@@ -392,7 +389,6 @@ def admin_dashboard(request):
         'multi_branch_clients': multi_branch_clients,
         'pending_support': SupportTicket.objects.filter(status__in=['open', 'in_progress']).count(),
         'backup_ready': max(active_clients, 0),
-        'monthly_revenue': mrr,
         'expiring_7_count': expiring_7.count(),
         'expiring_30_count': expiring_30.count(),
         'plan_distribution_json': json.dumps([
@@ -871,7 +867,7 @@ def admin_report_subscriptions(request):
 
 
 @login_required
-@branch_scope_exempt('لوحة إدارة المنصة (platform admin) — تقرير إيرادات عبر كل المشتركين، لا مفهوم فرع هنا أصلاً')
+@branch_scope_exempt('لوحة إدارة المنصة (platform admin) — تقرير نمو واستخدام المشتركين عبر المنصة، لا مفهوم فرع هنا أصلاً')
 def admin_report_revenue(request):
     if not request.user.has_platform_perm('view_reports'):
         return redirect('core:no_permission')
@@ -886,22 +882,15 @@ def admin_report_revenue(request):
         d = today.replace(day=1) - timedelta(days=i * 30)
         months.append(d.replace(day=1))
 
-    from apps.core.pricing import PLAN_MONTHLY, tenant_monthly_fee
-
     # Per-tenant usage stats
     tenants = Tenant.objects.filter(is_active=True).order_by('-created_at')
     tenant_stats = []
-    plan_revenue = {key: {'count': 0, 'monthly': 0, 'price': price} for key, price in PLAN_MONTHLY.items()}
+    plan_counts = {key: 0 for key in ('trial', 'basic', 'pro', 'enterprise')}
     for t in tenants:
-        fee = tenant_monthly_fee(t)
-        if t.subscription_plan in plan_revenue:
-            plan_revenue[t.subscription_plan]['count'] += 1
-            plan_revenue[t.subscription_plan]['monthly'] += fee
+        if t.subscription_plan in plan_counts:
+            plan_counts[t.subscription_plan] += 1
         sales_count = SaleInvoice.objects.filter(tenant=t, status__in=SaleInvoice.REVENUE_STATUSES).count()
         purchases_count = PurchaseInvoice.objects.filter(tenant=t, status__in=PurchaseInvoice.EFFECTIVE_STATUSES).count()
-        sales_total = SaleInvoice.objects.filter(
-            tenant=t, status__in=SaleInvoice.REVENUE_STATUSES
-        ).aggregate(s=Sum('grand_total'))['s'] or 0
 
         tenant_stats.append({
             'name': t.name,
@@ -910,13 +899,9 @@ def admin_report_revenue(request):
             'plan_key': t.subscription_plan,
             'sales_count': sales_count,
             'purchases_count': purchases_count,
-            'sales_total': float(sales_total),
-            'monthly_fee': fee,
         })
 
     tenant_stats.sort(key=lambda x: x['sales_count'], reverse=True)
-
-    total_mrr = sum(v['monthly'] for v in plan_revenue.values())
 
     # Monthly growth (new tenants per month for last 12m)
     _rev_tz = dj_timezone.get_current_timezone()
@@ -930,12 +915,11 @@ def admin_report_revenue(request):
 
     return render(request, 'core/admin_report_revenue.html', {
         'tenant_stats': tenant_stats,
-        'plan_revenue': plan_revenue,
-        'total_mrr': total_mrr,
+        'plan_counts': plan_counts,
+        'plan_counts_json': json.dumps(list(plan_counts.values())),
         'monthly_new': monthly_new,
         'monthly_new_json': json.dumps([m['count'] for m in monthly_new], ensure_ascii=False),
         'monthly_labels_json': json.dumps([m['month'] for m in monthly_new], ensure_ascii=False),
-        'PLAN_PRICES': PLAN_MONTHLY,
     })
 
 
@@ -2328,27 +2312,22 @@ def tenant_renew_api(request, pk):
     })
 
 
+from urllib.parse import quote as urllib_quote
+
+PRICING_QUOTE_EMAIL = 'info@banantechnology.com'
+
+
 def pricing(request):
-    """صفحة خطط التسعير"""
+    """صفحة الباقات — بدون أسعار؛ كل باقة بطلب عرض سعر"""
     from apps.core.models import PlatformSettings
-    from apps.core.pricing import (
-        ENTERPRISE_PER_BRANCH_MONTHLY, ENTERPRISE_PER_BRANCH_PERPETUAL, PERPETUAL_PRICE, PLAN_MONTHLY,
-        annual, price_label,
-    )
     trial_days = PlatformSettings.get().default_trial_days or 14
 
-    def prices(key):
-        m = PLAN_MONTHLY[key]
-        return {'monthly': price_label(m), 'annual': price_label(annual(m)), 'perpetual': price_label(PERPETUAL_PRICE[key])}
-
-    per_branch = ENTERPRISE_PER_BRANCH_MONTHLY
     plans = [
         {
             'key': 'basic',
             'name': 'Basic',
             'title_ar': 'أساسي',
             'description': 'محل واحد مع مخزن واحد',
-            **prices('basic'),
             'highlight': False,
             'features': [
                 {'text': '1 مخزن',                          'ok': True},
@@ -2367,7 +2346,6 @@ def pricing(request):
             'name': 'Pro',
             'title_ar': 'احترافي',
             'description': 'محل واحد مع ما يصل إلى 5 مخازن',
-            **prices('pro'),
             'highlight': True,
             'features': [
                 {'text': 'حتى 5 مخازن',                      'ok': True},
@@ -2386,9 +2364,6 @@ def pricing(request):
             'name': 'Enterprise',
             'title_ar': 'مؤسسات',
             'description': 'سلاسل المتاجر وشركات التوزيع: إدارة مركزية وفروع متعددة',
-            **prices('enterprise'),
-            'per_branch': {'monthly': price_label(per_branch), 'annual': price_label(annual(per_branch)),
-                           'perpetual': price_label(ENTERPRISE_PER_BRANCH_PERPETUAL)},
             'highlight': False,
             'features': [
                 {'text': 'حتى 20 مخزن',                      'ok': True},
@@ -2408,18 +2383,12 @@ def pricing(request):
     current_plan_key = getattr(tenant, 'subscription_plan', None) if tenant else None
     for p in plans:
         p['is_current'] = bool(current_plan_key and current_plan_key == p['key'])
+        subject = urllib_quote(f"طلب عرض سعر — باقة {p['title_ar']}")
+        p['quote_href'] = f"mailto:{PRICING_QUOTE_EMAIL}?subject={subject}"
 
     return render(request, 'core/pricing.html', {
         'plans': plans,
         'trial_days': trial_days,
-        'enterprise_pricing': {
-            'base': int(PLAN_MONTHLY['enterprise']), 'per_branch': int(per_branch),
-            'annual_months': int(annual(1)),
-            'perpetual_base': int(PERPETUAL_PRICE['enterprise']),
-            'perpetual_per_branch': int(ENTERPRISE_PER_BRANCH_PERPETUAL),
-            'perpetual_base_label': price_label(PERPETUAL_PRICE['enterprise']),
-            'perpetual_per_branch_label': price_label(ENTERPRISE_PER_BRANCH_PERPETUAL),
-        },
         'current_subscription_plan_display': tenant.get_subscription_plan_display() if tenant else None,
     })
 

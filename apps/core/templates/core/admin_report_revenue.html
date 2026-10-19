@@ -5,8 +5,8 @@
 <link rel="stylesheet" href="{% static 'css/admin_reports.css' %}?v=1.2">
 {% endblock %}
 
-{% block page_title %}الإيرادات الشهرية{% endblock %}
-{% block page_description %}تقدير الإيرادات الشهرية وإحصائيات استخدام المشتركين{% endblock %}
+{% block page_title %}نمو المشتركين والاستخدام{% endblock %}
+{% block page_description %}نمو عدد المشتركين وإحصائيات استخدامهم{% endblock %}
 
 {% block content %}
 <div class="rpt-scene">
@@ -20,28 +20,23 @@
             <div class="rpt-hero__icon"><i class="fas fa-chart-line"></i></div>
             <div>
                 <div class="rpt-hero__kicker">تقارير النظام</div>
-                <h2 class="rpt-hero__title">الإيرادات الشهرية</h2>
-                <p class="rpt-hero__desc">تقدير MRR بناءً على الباقات النشطة واستخدام المشتركين</p>
+                <h2 class="rpt-hero__title">نمو المشتركين والاستخدام</h2>
+                <p class="rpt-hero__desc">أعداد المشتركين حسب الباقة ونشاطهم على النظام</p>
             </div>
         </div>
     </div>
 </div>
 
-<!-- ═══════════════ MRR CARDS ═══════════════ -->
+<!-- ═══════════════ PLAN COUNTS ═══════════════ -->
 <div class="rpt-alerts">
-    <div class="rpt-alert-card rpt-alert-card--indigo">
-        <div class="rpt-alert-card__num">{{ total_mrr }}</div>
-        <div class="rpt-alert-card__lbl">MRR المقدّر</div>
-        <div class="rpt-alert-card__icon"><i class="fas fa-coins"></i></div>
-    </div>
-    {% for key, data in plan_revenue.items %}
+    {% for key, count in plan_counts.items %}
     <div class="rpt-alert-card {% if key == 'enterprise' %}rpt-alert-card--indigo{% elif key == 'pro' %}rpt-alert-card--blue{% elif key == 'basic' %}rpt-alert-card--green{% else %}rpt-alert-card--muted{% endif %}">
-        <div class="rpt-alert-card__num">${{ data.monthly }}</div>
+        <div class="rpt-alert-card__num">{{ count }}</div>
         <div class="rpt-alert-card__lbl">
-            {% if key == 'trial' %}تجريبي ({{ data.count }})
-            {% elif key == 'basic' %}أساسي ({{ data.count }})
-            {% elif key == 'pro' %}احترافي ({{ data.count }})
-            {% elif key == 'enterprise' %}مؤسسات ({{ data.count }})
+            {% if key == 'trial' %}تجريبي
+            {% elif key == 'basic' %}أساسي
+            {% elif key == 'pro' %}احترافي
+            {% elif key == 'enterprise' %}مؤسسات
             {% endif %}
         </div>
         <div class="rpt-alert-card__icon"><i class="fas fa-layer-group"></i></div>
@@ -63,10 +58,10 @@
     <div class="rpt-panel" style="flex:1;">
         <div class="rpt-panel__hd">
             <i class="fas fa-chart-pie"></i>
-            <span>توزيع الإيرادات بالباقات</span>
+            <span>توزيع المشتركين بالباقات</span>
         </div>
         <div class="rpt-chart-wrap">
-            <canvas id="revenueDistChart"></canvas>
+            <canvas id="planDistChart"></canvas>
         </div>
     </div>
 </div>
@@ -92,8 +87,6 @@
                     <th>الباقة</th>
                     <th>فواتير البيع</th>
                     <th>فواتير الشراء</th>
-                    <th>إجمالي المبيعات</th>
-                    <th>رسوم شهرية</th>
                 </tr>
             </thead>
             <tbody>
@@ -107,17 +100,9 @@
                     <td><span class="rpt-plan-badge rpt-plan-badge--{{ row.plan_key }}">{{ row.plan }}</span></td>
                     <td>{{ row.sales_count|intcomma }}</td>
                     <td>{{ row.purchases_count|intcomma }}</td>
-                    <td class="rpt-td--num">{{ row.sales_total|floatformat:2|intcomma }}</td>
-                    <td>
-                        {% if row.monthly_fee > 0 %}
-                        <span style="color:var(--primary);font-weight:700;">${{ row.monthly_fee }}</span>
-                        {% else %}
-                        <span class="rpt-td--muted">مجاني</span>
-                        {% endif %}
-                    </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="7" class="rpt-empty">لا توجد بيانات</td></tr>
+                <tr><td colspan="5" class="rpt-empty">لا توجد بيانات</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -141,17 +126,6 @@
             <div class="rpt-mob-card__row">
                 <span class="rpt-mob-card__label">فواتير الشراء</span>
                 <span class="rpt-mob-card__val">{{ row.purchases_count|intcomma }}</span>
-            </div>
-            <div class="rpt-mob-card__row">
-                <span class="rpt-mob-card__label">إجمالي المبيعات</span>
-                <span class="rpt-mob-card__val rpt-mob-card__val--num">{{ row.sales_total|floatformat:2|intcomma }}</span>
-            </div>
-            <div class="rpt-mob-card__row">
-                <span class="rpt-mob-card__label">رسوم شهرية</span>
-                <span class="rpt-mob-card__val">
-                    {% if row.monthly_fee > 0 %}<span style="color:var(--primary);font-weight:700;">${{ row.monthly_fee }}</span>
-                    {% else %}<span class="rpt-mob-card__val--muted">مجاني</span>{% endif %}
-                </span>
             </div>
         </div>
         {% empty %}
@@ -192,17 +166,14 @@
         });
     }
 
-    // Revenue distribution donut
-    const rdCtx = document.getElementById('revenueDistChart');
+    // Plan distribution donut
+    const rdCtx = document.getElementById('planDistChart');
     if (rdCtx) {
-        const labels = [];
-        const data = [];
         const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
         const colors = ['#94a3b8','#3b82f6', cssVar('--primary') || '#0e6b64', cssVar('--secondary') || '#0ea5e9'];
-        const bkgColors = [];
-        {% for key, d in plan_revenue.items %}
-        labels.push('{{ key }}'); data.push({{ d.monthly }}); bkgColors.push(colors[{{ forloop.counter0 }}]);
-        {% endfor %}
+        const labels = ['تجريبي', 'أساسي', 'احترافي', 'مؤسسات'];
+        const data = {{ plan_counts_json|safe }};
+        const bkgColors = colors;
         new Chart(rdCtx, {
             type: 'doughnut',
             data: { labels, datasets: [{ data, backgroundColor: bkgColors }] },
