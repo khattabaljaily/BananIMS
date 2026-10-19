@@ -2,6 +2,7 @@
 Employees Views — الموظفون
 """
 import json
+from django.db.models.deletion import ProtectedError
 from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth.decorators import login_required
@@ -12,10 +13,10 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from apps.accounts.activity_service import log_activity
-from apps.accounts.decorators import require_permission
-from apps.core.utils import convert_arabic_numerals
+from apps.accounts.decorators import require_permission, branch_scope_exempt
+from apps.core.utils import convert_arabic_numerals, filter_by_branch_via, enforce_branch_ownership, operational_money_accounts
 from apps.treasury.models import Treasury
-from apps.treasury.services import post_treasury_disbursement
+from apps.bank_accounts.models import BankAccount
 
 from .models import Employee, EmployeeAdvance, EmployeeIncentive, EmployeeSalaryPayment
 
@@ -46,14 +47,14 @@ def employee_list(request):
     if not tenant:
         return redirect('core:no_tenant')
 
-    qs = Employee.objects.filter(tenant=tenant)
+    qs = Employee.objects.filter(tenant=tenant).for_branch(getattr(request, 'branch', None))
     context = {
         'stats': {
             'total': qs.count(),
             'active': qs.filter(is_active=True).count(),
             'inactive': qs.filter(is_active=False).count(),
         },
-        'treasuries': Treasury.objects.for_tenant(tenant).filter(is_active=True),
+        'treasuries': operational_money_accounts(Treasury.objects.for_tenant(tenant), request).filter(is_active=True),
     }
     return render(request, 'employees/employee_list.html', context)
 
@@ -71,7 +72,7 @@ def employee_table_api(request):
     search = request.GET.get('search[value]', '').strip()
     status = request.GET.get('status', '').strip()
 
-    qs = Employee.objects.filter(tenant=tenant)
+    qs = Employee.objects.filter(tenant=tenant).for_branch(getattr(request, 'branch', None))
     records_total = qs.count()
 
     if status == 'active':
@@ -122,6 +123,7 @@ def employee_table_api(request):
 @login_required
 @require_permission('add_employees')
 @require_POST
+@branch_scope_exempt('ينشئ موظفاً جديداً يُختم بفرع المنشئ تلقائياً (branch=getattr(request, "branch", None)) — لا قراءة لبيانات فرع آخر')
 def employee_create(request):
     tenant = _tenant(request)
     if not tenant:
@@ -137,6 +139,7 @@ def employee_create(request):
 
     emp = Employee.objects.create(
         tenant=tenant,
+        branch=getattr(request, 'branch', None),
         name=name,
         phone=(data.get('phone') or '').strip(),
         position=(data.get('position') or '').strip(),
@@ -158,6 +161,7 @@ def employee_create(request):
 def employee_update(request, pk):
     tenant = _tenant(request)
     emp = get_object_or_404(Employee, pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, emp)
     try:
         data = json.loads(request.body)
     except ValueError:
@@ -187,6 +191,7 @@ def employee_update(request, pk):
 def employee_detail_api(request, pk):
     tenant = _tenant(request)
     emp = get_object_or_404(Employee, pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, emp)
     return JsonResponse({
         'id': emp.pk,
         'employee_id': emp.employee_id,
@@ -208,8 +213,12 @@ def employee_detail_api(request, pk):
 def employee_delete(request, pk):
     tenant = _tenant(request)
     emp = get_object_or_404(Employee, pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, emp)
     name = emp.name
-    emp.delete()
+    try:
+        emp.delete()
+    except ProtectedError:
+        return JsonResponse({'success': False, 'message': 'لا يمكن حذف الموظف لوجود حركات مرتبطة به.'}, status=400)
     log_activity(request, 'delete', f'حذف موظف: {name}')
     return JsonResponse({'success': True})
 
@@ -223,6 +232,7 @@ def employee_delete(request, pk):
 def employee_statement(request, pk):
     tenant = _tenant(request)
     emp = get_object_or_404(Employee, pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, emp)
 
     salaries   = emp.salary_payments.all().select_related('treasury')
     advances   = emp.advances.all().select_related('treasury')
@@ -257,7 +267,7 @@ def advance_list(request):
     if not tenant:
         return redirect('core:no_tenant')
 
-    qs = EmployeeAdvance.objects.filter(tenant=tenant)
+    qs = filter_by_branch_via(EmployeeAdvance.objects.filter(tenant=tenant), getattr(request, 'branch', None), field='employee__branch')
     context = {
         'stats': {
             'total':     qs.count(),
@@ -265,8 +275,9 @@ def advance_list(request):
             'deducted':  qs.filter(status='deducted').count(),
             'cancelled': qs.filter(status='cancelled').count(),
         },
-        'employees':  Employee.objects.filter(tenant=tenant, is_active=True).order_by('name'),
-        'treasuries': Treasury.objects.for_tenant(tenant).filter(is_active=True),
+        'employees':  Employee.objects.filter(tenant=tenant, is_active=True).for_branch(getattr(request, 'branch', None)).order_by('name'),
+        'treasuries': operational_money_accounts(Treasury.objects.for_tenant(tenant), request).filter(is_active=True),
+        'bank_accounts': operational_money_accounts(BankAccount.objects.for_tenant(tenant), request).filter(is_active=True),
     }
     return render(request, 'employees/advance_list.html', context)
 
@@ -285,7 +296,8 @@ def advance_table_api(request):
     status = request.GET.get('status', '').strip()
     emp_id = request.GET.get('employee', '').strip()
 
-    qs = EmployeeAdvance.objects.filter(tenant=tenant).select_related('employee', 'treasury')
+    qs = EmployeeAdvance.objects.filter(tenant=tenant).select_related('employee', 'treasury', 'bank_account')
+    qs = filter_by_branch_via(qs, getattr(request, 'branch', None), field='employee__branch')
     records_total = qs.count()
 
     if status:
@@ -306,7 +318,7 @@ def advance_table_api(request):
             'employee_id': adv.employee_id,
             'amount': str(adv.amount),
             'date': str(adv.date),
-            'treasury': adv.treasury.name if adv.treasury else '—',
+            'treasury': (adv.treasury.name if adv.treasury else (adv.bank_account.name if adv.bank_account else '—')),
             'status': adv.status,
             'status_display': adv.get_status_display(),
             'notes': adv.notes,
@@ -339,6 +351,7 @@ def advance_create(request):
     if not emp_id:
         return _err('يجب اختيار موظف')
     emp = get_object_or_404(Employee, pk=emp_id, tenant=tenant)
+    enforce_branch_ownership(request, emp)
 
     amount = _dec(data.get('amount', 0))
     if amount <= 0:
@@ -347,46 +360,38 @@ def advance_create(request):
     payment_method = data.get('payment_method', 'cash')
     treasury_id    = data.get('treasury')
     treasury       = None
+    bank_account_id = data.get('bank_account')
+    bank_account    = None
     if payment_method == 'cash':
         if not treasury_id:
             return _err('يجب اختيار الخزينة للدفع النقدي')
-        treasury = get_object_or_404(Treasury, pk=treasury_id, tenant=tenant)
+        treasury = get_object_or_404(operational_money_accounts(Treasury.objects.for_tenant(tenant), request), pk=treasury_id)
+        enforce_branch_ownership(request, treasury)
         current_balance = treasury.current_balance or Decimal('0')
         if current_balance < amount:
             return _err(f"رصيد الخزينة غير كافٍ. الرصيد الحالي: {current_balance:.2f} والمطلوب صرفه: {amount:.2f}.")
-    elif treasury_id:
-        treasury = get_object_or_404(Treasury, pk=treasury_id, tenant=tenant)
+    elif payment_method == 'bank':
+        if not bank_account_id:
+            return _err('يجب اختيار الحساب البنكي للتحويل البنكي')
+        bank_account = get_object_or_404(operational_money_accounts(BankAccount.objects.for_tenant(tenant), request), pk=bank_account_id, is_active=True)
+        enforce_branch_ownership(request, bank_account)
+        current_balance = bank_account.current_balance or Decimal('0')
+        if current_balance < amount:
+            return _err(f"رصيد الحساب البنكي غير كافٍ. الرصيد الحالي: {current_balance:.2f} والمطلوب صرفه: {amount:.2f}.")
+    else:
+        if treasury_id:
+            treasury = get_object_or_404(operational_money_accounts(Treasury.objects.for_tenant(tenant), request), pk=treasury_id)
+            enforce_branch_ownership(request, treasury)
 
-    from django.db import transaction
+    from . import services as employee_services
     try:
-        with transaction.atomic():
-            adv = EmployeeAdvance.objects.create(
-                tenant=tenant,
-                employee=emp,
-                amount=amount,
-                date=data.get('date') or timezone.localdate(),
-                payment_method=payment_method,
-                treasury=treasury,
-                bank_reference=(data.get('bank_reference') or '').strip(),
-                notes=(data.get('notes') or '').strip(),
-                created_by=request.user,
-                updated_by=request.user,
-            )
-
-            if payment_method == 'cash' and treasury:
-                mv = post_treasury_disbursement(
-                    tenant=tenant,
-                    amount=amount,
-                    date=adv.date,
-                    reference_type='employee_advance',
-                    reference_id=adv.pk,
-                    description=f'سلفة {emp.name}',
-                    user=request.user,
-                    treasury=treasury,
-                )
-                if mv:
-                    adv.treasury_movement = mv
-                    adv.save(update_fields=['treasury_movement', 'updated_at'])
+        adv = employee_services.create_advance(
+            tenant=tenant, employee=emp, amount=amount,
+            date=data.get('date') or timezone.localdate(), payment_method=payment_method,
+            treasury=treasury, bank_account=bank_account,
+            bank_reference=(data.get('bank_reference') or '').strip(),
+            notes=(data.get('notes') or '').strip(), user=request.user,
+        )
     except ValueError as e:
         return _err(str(e))
 
@@ -399,7 +404,8 @@ def advance_create(request):
 @require_POST
 def advance_cancel(request, pk):
     tenant = _tenant(request)
-    adv = get_object_or_404(EmployeeAdvance, pk=pk, tenant=tenant)
+    adv = get_object_or_404(EmployeeAdvance.objects.select_related('employee'), pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, adv, field='employee__branch')
     if adv.status == 'deducted':
         return _err('السلفة مخصومة ضمن كشف راتب — لا يمكن إلغاؤها')
     if adv.status == 'cancelled':
@@ -420,7 +426,7 @@ def salary_list(request):
     if not tenant:
         return redirect('core:no_tenant')
 
-    qs = EmployeeSalaryPayment.objects.filter(tenant=tenant)
+    qs = filter_by_branch_via(EmployeeSalaryPayment.objects.filter(tenant=tenant), getattr(request, 'branch', None), field='employee__branch')
     context = {
         'stats': {
             'total':     qs.count(),
@@ -428,8 +434,9 @@ def salary_list(request):
             'paid':      qs.filter(status='paid').count(),
             'cancelled': qs.filter(status='cancelled').count(),
         },
-        'employees':  Employee.objects.filter(tenant=tenant, is_active=True).order_by('name'),
-        'treasuries': Treasury.objects.for_tenant(tenant).filter(is_active=True),
+        'employees':  Employee.objects.filter(tenant=tenant, is_active=True).for_branch(getattr(request, 'branch', None)).order_by('name'),
+        'treasuries': operational_money_accounts(Treasury.objects.for_tenant(tenant), request).filter(is_active=True),
+        'bank_accounts': operational_money_accounts(BankAccount.objects.for_tenant(tenant), request).filter(is_active=True),
     }
     return render(request, 'employees/salary_list.html', context)
 
@@ -448,7 +455,8 @@ def salary_table_api(request):
     status = request.GET.get('status', '').strip()
     emp_id = request.GET.get('employee', '').strip()
 
-    qs = EmployeeSalaryPayment.objects.filter(tenant=tenant).select_related('employee', 'treasury')
+    qs = EmployeeSalaryPayment.objects.filter(tenant=tenant).select_related('employee', 'treasury', 'bank_account')
+    qs = filter_by_branch_via(qs, getattr(request, 'branch', None), field='employee__branch')
     records_total = qs.count()
 
     if status:
@@ -474,7 +482,7 @@ def salary_table_api(request):
             'advances_deducted': str(sp.advances_deducted),
             'deductions':        str(sp.deductions),
             'total_due':         str(sp.total_due),
-            'treasury': sp.treasury.name if sp.treasury else '—',
+            'treasury': (sp.treasury.name if sp.treasury else (sp.bank_account.name if sp.bank_account else '—')),
             'payment_method': sp.payment_method,
             'status': sp.status,
             'status_display': sp.get_status_display(),
@@ -509,6 +517,7 @@ def salary_create(request):
     if not emp_id:
         return _err('يجب اختيار موظف')
     emp = get_object_or_404(Employee, pk=emp_id, tenant=tenant)
+    enforce_branch_ownership(request, emp)
 
     period_start = data.get('period_start')
     period_end   = data.get('period_end')
@@ -518,60 +527,40 @@ def salary_create(request):
     payment_method = data.get('payment_method', 'cash')
     treasury_id    = data.get('treasury')
     treasury       = None
+    bank_account_id = data.get('bank_account')
+    bank_account    = None
     if payment_method == 'cash':
         if not treasury_id:
             return _err('يجب اختيار الخزينة للدفع النقدي')
-        treasury = get_object_or_404(Treasury, pk=treasury_id, tenant=tenant)
-    elif treasury_id:
-        treasury = get_object_or_404(Treasury, pk=treasury_id, tenant=tenant)
-
-    advances_deducted = _dec(data.get('advances_deducted', 0))
-
-    # Validate that pending advances cover the deducted amount
-    pending_total = emp.advances.filter(status='pending').aggregate(t=Sum('amount'))['t'] or Decimal('0')
-    if advances_deducted > pending_total:
-        return _err(f'السلف المطلوب خصمها ({advances_deducted}) أكبر من إجمالي السلف القائمة ({pending_total})')
+        treasury = get_object_or_404(operational_money_accounts(Treasury.objects.for_tenant(tenant), request), pk=treasury_id)
+        enforce_branch_ownership(request, treasury)
+    elif payment_method == 'bank':
+        if not bank_account_id:
+            return _err('يجب اختيار الحساب البنكي للتحويل البنكي')
+        bank_account = get_object_or_404(operational_money_accounts(BankAccount.objects.for_tenant(tenant), request), pk=bank_account_id, is_active=True)
+        enforce_branch_ownership(request, bank_account)
+    else:
+        if treasury_id:
+            treasury = get_object_or_404(operational_money_accounts(Treasury.objects.for_tenant(tenant), request), pk=treasury_id)
+            enforce_branch_ownership(request, treasury)
 
     base_salary = _dec(data.get('base_salary', emp.base_salary))
+    advance_ids = data.get('selected_advance_ids') or []
+    incentive_ids = data.get('selected_incentive_ids') or []
 
-    if 'selected_incentive_ids' in data:
-        # Frontend computed selections — trust the sent values directly
-        bonus = _dec(data.get('bonus', 0))
-        deductions = _dec(data.get('deductions', 0))
-    else:
-        # Legacy: auto-add pending incentives within the period
-        pending_incentives = emp.incentives.filter(
-            status='pending',
-            payout='with_salary',
-            date__range=(period_start, period_end),
+    from . import services as employee_services
+    try:
+        sp = employee_services.create_salary_payment(
+            tenant=tenant, employee=emp, period_start=period_start, period_end=period_end,
+            base_salary=base_salary, payment_method=payment_method, treasury=treasury,
+            bank_account=bank_account, bank_reference=(data.get('bank_reference') or '').strip(),
+            notes=(data.get('notes') or '').strip(),
+            deductions_notes=(data.get('deductions_notes') or '').strip(),
+            advance_ids=advance_ids, incentive_ids=incentive_ids, user=request.user,
         )
-        auto_bonus = Decimal('0')
-        auto_deductions = Decimal('0')
-        for inc in pending_incentives:
-            if inc.type == 'bonus':
-                auto_bonus += inc.amount
-            else:
-                auto_deductions += inc.amount
-        bonus = _dec(data.get('bonus', 0)) + auto_bonus
-        deductions = _dec(data.get('deductions', 0)) + auto_deductions
+    except ValueError as e:
+        return _err(str(e))
 
-    sp = EmployeeSalaryPayment.objects.create(
-        tenant=tenant,
-        employee=emp,
-        period_start=period_start,
-        period_end=period_end,
-        base_salary=base_salary,
-        bonus=bonus,
-        advances_deducted=advances_deducted,
-        deductions=deductions,
-        deductions_notes=(data.get('deductions_notes') or '').strip(),
-        payment_method=payment_method,
-        treasury=treasury,
-        bank_reference=(data.get('bank_reference') or '').strip(),
-        notes=(data.get('notes') or '').strip(),
-        created_by=request.user,
-        updated_by=request.user,
-    )
     log_activity(request, 'create', f'كشف راتب: {emp.name} — {period_start}')
     return JsonResponse({'success': True, 'id': sp.pk})
 
@@ -581,11 +570,14 @@ def salary_create(request):
 @require_POST
 def salary_pay(request, pk):
     tenant = _tenant(request)
-    sp = get_object_or_404(EmployeeSalaryPayment, pk=pk, tenant=tenant)
+    sp = get_object_or_404(EmployeeSalaryPayment.objects.select_related('employee'), pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, sp, field='employee__branch')
     if sp.status != 'draft':
         return _err('الكشف ليس في حالة مسودة')
-    if sp.payment_method != 'bank' and not sp.treasury:
+    if sp.payment_method == 'cash' and not sp.treasury:
         return _err('يجب تحديد الخزينة قبل الدفع')
+    if sp.payment_method == 'bank' and not sp.bank_account:
+        return _err('يجب تحديد الحساب البنكي قبل الدفع')
     try:
         sp.pay()
     except ValueError as e:
@@ -599,7 +591,8 @@ def salary_pay(request, pk):
 @require_POST
 def salary_cancel(request, pk):
     tenant = _tenant(request)
-    sp = get_object_or_404(EmployeeSalaryPayment, pk=pk, tenant=tenant)
+    sp = get_object_or_404(EmployeeSalaryPayment.objects.select_related('employee'), pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, sp, field='employee__branch')
     if sp.status == 'cancelled':
         return _err('الكشف ملغى مسبقاً')
     sp.cancel()
@@ -611,7 +604,8 @@ def salary_cancel(request, pk):
 @require_permission('view_employee_salaries')
 def salary_detail_api(request, pk):
     tenant = _tenant(request)
-    sp = get_object_or_404(EmployeeSalaryPayment, pk=pk, tenant=tenant)
+    sp = get_object_or_404(EmployeeSalaryPayment.objects.select_related('employee'), pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, sp, field='employee__branch')
     deferred_items = [
         {
             'id': inc.pk,
@@ -635,8 +629,9 @@ def salary_detail_api(request, pk):
         'deductions':        str(sp.deductions),
         'deductions_notes':  sp.deductions_notes,
         'total_due':         str(sp.total_due),
-        'treasury': sp.treasury.name if sp.treasury else '—',
+        'treasury': (sp.treasury.name if sp.treasury else (sp.bank_account.name if sp.bank_account else '—')),
         'treasury_id': sp.treasury_id,
+        'bank_account_id': sp.bank_account_id,
         'status': sp.status,
         'status_display': sp.get_status_display(),
         'notes': sp.notes,
@@ -655,7 +650,7 @@ def incentive_list(request):
     if not tenant:
         return redirect('core:no_tenant')
 
-    qs = EmployeeIncentive.objects.filter(tenant=tenant)
+    qs = filter_by_branch_via(EmployeeIncentive.objects.filter(tenant=tenant), getattr(request, 'branch', None), field='employee__branch')
     context = {
         'stats': {
             'total':      qs.count(),
@@ -665,8 +660,9 @@ def incentive_list(request):
             'paid':       qs.filter(status='paid').count(),
             'cancelled':  qs.filter(status='cancelled').count(),
         },
-        'employees':  Employee.objects.filter(tenant=tenant, is_active=True).order_by('name'),
-        'treasuries': Treasury.objects.for_tenant(tenant).filter(is_active=True),
+        'employees':  Employee.objects.filter(tenant=tenant, is_active=True).for_branch(getattr(request, 'branch', None)).order_by('name'),
+        'treasuries': operational_money_accounts(Treasury.objects.for_tenant(tenant), request).filter(is_active=True),
+        'bank_accounts': operational_money_accounts(BankAccount.objects.for_tenant(tenant), request).filter(is_active=True),
     }
     return render(request, 'employees/incentive_list.html', context)
 
@@ -686,7 +682,8 @@ def incentive_table_api(request):
     itype  = request.GET.get('type', '').strip()
     emp_id = request.GET.get('employee', '').strip()
 
-    qs = EmployeeIncentive.objects.filter(tenant=tenant).select_related('employee', 'treasury')
+    qs = EmployeeIncentive.objects.filter(tenant=tenant).select_related('employee', 'treasury', 'bank_account')
+    qs = filter_by_branch_via(qs, getattr(request, 'branch', None), field='employee__branch')
     records_total = qs.count()
 
     if status:
@@ -716,7 +713,7 @@ def incentive_table_api(request):
             'payout': inc.payout,
             'payout_display': inc.get_payout_display(),
             'date': str(inc.date),
-            'treasury': inc.treasury.name if inc.treasury else '—',
+            'treasury': (inc.treasury.name if inc.treasury else (inc.bank_account.name if inc.bank_account else '—')),
             'status': inc.status,
             'status_display': inc.get_status_display(),
             'notes': inc.notes,
@@ -751,6 +748,7 @@ def incentive_create(request):
     if not emp_id:
         return _err('يجب اختيار موظف')
     emp = get_object_or_404(Employee, pk=emp_id, tenant=tenant)
+    enforce_branch_ownership(request, emp)
 
     amount = _dec(data.get('amount', 0))
     if amount <= 0:
@@ -765,6 +763,8 @@ def incentive_create(request):
     payment_method = data.get('payment_method', 'cash')
     treasury_id    = data.get('treasury')
     treasury       = None
+    bank_account_id = data.get('bank_account')
+    bank_account    = None
 
     if itype == 'deduction':
         payout = 'with_salary'
@@ -773,49 +773,40 @@ def incentive_create(request):
         if payment_method == 'cash':
             if not treasury_id:
                 return _err('الحوافز الفورية النقدية تتطلب تحديد الخزينة')
-            treasury = get_object_or_404(Treasury, pk=treasury_id, tenant=tenant)
+            treasury = get_object_or_404(operational_money_accounts(Treasury.objects.for_tenant(tenant), request), pk=treasury_id)
+            enforce_branch_ownership(request, treasury)
             current_balance = treasury.current_balance or Decimal('0')
             if current_balance < amount:
                 return _err(f"رصيد الخزينة غير كافٍ. الرصيد الحالي: {current_balance:.2f} والمطلوب صرفه: {amount:.2f}.")
+        elif payment_method == 'bank':
+            if not bank_account_id:
+                return _err('الحوافز الفورية البنكية تتطلب تحديد الحساب البنكي')
+            bank_account = get_object_or_404(operational_money_accounts(BankAccount.objects.for_tenant(tenant), request), pk=bank_account_id, is_active=True)
+            enforce_branch_ownership(request, bank_account)
+            current_balance = bank_account.current_balance or Decimal('0')
+            if current_balance < amount:
+                return _err(f"رصيد الحساب البنكي غير كافٍ. الرصيد الحالي: {current_balance:.2f} والمطلوب صرفه: {amount:.2f}.")
         elif treasury_id:
-            treasury = get_object_or_404(Treasury, pk=treasury_id, tenant=tenant)
-    elif treasury_id:
-        treasury = get_object_or_404(Treasury, pk=treasury_id, tenant=tenant)
+            treasury = get_object_or_404(operational_money_accounts(Treasury.objects.for_tenant(tenant), request), pk=treasury_id)
+            enforce_branch_ownership(request, treasury)
+    else:
+        if treasury_id:
+            treasury = get_object_or_404(operational_money_accounts(Treasury.objects.for_tenant(tenant), request), pk=treasury_id)
+            enforce_branch_ownership(request, treasury)
+        elif bank_account_id:
+            bank_account = get_object_or_404(operational_money_accounts(BankAccount.objects.for_tenant(tenant), request), pk=bank_account_id, is_active=True)
+            enforce_branch_ownership(request, bank_account)
 
-    from django.db import transaction
+    from . import services as employee_services
     try:
-        with transaction.atomic():
-            inc = EmployeeIncentive.objects.create(
-                tenant=tenant,
-                employee=emp,
-                type=itype,
-                amount=amount,
-                description=description,
-                payout=payout,
-                payment_method=payment_method,
-                treasury=treasury,
-                bank_reference=(data.get('bank_reference') or '').strip(),
-                date=data.get('date') or timezone.localdate(),
-                notes=(data.get('notes') or '').strip(),
-                created_by=request.user,
-                updated_by=request.user,
-            )
-
-            if itype == 'bonus' and payout == 'immediate' and payment_method == 'cash' and treasury:
-                mv = post_treasury_disbursement(
-                    tenant=tenant,
-                    amount=amount,
-                    date=inc.date,
-                    reference_type='employee_incentive',
-                    reference_id=inc.pk,
-                    description=f'حافز {emp.name} — {description}',
-                    user=request.user,
-                    treasury=treasury,
-                )
-                if mv:
-                    inc.treasury_movement = mv
-                    inc.status = 'paid'
-                    inc.save(update_fields=['treasury_movement', 'status', 'updated_at'])
+        inc = employee_services.create_incentive(
+            tenant=tenant, employee=emp, amount=amount, description=description,
+            itype=itype, payout=payout, payment_method=payment_method,
+            treasury=treasury, bank_account=bank_account,
+            bank_reference=(data.get('bank_reference') or '').strip(),
+            date=data.get('date') or timezone.localdate(),
+            notes=(data.get('notes') or '').strip(), user=request.user,
+        )
     except ValueError as e:
         return _err(str(e))
 
@@ -828,13 +819,16 @@ def incentive_create(request):
 @require_POST
 def incentive_pay(request, pk):
     tenant = _tenant(request)
-    inc = get_object_or_404(EmployeeIncentive, pk=pk, tenant=tenant)
+    inc = get_object_or_404(EmployeeIncentive.objects.select_related('employee'), pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, inc, field='employee__branch')
     if inc.status != 'pending':
         return _err('الحافز ليس في حالة معلق')
     if inc.type != 'bonus':
         return _err('الخصومات لا تُصرف من الخزينة')
-    if not inc.treasury:
+    if inc.payment_method == 'cash' and not inc.treasury:
         return _err('يجب تحديد الخزينة')
+    if inc.payment_method == 'bank' and not inc.bank_account:
+        return _err('يجب تحديد الحساب البنكي')
     try:
         inc.pay()
     except ValueError as e:
@@ -848,7 +842,8 @@ def incentive_pay(request, pk):
 @require_POST
 def incentive_cancel(request, pk):
     tenant = _tenant(request)
-    inc = get_object_or_404(EmployeeIncentive, pk=pk, tenant=tenant)
+    inc = get_object_or_404(EmployeeIncentive.objects.select_related('employee'), pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, inc, field='employee__branch')
     if inc.status == 'cancelled':
         return _err('الحافز ملغى مسبقاً')
     inc.cancel()
@@ -866,6 +861,7 @@ def employee_pending_advances_api(request, pk):
     """إرجاع السلف القائمة للموظف لاستخدامها عند إنشاء كشف راتب"""
     tenant = _tenant(request)
     emp = get_object_or_404(Employee, pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, emp)
     advances = emp.advances.filter(status='pending').values('id', 'amount', 'date', 'notes')
     total = sum(a['amount'] for a in advances)
     return JsonResponse({
@@ -883,6 +879,7 @@ def employee_pending_incentives_api(request, pk):
     """إرجاع الحوافز/الخصومات المؤجلة للموظف ضمن فترة الراتب المحددة."""
     tenant = _tenant(request)
     emp = get_object_or_404(Employee, pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, emp)
     start = request.GET.get('period_start')
     end = request.GET.get('period_end')
 

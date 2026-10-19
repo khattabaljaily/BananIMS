@@ -1,5 +1,5 @@
 /* ============================================================
-   BananIMS - Customers Page Specific Styles
+   BANAN - Customers Page Specific Styles
    خاص بصفحة العملاء فقط
    ============================================================ */
 
@@ -17,7 +17,7 @@
     align-items: flex-start;
     justify-content: space-between;
     padding: 1.5rem 1.75rem;
-    background: linear-gradient(135deg, rgba(19,37,57,0.06), rgba(16,185,129,0.04));
+    background: linear-gradient(135deg, rgba(var(--primary-rgb), 0.06), rgba(16,185,129,0.04));
     border-bottom: 1px solid var(--border-light);
 }
 
@@ -72,14 +72,14 @@
 .cx-upload-area:hover,
 .cx-upload-area.drag-over {
     border-color: var(--primary);
-    background: rgba(19,37,57,0.04);
+    background: rgba(var(--primary-rgb), 0.04);
 }
 
 .cx-upload-icon {
     width: 64px;
     height: 64px;
     border-radius: 50%;
-    background: rgba(19,37,57,0.1);
+    background: rgba(var(--primary-rgb), 0.1);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -154,7 +154,7 @@
     flex-shrink: 0;
 }
 
-.cx-file-icon i  { font-size: 1.25rem; color: var(--success); }
+.cx-file-icon i  { font-size: 1.25rem; color: #10b981; }
 .cx-file-details { flex: 1; }
 
 .cx-file-name {
@@ -172,7 +172,7 @@
     border-radius: 8px;
     border: none;
     background: rgba(239,68,68,0.1);
-    color: var(--danger);
+    color: #ef4444;
     cursor: pointer;
     transition: all 0.15s ease;
     display: flex;
@@ -202,7 +202,7 @@
     gap: 0.4rem;
 }
 
-.cx-instructions-title i { color: var(--success); font-size: 0.8rem; }
+.cx-instructions-title i { color: #10b981; font-size: 0.8rem; }
 
 .cx-instructions-list {
     margin: 0;
@@ -243,7 +243,7 @@
 }
 
 [data-theme="dark"] .cx-import-header {
-    background: linear-gradient(135deg, rgba(19,37,57,0.1), rgba(16,185,129,0.06));
+    background: linear-gradient(135deg, rgba(var(--primary-rgb), 0.1), rgba(16,185,129,0.06));
     border-bottom-color: var(--border-light);
 }
 
@@ -341,7 +341,7 @@
         grid-template-columns: 1fr;
         gap: 0.75rem;
         padding: 0.9rem;
-        background: var(--bg-card, var(--surface));
+        background: var(--bg-card, #ffffff);
         border: 1px solid var(--border-color);
         border-radius: 18px;
         box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
@@ -349,7 +349,7 @@
     }
     .cx-customer-card:hover {
         transform: translateY(-1px);
-        border-color: rgba(19,37,57, 0.24);
+        border-color: rgba(var(--primary-rgb), 0.24);
         box-shadow: 0 16px 34px rgba(15, 23, 42, 0.12);
     }
     .cx-customer-card-head {
@@ -368,16 +368,16 @@
         margin: 0;
         font-size: 0.99rem;
         font-weight: 700;
-        color: var(--text-heading, var(--text-primary));
+        color: var(--text-heading, #111827);
         line-height: 1.2;
     }
     .cx-customer-card-code {
         margin: 0;
         font-size: 0.76rem;
-        color: var(--text-secondary, var(--text-tertiary));
+        color: var(--text-secondary, #6b7280);
     }
     .cx-customer-card-code code {
-        background: rgba(19,37,57, 0.09);
+        background: rgba(var(--primary-rgb), 0.09);
         padding: 0.2rem 0.4rem;
         border-radius: 6px;
         font-family: 'Courier New', monospace;
@@ -399,18 +399,18 @@
     .cx-customer-card-meta-label {
         font-size: 0.68rem;
         font-weight: 700;
-        color: var(--text-tertiary, var(--text-tertiary));
+        color: var(--text-tertiary, #6b7280);
         letter-spacing: 0.36px;
         text-transform: uppercase;
     }
     .cx-customer-card-meta-value {
         font-size: 0.92rem;
-        color: var(--text-heading, var(--text-primary));
+        color: var(--text-heading, #111827);
         font-weight: 700;
     }
-    .cx-customer-card-meta-value.cxr-bal--pos { color: var(--success); }
-    .cx-customer-card-meta-value.cxr-bal--neg { color: var(--danger); }
-    .cx-customer-card-meta-value.cxr-bal--zero { color: var(--text-secondary, var(--text-tertiary)); }
+    .cx-customer-card-meta-value.cxr-bal--pos { color: #10b981; }
+    .cx-customer-card-meta-value.cxr-bal--neg { color: #ef4444; }
+    .cx-customer-card-meta-value.cxr-bal--zero { color: var(--text-secondary, #6b7280); }
     .cx-customer-card-actions {
         display: flex;
         flex-wrap: wrap;
@@ -429,7 +429,7 @@
         border-color: rgba(15, 23, 42, 0.12);
     }
     .cx-customer-card-actions .cxr-act--view {
-        background: rgba(19,37,57, 0.08);
+        background: rgba(var(--primary-rgb), 0.08);
     }
     .cx-customer-card-actions .cxr-act--del {
         background: rgba(239, 68, 68, 0.08);

@@ -3,9 +3,9 @@
 {% load humanize %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/sales.css' %}?v=4.1">
-<link rel="stylesheet" href="{% static 'css/inv_detail.css' %}?v=2.0">
-<link rel="stylesheet" href="{% static 'css/print_invoice.css' %}?v=2.6">
+<link rel="stylesheet" href="{% static 'css/sales.css' %}?v=3.2">
+<link rel="stylesheet" href="{% static 'css/inv_detail.css' %}?v=1.1">
+<link rel="stylesheet" href="{% static 'css/print_invoice.css' %}?v=2.7">
 {% endblock %}
 
 {% block page_header %}{% endblock %}
@@ -151,6 +151,7 @@
                         <td style="color:var(--text-tertiary);font-size:.75rem;font-weight:600">{{ forloop.counter }}</td>
                         <td>
                             <div class="doc-line-name">{{ line.item.name }}</div>
+                            {% if line.serial_number %}<div class="doc-line-serial" style="font-size:.78rem;color:var(--text-tertiary);direction:ltr;text-align:right;"><i class="fas fa-barcode"></i> {{ line.serial_number }}</div>{% endif %}
                             {% if line.item.sku %}<div class="doc-line-sku">{{ line.item.sku }}</div>{% endif %}
                         </td>
                         <td class="text-center fw-bold">{{ line.quantity|floatformat:"-2" }}</td>

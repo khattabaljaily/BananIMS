@@ -4,7 +4,7 @@
 {% load capabilities_tags %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/items.css' %}?v=2.0">
+<link rel="stylesheet" href="{% static 'css/items.css' %}?v=1.1">
 <style>
 /* ── Unit type toggle ─────────────────────────────────────── */
 .unit-type-row { display:flex; gap:.75rem; }
@@ -20,8 +20,8 @@
 .unit-type-btn small { font-size:.68rem; font-weight:400; opacity:.7; }
 .unit-type-btn.active {
   border-color:var(--indigo-500,var(--primary));
-  background:var(--indigo-50,var(--indigo-50));
-  color:var(--indigo-700,var(--indigo-700));
+  background:var(--indigo-50,#ecfeff);
+  color:var(--indigo-700,#164e63);
 }
 /* ── Unit pair rows ───────────────────────────────────────── */
 .unit-pair {
@@ -43,8 +43,8 @@
 .unit-pair__prev-badge {
   display: inline-flex; align-items: center;
   height: 38px; padding: 0 .75rem;
-  background: var(--indigo-50); color: var(--indigo-700);
-  border: 1px solid #afc4d2; border-radius: .375rem;
+  background: #ecfeff; color: #164e63;
+  border: 1px solid #a5f3fc; border-radius: .375rem;
   font-size: .82rem; font-weight: 700;
   white-space: nowrap;
 }
@@ -64,7 +64,7 @@
   font-size: .95rem; font-weight: 700; cursor: pointer;
   color: #495057; transition: background .12s, color .12s;
 }
-.unit-counter__btn:hover { background: #e9ecef; color: var(--indigo-700); }
+.unit-counter__btn:hover { background: #e9ecef; color: #164e63; }
 .unit-counter__val {
   width: 46px; border: none;
   border-left: 1px solid #ced4da; border-right: 1px solid #ced4da;
@@ -79,17 +79,11 @@
   margin-bottom: .05rem;
 }
 .unit-pair__remove:hover { color: #ef4444; background: #fee2e2; }
-[data-theme="dark"] .unit-pair__prev-badge { background: rgba(19,37,57,.18); color: #a5b4fc; border-color: rgba(19,37,57,.3); }
+[data-theme="dark"] .unit-pair__prev-badge { background: rgba(var(--primary-rgb),.18); color: #4fbcb0; border-color: rgba(var(--primary-rgb),.3); }
 [data-theme="dark"] .unit-counter { border-color: rgba(255,255,255,.15); }
 [data-theme="dark"] .unit-counter__btn { background: rgba(255,255,255,.07); color: #e2e8f0; }
-[data-theme="dark"] .unit-counter__btn:hover { background: rgba(19,37,57,.18); color: #a5b4fc; }
+[data-theme="dark"] .unit-counter__btn:hover { background: rgba(var(--primary-rgb),.18); color: #4fbcb0; }
 [data-theme="dark"] .unit-counter__val { background: rgba(255,255,255,.05); color: #f1f5f9; border-color: rgba(255,255,255,.1); }
-/* ── HC auto-calc hint ────────────────────────────────────── */
-.cx-hc-calc-hint {
-  font-size: .78rem; color: var(--primary); font-weight: 600;
-  min-height: 1.1rem; margin-top: 3px; transition: opacity .15s;
-}
-[data-theme="dark"] .cx-hc-calc-hint { color: #a5b4fc; }
 
 /* ── Ledger modal: restore real table layout on mobile ─── */
 @media (max-width: 768px) {
@@ -131,10 +125,6 @@
                     <i class="fas fa-file-export"></i>
                     <span>تصدير</span>
                 </a>
-                <button type="button" class="cx-btn-secondary" id="btnOpenImportItems" data-require-perm="import_items">
-                    <i class="fas fa-file-import"></i>
-                    <span>استيراد</span>
-                </button>
                 <button type="button" class="cx-btn-add" id="btnOpenCreateItem" data-require-perm="add_items">
                     <i class="fas fa-plus"></i>
                     <span>إضافة منتج</span>
@@ -170,6 +160,12 @@
             <input type="text" id="itemSearchInput" class="cx-search-input" placeholder="ابحث بالاسم أو الـ SKU أو الباركود...">
         </div>
         <div class="cx-toolbar-end">
+            <select id="supplierFilter" class="form-select form-select-sm" style="width:auto">
+                <option value="">كل الشركات الموردة</option>
+                {% for s in suppliers %}
+                    <option value="{{ s.id }}">{{ s.name }}</option>
+                {% endfor %}
+            </select>
             <div class="cx-filter-tabs" role="group">
                 <button type="button" class="cx-filter-tab active" data-status="">الكل</button>
                 <button type="button" class="cx-filter-tab" data-status="active">نشط</button>
@@ -182,7 +178,7 @@
         <table id="itemsTable" class="cx-table">
             <thead>
                 <tr>
-                    <th style="min-width:220px">المنتج</th>
+                    <th>المنتج</th>
                     <th>الـ SKU</th>
                     <th>التصنيف</th>
                     <th>وحدة البيع</th>
@@ -243,6 +239,10 @@
                                 {{ item_form.category }}
                             </div>
                             <div class="col-md-4">
+                                <label class="cx-label" for="id_supplier">{{ item_form.supplier.label }}</label>
+                                {{ item_form.supplier }}
+                            </div>
+                            <div class="col-md-4">
                                 <label class="cx-label" for="id_barcode">{{ item_form.barcode.label }}</label>
                                 {{ item_form.barcode }}
                             </div>
@@ -274,7 +274,7 @@
                                     <input type="radio" name="item_unit_mode" value="multiple">
                                     <i class="fas fa-cubes"></i>
                                     وحدات متعددة
-                                    <small>مثال: حبة + كرتون</small>
+                                    <small>مثال: قطعة + كرتون</small>
                                 </label>
                             </div>
 
@@ -342,42 +342,11 @@
                         </div>
 
                         {# ── ٤: خيارات متقدمة — تظهر فقط للأنواع التجارية التي تدعمها ── #}
-                        {% if tenant_capabilities.has_expiry_dates or tenant_capabilities.has_batch_numbers or tenant_capabilities.has_serial_numbers %}
+                        {% if tenant_capabilities.has_serial_numbers %}
                         <div class="cx-form-group-label">
                             <span class="cx-form-group-icon"><i class="fas fa-sliders"></i></span> خيارات متقدمة
                         </div>
                         <div class="row g-3 mb-4">
-                            {% if tenant_capabilities.has_expiry_dates %}
-                            <div class="col-md-6">
-                                <label class="cx-toggle-card" for="id_track_expiry">
-                                    <div class="cx-toggle-info">
-                                        <span class="cx-toggle-title">
-                                            <i class="fas fa-calendar-xmark text-danger me-1"></i>
-                                            {{ item_form.track_expiry.label }}
-                                        </span>
-                                        <span class="cx-toggle-desc">تتبع تاريخ انتهاء الصلاحية لهذا المنتج</span>
-                                    </div>
-                                    {{ item_form.track_expiry }}
-                                    <div class="cx-toggle-switch"></div>
-                                </label>
-                            </div>
-                            {% endif %}
-                            {% if tenant_capabilities.has_batch_numbers %}
-                            <div class="col-md-6">
-                                <label class="cx-toggle-card" for="id_track_batch">
-                                    <div class="cx-toggle-info">
-                                        <span class="cx-toggle-title">
-                                            <i class="fas fa-layer-group text-warning me-1"></i>
-                                            {{ item_form.track_batch.label }}
-                                        </span>
-                                        <span class="cx-toggle-desc">تتبع أرقام الدفعات لهذا المنتج</span>
-                                    </div>
-                                    {{ item_form.track_batch }}
-                                    <div class="cx-toggle-switch"></div>
-                                </label>
-                            </div>
-                            {% endif %}
-                            {% if tenant_capabilities.has_serial_numbers %}
                             <div class="col-md-6">
                                 <label class="cx-toggle-card" for="id_track_serial">
                                     <div class="cx-toggle-info">
@@ -391,9 +360,23 @@
                                     <div class="cx-toggle-switch"></div>
                                 </label>
                             </div>
-                            {% endif %}
                         </div>
                         {% endif %}
+
+                        {# ── بيانات المصدر ── #}
+                        <div class="cx-form-group-label">
+                            <span class="cx-form-group-icon"><i class="fas fa-industry"></i></span> بيانات المصدر
+                        </div>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label class="cx-label" for="id_manufacturer">{{ item_form.manufacturer.label }}</label>
+                                {{ item_form.manufacturer }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="cx-label" for="id_country_of_origin">{{ item_form.country_of_origin.label }}</label>
+                                {{ item_form.country_of_origin }}
+                            </div>
+                        </div>
 
                         {# ── ٥: معلومات إضافية ── #}
                         <div class="cx-form-group-label">
@@ -699,40 +682,6 @@
     </div>
 </div>
 
-<!-- ══════════════════════════ IMPORT MODAL ══════════════════════════ -->
-<div class="modal fade" id="importItemsModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered cx-modal-dialog" style="max-width:480px">
-        <div class="modal-content cx-modal">
-            <div class="cx-modal-main">
-                <div class="cx-modal-header">
-                    <h5 class="cx-modal-title"><i class="fas fa-file-import me-2"></i>استيراد منتجات</h5>
-                    <button type="button" class="cx-modal-close" data-bs-dismiss="modal"><i class="fas fa-times"></i></button>
-                </div>
-                <div class="cx-modal-body">
-                    <div class="alert alert-info d-flex align-items-start gap-2 mb-3" style="font-size:.875rem">
-                        <i class="fas fa-circle-info mt-1"></i>
-                        <div>
-                            ارفع ملف CSV أو Excel يحتوي على بيانات المنتجات.
-                            <a href="{% url 'items:template_api' %}" class="fw-bold" data-no-spinner>تحميل النموذج</a>
-                        </div>
-                    </div>
-                    <div id="importItemsResult" class="d-none mb-3"></div>
-                    <div class="mb-3">
-                        <label class="cx-label" for="importItemsFile">اختر الملف <sup class="cx-required">*</sup></label>
-                        <input type="file" class="form-control" id="importItemsFile" accept=".csv,.xlsx,.xls">
-                    </div>
-                </div>
-                <div class="cx-modal-footer">
-                    <button type="button" class="cx-btn-ghost" data-bs-dismiss="modal">إغلاق</button>
-                    <button type="button" class="cx-btn-primary" id="confirmImportItemsBtn">
-                        <i class="fas fa-upload me-1"></i> استيراد
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
 {% endblock %}
 
 {% block extra_js %}
@@ -741,8 +690,7 @@
     'use strict';
 
     const hasPerm = window.hasPerm || (function(){ return false; });
-    const CURRENCY_SYMBOLS = {{ currency_symbols_json|safe }};
-    function curSym(code) { return CURRENCY_SYMBOLS[(code || '').toUpperCase()] || code || ''; }
+
 
     const urlTable       = "{% url 'items:table_api' %}";
     const urlCreate      = "{% url 'items:create_api' %}";
@@ -752,8 +700,6 @@
     const urlDelete      = "{% url 'items:delete_api' 0 %}";
     const urlCatOptions  = "{% url 'items:category_options_api' %}";
     const CAP = {
-        hasExpiryDates:  {{ tenant_capabilities.has_expiry_dates|yesno:"true,false" }},
-        hasBatchNumbers: {{ tenant_capabilities.has_batch_numbers|yesno:"true,false" }},
         hasSerialNumbers:{{ tenant_capabilities.has_serial_numbers|yesno:"true,false" }},
     };
     function apiUrl(tpl, id) { return tpl.replace('/0/', '/' + id + '/'); }
@@ -799,7 +745,6 @@
                     <div class="cx-item-card-title-wrap">
                         <h2 class="cx-item-card-title">${r.name || '—'}</h2>
                         <div class="cx-item-card-badge-row">
-                            ${CAP.hasExpiryDates  && r.track_expiry ? '<span class="cx-item-card-badge">تتبع الانتهاء</span>' : ''}
                             ${CAP.hasSerialNumbers && r.track_serial ? '<span class="cx-item-card-badge">رقم تسلسلي</span>' : ''}
                         </div>
                     </div>
@@ -851,7 +796,7 @@
         },
         ajax: {
             url : urlTable,
-            data: function (d) { d.status = activeStatus; }
+            data: function (d) { d.status = activeStatus; d.supplier = $('#supplierFilter').val(); }
         },
         drawCallback: function () {
             renderMobileItemCards(dt.rows({ page: 'current' }).data().toArray());
@@ -859,10 +804,8 @@
         columns: [
             {
                 data: null,
-                width: '220px',
                 render: function(_, __, r) {
                     let badges = '';
-                    if (CAP.hasExpiryDates  && r.track_expiry) badges += `<span class="badge bg-danger ms-1" style="font-size:0.6rem" title="تتبع الانتهاء"><i class="fas fa-calendar-xmark"></i></span>`;
                     if (CAP.hasSerialNumbers && r.track_serial) badges += `<span class="badge bg-info ms-1" style="font-size:0.6rem" title="رقم تسلسلي"><i class="fas fa-barcode"></i></span>`;
                     return `<span class="cxr-name">${r.name}</span>${badges}`;
                 }
@@ -926,6 +869,7 @@
         activeStatus = $(this).data('status');
         dt.ajax.reload();
     });
+    $('#supplierFilter').on('change', function () { dt.ajax.reload(); });
 
     /* ── Reset form ────────────────────────────────────────── */
     /* ══════════════════════════════════════════════════════════
@@ -953,7 +897,7 @@
                     '<div class="unit-pair__grp unit-pair__grp--name">' +
                     '  <div class="unit-pair__lbl">اسم الوحدة الأصغر</div>' +
                     '  <input type="text" class="form-control" ' +
-                    '         placeholder="مثال: حبة، كيلو، متر" ' +
+                    '         placeholder="مثال: قطعة، كيلو، متر" ' +
                     '         value="' + escUnitHtml(row.name) + '" data-idx="0" data-field="name">' +
                     '</div>';
             } else {
@@ -1172,6 +1116,7 @@
                 $('#id_barcode').val(d.barcode || '');
                 $('#id_item_type').val(d.item_type || '');
                 $('#id_category').val(d.category || '');
+                $('#id_supplier').val(d.supplier || '');
                 // Load units from ItemUnit data
                 loadUnitsFromData(d.item_units || []);
                 if (d.item_units && d.item_units.length === 1) {
@@ -1183,9 +1128,9 @@
                 $('#id_tax_rate').val(BananIMS.parseNumber(d.tax_rate) || '');
                 $('#id_min_quantity').val(BananIMS.parseNumber(d.min_quantity) || '');
                 $('#id_max_quantity').val(BananIMS.parseNumber(d.max_quantity) || '');
-                $('#id_track_expiry').prop('checked', !!d.track_expiry);
-                $('#id_track_batch').prop('checked', !!d.track_batch);
                 $('#id_track_serial').prop('checked', !!d.track_serial);
+                $('#id_manufacturer').val(d.manufacturer || '');
+                $('#id_country_of_origin').val(d.country_of_origin || '');
                 $('#id_description').val(d.description || '');
                 $('#id_is_active').prop('checked', !!d.is_active);
                 $('#id_is_sellable').prop('checked', !!d.is_sellable);
@@ -1332,8 +1277,6 @@
 
                 // خيارات متقدمة
                 let tracking = [];
-                if (d.track_expiry)  tracking.push('تتبع الانتهاء');
-                if (d.track_batch)   tracking.push('تتبع الدفعات');
                 if (d.track_serial)  tracking.push('رقم تسلسلي');
                 $('#viewItemTracking').text(tracking.length ? tracking.join(' ، ') : 'لا يوجد');
 
@@ -1388,7 +1331,6 @@
                     'opening_balance':          'رصيد افتتاحي',
                     'stock_transfer':           'تحويل مخزون',
                     'stocktake':                'جرد مخزون',
-                    'manufacturing_order':      'أمر تصنيع',
                 };
 
                 const rows = d.movements.map(function(m) {
@@ -1445,47 +1387,6 @@
         deleteModal.show();
     });
     $('#viewEditItemBtn').on('click', function () { viewModal.hide(); openEdit($(this).data('id')); });
-
-    /* ── Import ──────────────────────────────────────────────── */
-    const importItemsModal = new bootstrap.Modal(document.getElementById('importItemsModal'));
-    document.getElementById('importItemsModal') && document.body.appendChild(document.getElementById('importItemsModal'));
-
-    $('#btnOpenImportItems').on('click', function () {
-        $('#importItemsFile').val('');
-        $('#importItemsResult').addClass('d-none').html('');
-        importItemsModal.show();
-    });
-
-    $('#confirmImportItemsBtn').on('click', function () {
-        const file = $('#importItemsFile')[0].files[0];
-        if (!file) { BananIMS.toast('الرجاء اختيار ملف', 'error'); return; }
-        const fd = new FormData();
-        fd.append('file', file);
-        fd.append('csrfmiddlewaretoken', $('[name=csrfmiddlewaretoken]').first().val());
-        const $btn = $(this);
-        BananIMS.showLoading($btn);
-        $.ajax({
-            url: "{% url 'items:import_api' %}",
-            method: 'POST',
-            data: fd,
-            processData: false,
-            contentType: false,
-            success: function (resp) {
-                BananIMS.hideLoading($btn, '<i class="fas fa-upload me-1"></i> استيراد');
-                const cls = resp.success ? 'alert-success' : 'alert-danger';
-                let html = `<div class="alert ${cls} mb-0">${resp.message}</div>`;
-                if (resp.errors && resp.errors.length) {
-                    html += '<ul class="mt-2 mb-0 small text-danger">' + resp.errors.map(e => `<li>${e}</li>`).join('') + '</ul>';
-                }
-                $('#importItemsResult').removeClass('d-none').html(html);
-                if (resp.success && resp.imported > 0) dt.ajax.reload(null, false);
-            },
-            error: function () {
-                BananIMS.hideLoading($btn, '<i class="fas fa-upload me-1"></i> استيراد');
-                BananIMS.toast('حدث خطأ أثناء الاستيراد', 'error');
-            }
-        });
-    });
 
     /* ── Category select: tree-indented ────────────────────── */
     (function initCategoryTreeSelect() {

@@ -13,6 +13,7 @@ urlpatterns = [
     path('terms/', views.terms_of_service, name='terms_of_service'),
     path('no-tenant/', views.no_tenant, name='no_tenant'),
     path('no-permission/', views.no_permission, name='no_permission'),
+    path('pending-approval/', views.pending_approval, name='pending_approval'),
     path('settings/tenant/', views.tenant_settings, name='tenant_settings'),
     path('settings/tenant/api/update/', views.tenant_settings_update_api, name='tenant_settings_update_api'),
     path('settings/tenant/api/upload-logo/', views.tenant_logo_upload_api, name='tenant_logo_upload_api'),
@@ -20,6 +21,15 @@ urlpatterns = [
     path('pricing/', views.pricing, name='pricing'),
     path('about/', views.about, name='about'),
     path('analytics/', views.analytics, name='analytics'),
+
+    # Branches (الفروع)
+    path('branches/', views.branch_list, name='branch_list'),
+    path('branches/api/table/', views.branch_table_api, name='branch_table_api'),
+    path('branches/api/create/', views.branch_create_api, name='branch_create_api'),
+    path('branches/api/<int:pk>/detail/', views.branch_detail_api, name='branch_detail_api'),
+    path('branches/api/<int:pk>/update/', views.branch_update_api, name='branch_update_api'),
+    path('branches/api/<int:pk>/delete/', views.branch_delete_api, name='branch_delete_api'),
+    path('branches/api/<int:pk>/assign-manager/', views.branch_assign_manager_api, name='branch_assign_manager_api'),
 
     # Tenant management (superuser)
     path('tenants/', views.tenant_list, name='tenant_list'),
@@ -29,6 +39,7 @@ urlpatterns = [
     path('tenants/api/<int:pk>/update/', views.tenant_update_api, name='tenant_update_api'),
     path('tenants/api/<int:pk>/delete/', views.tenant_delete_api, name='tenant_delete_api'),
     path('tenants/api/<int:pk>/suspend/', views.tenant_suspend_api, name='tenant_suspend_api'),
+    path('tenants/api/<int:pk>/approve/', views.tenant_approve_api, name='tenant_approve_api'),
     path('tenants/api/<int:pk>/renew/', views.tenant_renew_api, name='tenant_renew_api'),
 
     # System — Users
@@ -87,6 +98,7 @@ urlpatterns = [
     # Tenant Backup (manual — all plans)
     path('settings/backup/create/', views.tenant_backup_create_api, name='tenant_backup_create_api'),
     path('settings/backup/download/<int:backup_id>/', views.tenant_backup_download, name='tenant_backup_download'),
+    path('settings/backup/delete/<int:backup_id>/', views.tenant_backup_delete_api, name='tenant_backup_delete_api'),
 
     # Help panel tracking
     path('help/open/', views.help_open_track, name='help_open_track'),

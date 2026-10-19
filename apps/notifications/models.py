@@ -11,7 +11,7 @@ class Notification(TenantMixin):
     TYPE_CHOICES = (
         ('low_stock',        'مخزون منخفض'),
         ('overdue_invoice',  'فاتورة متأخرة'),
-        ('rfq_expiry',       'انتهاء صلاحية طلب السعر'),
+        ('rfq_expiry',       'قرب انتهاء مدة طلب السعر'),
         ('transfer_done',    'اكتمال تحويل مخزون'),
         ('stocktake_done',   'اكتمال جرد مخزون'),
         ('online_order',     'طلب جديد من المتجر'),
@@ -38,6 +38,13 @@ class Notification(TenantMixin):
         null=True, blank=True,
         related_name='notifications',
         verbose_name='المستخدم',
+    )
+    branch = models.ForeignKey(
+        'core.Branch',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='notifications',
+        verbose_name='الفرع',
     )
 
     class Meta:

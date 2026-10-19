@@ -11,6 +11,8 @@ Stocks Models - نماذج المخازن
   - كل مخزن جديد يحصل تلقائياً على سجل StockQuantity (كمية=0) لكل منتجات الـ tenant
   - هذا يتم عبر Django Signals في ملف signals.py
 """
+from decimal import Decimal
+
 from django.db import models
 from django.db.models import Sum
 from apps.core.models import TenantMixin
@@ -29,25 +31,25 @@ class Stock(TenantMixin):
     - في multi_branch: كل مخزن مرتبط بفرع (branch) معين.
     """
 
-    TYPE_CHOICES = (
-        ('main', 'مخزن رئيسي'),
-        ('branch', 'مخزن فرع'),
-    )
-
     # ------ معلومات أساسية ------
     name = models.CharField('اسم المخزن', max_length=200)
     code = models.CharField('الرمز', max_length=20, blank=True)
-    stock_type = models.CharField(
-        'نوع المخزن', max_length=20,
-        choices=TYPE_CHOICES, default='main'
-    )
 
     # ------ الفرع المرتبط (للنسخة multi_branch فقط) ------
-    # سيتم ربطه بـ branches.Branch عند إنشاء تطبيق الفروع
-    # branch = models.ForeignKey('branches.Branch', ...)
+    branch = models.ForeignKey(
+        'core.Branch', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='stocks', verbose_name='الفرع'
+    )
+    # المخزن المركزي للإدارة (نسخة المؤسسات فقط): بلا فرع، تملكه الإدارة
+    # وتوزّع منه على مخازن الفروع بشحنات. مخزن توزيع فقط (لا بيع منه)، ويختفي عن
+    # مستخدمي الفروع لأنه بلا فرع. مخزن مركزي واحد فقط لكل مشترك.
+    is_central = models.BooleanField(
+        'مخزن مركزي', default=False,
+        help_text='مخزن الإدارة المركزية: بلا فرع، للشراء المركزي والتوزيع على الفروع فقط.'
+    )
     branch_name = models.CharField(
-        'اسم الفرع', max_length=200, blank=True,
-        help_text='يُستخدم مؤقتاً حتى يتم إنشاء تطبيق الفروع'
+        'اسم الفرع (قديم)', max_length=200, blank=True,
+        help_text='حقل قديم قبل إضافة موديل الفرع الحقيقي — يُستخدم كنسخة احتياطية فقط'
     )
 
     # ------ تفاصيل إضافية ------
@@ -78,7 +80,7 @@ class Stock(TenantMixin):
         ]
 
     def __str__(self):
-        return f"{self.name} ({self.get_stock_type_display()})"
+        return self.name
 
     def save(self, *args, **kwargs):
         # توليد رمز تلقائي إذا لم يُحدَّد
@@ -103,13 +105,31 @@ class Stock(TenantMixin):
 
         super().save(*args, **kwargs)
 
+    def has_linked_records(self):
+        """
+        هل للمخزن سجلات مرتبطة (فواتير، شحنات، حركات، جرد…) أو كميات غير صفرية؟
+        مخزن بلا سجلات يجوز حذفه أو تغيير نوعه (مركزي ↔ فرعي) بأمان؛ وإلا يُمنع حفاظًا على التقارير.
+        يتجاهل سجلات StockQuantity التي تُنشأ تلقائيًا بالصفر.
+        """
+        for rel in self._meta.related_objects:
+            if rel.related_model.__name__ == 'StockQuantity':
+                continue
+            if rel.related_model._base_manager.filter(**{rel.field.name: self}).exists():
+                return True
+        return self.quantities.exclude(quantity=0).exists()
+
     @staticmethod
     def can_add_stock(tenant):
         """
         هل يستطيع هذا الـ tenant إضافة مخزن جديد؟
         يُستخدم في الـ view للتحقق قبل السماح بالإضافة.
+        نسخة "محل واحد بمخزن واحد" محدودة بمخزن واحد بغض النظر عن max_stocks
+        (المخزن الأول لازم يُسمح به دائماً، حتى لو لم يُضبط للباقة بعدُ
+        max_stocks صحيح لأي سبب).
         """
         current_count = Stock.objects.filter(tenant=tenant, is_active=True).count()
+        if tenant.version_type == 'single_store':
+            return current_count < 1
         return current_count < tenant.max_stocks
 
 
@@ -131,6 +151,7 @@ class StockQuantity(TenantMixin):
       - فواتير البيع   (StockMovement type=out)
       - تحويلات المخزن (StockMovement type=transfer)
       - تسوية الجرد    (StockMovement type=adjustment)
+      - إتلاف مخزون    (StockMovement type=destruction_out)
     لا يُسمح بتعديل الكمية مباشرة من هذا الجدول.
     """
 
@@ -174,6 +195,14 @@ class StockQuantity(TenantMixin):
             models.Index(fields=['tenant', 'item']),
             models.Index(fields=['tenant', 'stock', 'quantity']),
         ]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(quantity__gte=0), name='stockquantity_quantity_gte_0'
+            ),
+            models.CheckConstraint(
+                check=models.Q(reserved_quantity__gte=0), name='stockquantity_reserved_quantity_gte_0'
+            ),
+        ]
 
     def __str__(self):
         return f"{self.item.name} @ {self.stock.name} = {self.quantity}"
@@ -205,10 +234,27 @@ class StockQuantity(TenantMixin):
 # ============================================
 
 class StockTransfer(TenantMixin):
+    """
+    تحويل مخزون بين مخزنين.
+    - داخل الفرع نفسه (أو نسخة بلا فروع): مسودة ← مؤكد، تنتقل الكمية فوراً.
+    - بين فرعين (is_inter_branch): مسودة ← (إرسال من الفرع المحوِّل) في الطريق ←
+      (اعتماد الفرع المستلِم للكمية الفعلية) تم الاستلام. الفرق يتحمّله الفرع المحوِّل:
+      الزائد يُخصم من مخزنه عند الاستلام، والناقص يبقى معلّقاً (shortage_status=pending)
+      حتى تسويته: إرجاع لمخزنه أو شطبه تالفاً بسجل إتلاف عليه.
+    في نسخة الفروع التحويلات شغل الفروع وحدها؛ مدير النشاط لا يدخلها.
+    """
     STATUS_CHOICES = (
-        ('draft',     'مسودة'),
-        ('confirmed', 'مؤكد'),
-        ('cancelled', 'ملغي'),
+        ('draft',      'مسودة'),
+        ('confirmed',  'مؤكد'),
+        ('in_transit', 'في الطريق'),
+        ('received',   'تم الاستلام'),
+        ('cancelled',  'ملغي'),
+    )
+    SHORTAGE_CHOICES = (
+        ('none',        'لا يوجد'),
+        ('pending',     'بانتظار التسوية'),
+        ('restocked',   'أُعيد لمخزن الفرع المحوِّل'),
+        ('written_off', 'شُطب تالفاً على الفرع المحوِّل'),
     )
 
     transfer_number = models.CharField('رقم التحويل', max_length=30, blank=True)
@@ -223,6 +269,26 @@ class StockTransfer(TenantMixin):
     )
     status          = models.CharField('الحالة', max_length=12, choices=STATUS_CHOICES, default='draft')
     notes           = models.TextField('ملاحظات', blank=True)
+
+    # ------ التحويل بين الفروع ------
+    is_inter_branch = models.BooleanField('بين فرعين', default=False)
+    sent_at         = models.DateTimeField('وقت الإرسال', null=True, blank=True)
+    received_at     = models.DateTimeField('وقت الاستلام', null=True, blank=True)
+    received_by     = models.ForeignKey(
+        'accounts.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='received_stock_transfers', verbose_name='استلمه'
+    )
+    has_difference  = models.BooleanField('فيه فرق استلام', default=False)
+    shortage_status = models.CharField('حالة الناقص', max_length=12, choices=SHORTAGE_CHOICES, default='none')
+    settled_at      = models.DateTimeField('وقت تسوية الناقص', null=True, blank=True)
+    settled_by      = models.ForeignKey(
+        'accounts.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='settled_stock_transfers', verbose_name='سوّى الناقص'
+    )
+    shortage_destruction = models.ForeignKey(
+        'StockDestruction', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='transfer_shortages', verbose_name='سجل إتلاف الناقص'
+    )
 
     class Meta:
         db_table = 'stock_transfers'
@@ -269,6 +335,9 @@ class StockTransferLine(TenantMixin):
     )
     quantity = models.DecimalField('الكمية', max_digits=12, decimal_places=4)
     notes    = models.TextField('ملاحظات', blank=True)
+    # للتحويل بين الفروع: الكمية الفعلية التي اعتمدها الفرع المستلِم، وتكلفة الوحدة وقت الإرسال.
+    quantity_received = models.DecimalField('الكمية المستلَمة', max_digits=12, decimal_places=4, null=True, blank=True)
+    unit_cost = models.DecimalField('تكلفة الوحدة', max_digits=14, decimal_places=2, default=0)
 
     class Meta:
         db_table = 'stock_transfer_lines'
@@ -277,6 +346,125 @@ class StockTransferLine(TenantMixin):
 
     def __str__(self):
         return f"{self.item.name} × {self.quantity}"
+
+    @property
+    def difference(self):
+        """المستلَم − المرسل: موجب = زائد، سالب = ناقص، None قبل الاستلام."""
+        if self.quantity_received is None:
+            return None
+        return self.quantity_received - self.quantity
+
+    @property
+    def shortage(self):
+        diff = self.difference
+        return -diff if diff is not None and diff < 0 else Decimal('0')
+
+
+
+
+# ============================================
+# SHIPMENT (شحنة من المخزن المركزي إلى مخزن فرع)
+# ============================================
+
+class Shipment(TenantMixin):
+    """
+    شحنة توزيع من المخزن المركزي للإدارة إلى مخزن أحد الفروع.
+    تخرج الكمية من المركزي عند الإرسال وتبقى "في الطريق" (بلا مهلة) حتى يؤكد
+    مدير الفرع الكمية الفعلية المستلَمة؛ يدخل مخزن الفرع ما استُلم فعلاً، ويعود الفرق
+    تلقائياً للمخزن المركزي مع تعليم الشحنة (has_difference) لمراجعة الإدارة.
+    """
+    STATUS_CHOICES = (
+        ('draft',      'مسودة'),
+        ('in_transit', 'في الطريق'),
+        ('received',   'تم الاستلام'),
+        ('cancelled',  'ملغية'),
+    )
+
+    # to_branch: توزيع من المخزن المركزي إلى الفرع (ترسلها الإدارة ويؤكد الفرع استلامها).
+    # to_central: مرتجع من الفرع إلى المخزن المركزي (يرسله الفرع وتؤكد الإدارة استلامه)،
+    # ثم تعيده الإدارة للمورد بمرتجع شراء مركزي.
+    DIRECTION_CHOICES = (
+        ('to_branch', 'توزيع من المركزي إلى الفرع'),
+        ('to_central', 'مرتجع من الفرع إلى المركزي'),
+    )
+    direction = models.CharField('الاتجاه', max_length=10, choices=DIRECTION_CHOICES, default='to_branch')
+
+    shipment_number = models.CharField('رقم الشحنة', max_length=30, blank=True)
+    shipment_date = models.DateField('تاريخ الشحنة')
+    from_stock = models.ForeignKey(
+        Stock, on_delete=models.PROTECT, related_name='shipments_out', verbose_name='من المخزن')
+    to_stock = models.ForeignKey(
+        Stock, on_delete=models.PROTECT, related_name='shipments_in', verbose_name='إلى المخزن')
+    # الفرع المعني بالشحنة (مشتق من مخزن الفرع في أي اتجاه)؛ عليه يقوم عزل الشحنات بين الفروع.
+    branch = models.ForeignKey(
+        'core.Branch', on_delete=models.PROTECT, related_name='incoming_shipments', verbose_name='الفرع')
+    status = models.CharField('الحالة', max_length=12, choices=STATUS_CHOICES, default='draft')
+    notes = models.TextField('ملاحظات', blank=True)
+    has_difference = models.BooleanField('فيها فرق استلام', default=False)
+    sent_at = models.DateTimeField('وقت الإرسال', null=True, blank=True)
+    received_at = models.DateTimeField('وقت الاستلام', null=True, blank=True)
+    received_by = models.ForeignKey(
+        'accounts.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='received_shipments', verbose_name='استلمها')
+    # طلب الشراء الذي تنفّذه هذه الشحنة (النمط المركزي)؛ فارغ للشحنات المبادَر بها من الإدارة.
+    requisition = models.ForeignKey(
+        'requisitions.PurchaseRequisition', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='shipments', verbose_name='طلب الشراء')
+
+    class Meta:
+        db_table = 'stock_shipments'
+        verbose_name = 'شحنة مخزن مركزي'
+        verbose_name_plural = 'شحنات المخزن المركزي'
+        ordering = ['-shipment_date', '-id']
+        indexes = [
+            models.Index(fields=['tenant', 'status']),
+            models.Index(fields=['tenant', 'branch', 'status']),
+        ]
+
+    def __str__(self):
+        return f"{self.shipment_number} ({self.from_stock} → {self.to_stock})"
+
+    def save(self, *args, **kwargs):
+        if not self.shipment_number:
+            prefix = 'RET' if self.direction == 'to_central' else 'SHP'
+            last = (
+                Shipment.objects.filter(tenant=self.tenant, shipment_number__startswith=f'{prefix}-')
+                .order_by('-id').first()
+            )
+            next_num = 1
+            if last:
+                try:
+                    next_num = int(last.shipment_number.split('-')[-1]) + 1
+                except ValueError:
+                    pass
+            self.shipment_number = f"{prefix}-{next_num:05d}"
+        super().save(*args, **kwargs)
+
+
+class ShipmentLine(TenantMixin):
+    shipment = models.ForeignKey(Shipment, on_delete=models.CASCADE, related_name='lines', verbose_name='الشحنة')
+    item = models.ForeignKey('items.Item', on_delete=models.PROTECT, related_name='shipment_lines', verbose_name='المنتج')
+    quantity_sent = models.DecimalField('الكمية المرسلة', max_digits=12, decimal_places=4)
+    quantity_received = models.DecimalField('الكمية المستلَمة', max_digits=12, decimal_places=4, null=True, blank=True)
+    requisition_line = models.ForeignKey(
+        'requisitions.PurchaseRequisitionLine', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='shipment_lines', verbose_name='بند طلب الشراء')
+    # تكلفة الصنف وقت الإرسال (تكلفة الشراء المركزي) — لقطة للتقارير.
+    unit_cost = models.DecimalField('تكلفة الوحدة', max_digits=14, decimal_places=4, default=0)
+
+    class Meta:
+        db_table = 'stock_shipment_lines'
+        verbose_name = 'بند شحنة'
+        verbose_name_plural = 'بنود الشحنات'
+
+    def __str__(self):
+        return f"{self.item.name} × {self.quantity_sent}"
+
+    @property
+    def difference(self):
+        if self.quantity_received is None:
+            return None
+        return self.quantity_sent - self.quantity_received
 
 
 # ============================================
@@ -368,51 +556,109 @@ class StocktakeLine(TenantMixin):
 
 
 # ============================================
-# MANUFACTURING ORDER (أوامر التصنيع)
+# STOCK DESTRUCTION (إتلاف الأصناف التالفة)
 # ============================================
 
-class ManufacturingOrder(TenantMixin):
-    """أمر تصنيع — تنفيذ وصفة BOM"""
+class StockDestruction(TenantMixin):
+    """
+    سجل إتلاف موثّق لأصناف تالفة أو معيبة أو مفقودة — يُخرجها من المخزون بأثر موثّق.
+    - draft:     جاري تجهيز السجل
+    - confirmed: تم تطبيق الإتلاف على المخزون (لا يمكن التراجع)
+    - cancelled: أُلغي السجل بدون أي تأثير على المخزون
+    """
     STATUS_CHOICES = (
-        ('draft', 'مسودة'),
+        ('draft',     'مسودة'),
         ('confirmed', 'مؤكد'),
         ('cancelled', 'ملغي'),
     )
-    order_number = models.CharField('رقم الأمر', max_length=30, blank=True)
-    recipe = models.ForeignKey(
-        'items.BOMRecipe', on_delete=models.PROTECT,
-        related_name='manufacturing_orders', verbose_name='الوصفة'
+    REASON_CHOICES = (
+        ('damaged', 'تالف'),
+        ('defective', 'عيب مصنعي'),
+        ('lost', 'مفقود'),
+        ('recalled', 'مسحوب من الشركة المصنعة'),
+        ('other', 'أخرى'),
     )
-    stock = models.ForeignKey(
+
+    destruction_number = models.CharField('رقم السجل', max_length=30, blank=True)
+    destruction_date    = models.DateField('تاريخ الإتلاف')
+    stock                = models.ForeignKey(
         Stock, on_delete=models.PROTECT,
-        related_name='manufacturing_orders', verbose_name='المخزن'
+        related_name='destructions', verbose_name='المخزن'
     )
-    quantity = models.DecimalField('الكمية المنتجة', max_digits=12, decimal_places=4)
-    order_date = models.DateField('تاريخ الأمر')
     status = models.CharField('الحالة', max_length=12, choices=STATUS_CHOICES, default='draft')
-    cost = models.DecimalField('التكلفة الكلية', max_digits=14, decimal_places=2, default=0)
+    reason = models.CharField('السبب', max_length=20, choices=REASON_CHOICES, default='damaged')
+    witness_name = models.CharField(
+        'اسم الشاهد / المسؤول', max_length=200, blank=True,
+        help_text='اسم الشخص الذي شهد عملية الإتلاف'
+    )
+    reference_number = models.CharField('رقم مرجعي / محضر', max_length=100, blank=True)
     notes = models.TextField('ملاحظات', blank=True)
 
+    confirmed_by = models.ForeignKey(
+        'accounts.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='confirmed_destructions', verbose_name='أُكِّد بواسطة'
+    )
+    confirmed_at = models.DateTimeField('تاريخ التأكيد', null=True, blank=True)
+
     class Meta:
-        db_table = 'manufacturing_orders'
-        verbose_name = 'أمر تصنيع'
-        verbose_name_plural = 'أوامر التصنيع'
-        ordering = ['-order_date', '-id']
+        db_table = 'stock_destructions'
+        verbose_name = 'سجل إتلاف'
+        verbose_name_plural = 'سجلات الإتلاف'
+        ordering = ['-destruction_date', '-id']
+        indexes = [
+            models.Index(fields=['tenant', 'status']),
+            models.Index(fields=['tenant', '-destruction_date']),
+        ]
 
     def __str__(self):
-        return self.order_number or f"MFG-{self.pk}"
+        return f"{self.destruction_number} — {self.stock.name}"
 
     def save(self, *args, **kwargs):
-        if not self.order_number:
-            last = ManufacturingOrder.objects.filter(
-                tenant=self.tenant,
-                order_number__startswith='MFG-'
-            ).order_by('-id').first()
-            num = 1
-            if last:
+        if not self.destruction_number:
+            last = (
+                StockDestruction.objects.filter(tenant=self.tenant)
+                .exclude(destruction_number='')
+                .order_by('-id').first()
+            )
+            next_num = 1
+            if last and last.destruction_number.startswith('DES-'):
                 try:
-                    num = int(last.order_number.split('-')[-1]) + 1
-                except (ValueError, IndexError):
+                    next_num = int(last.destruction_number.split('-')[-1]) + 1
+                except ValueError:
                     pass
-            self.order_number = f"MFG-{num:05d}"
+            self.destruction_number = f"DES-{next_num:05d}"
         super().save(*args, **kwargs)
+
+    @property
+    def total_quantity(self):
+        return sum((l.quantity for l in self.lines.all()), Decimal('0'))
+
+    @property
+    def total_value(self):
+        return sum((l.quantity * l.unit_cost_snapshot for l in self.lines.all()), Decimal('0'))
+
+
+class StockDestructionLine(TenantMixin):
+    destruction = models.ForeignKey(
+        StockDestruction, on_delete=models.CASCADE,
+        related_name='lines', verbose_name='سجل الإتلاف'
+    )
+    item = models.ForeignKey(
+        'items.Item', on_delete=models.PROTECT,
+        related_name='destruction_lines', verbose_name='المنتج'
+    )
+    quantity = models.DecimalField('الكمية', max_digits=12, decimal_places=4)
+    unit_cost_snapshot = models.DecimalField('تكلفة الوحدة', max_digits=14, decimal_places=2, default=0)
+    notes = models.CharField('ملاحظات', max_length=300, blank=True)
+
+    class Meta:
+        db_table = 'stock_destruction_lines'
+        verbose_name = 'بند إتلاف'
+        verbose_name_plural = 'بنود الإتلاف'
+
+    def __str__(self):
+        return f"{self.item.name} × {self.quantity}"
+
+    @property
+    def line_value(self):
+        return self.quantity * self.unit_cost_snapshot

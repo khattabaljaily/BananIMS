@@ -4,7 +4,7 @@
 {% load permission_tags %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/users.css' %}?v=2.0">
+<link rel="stylesheet" href="{% static 'css/users.css' %}?v=1.1">
 {% endblock %}
 
 {% block page_header %}{% endblock %}
@@ -21,13 +21,13 @@
                     <i class="fas fa-user-shield"></i>
                 </div>
                 <div>
-                    <h1 class="cx-hero-title">المستخدمون</h1>
-                    <p class="cx-hero-desc">إدارة المستخدمين وصلاحيات الدخول للنظام</p>
+                    <h1 class="cx-hero-title">{% if head_office %}مستخدمو إدارة النشاط{% else %}المستخدمون{% endif %}</h1>
+                    <p class="cx-hero-desc">{% if head_office %}موظفو الإدارة بلا فرع — تُسند لهم مجموعات «إدارة النشاط» فقط. موظفو الفروع يضيفهم مشرف كل فرع.{% else %}إدارة المستخدمين وصلاحيات الدخول للنظام{% endif %}</p>
                 </div>
             </div>
             <div class="cx-hero-right">
                 <div class="cx-hero-actions">
-                    {% if user|has_perm_key:'add_users' %}
+                    {% if can.add %}
                     <button type="button" class="cx-btn-add" id="btnOpenCreateUser">
                         <i class="fas fa-plus"></i>
                         <span>إضافة مستخدم</span>
@@ -140,6 +140,21 @@
                                 <label class="cx-label" for="id_phone">{{ form.phone.label }}</label>
                                 {{ form.phone }}
                             </div>
+                            {% if branch_locked %}
+                            {# مدير الفرع: المستخدمون الجدد يتبعون فرعه تلقائياً — لا اختيار فرع #}
+                            {% elif form.branch.field.queryset.exists %}
+                            <div class="col-md-4">
+                                <label class="cx-label" for="id_branch">{{ form.branch.label }}</label>
+                                {{ form.branch }}
+                            </div>
+                            {% elif current_tenant.version_type == 'multi_branch' %}
+                            <div class="col-md-4">
+                                <div class="alert alert-warning py-2 px-3 mb-0" style="font-size:.82rem;">
+                                    <i class="fas fa-code-branch me-1"></i>
+                                    لا يوجد فروع بعد — <a href="{% url 'core:branch_list' %}">أنشئ فرعاً أولاً</a> لتتمكن من ربط المستخدمين بفروعهم.
+                                </div>
+                            </div>
+                            {% endif %}
                             <div class="col-md-6">
                                 <label class="cx-label" for="permissionGroupsCheckboxes">{{ form.permission_groups.label }}</label>
                                 <div id="permissionGroupsCheckboxes" class="row gy-2"></div>
@@ -154,16 +169,18 @@
                             <span class="cx-form-group-icon"><i class="fas fa-shield-halved"></i></span> الصلاحيات والحالة
                         </div>
                         <div class="row g-3 mb-4">
+                            {% if not branch_locked and form.branch.field.queryset.exists %}
                             <div class="col-md-4">
-                                <label class="cx-toggle-card" for="id_is_tenant_admin">
+                                <label class="cx-toggle-card" for="id_is_branch_supervisor">
                                     <div class="cx-toggle-info">
-                                        <span class="cx-toggle-title">{{ form.is_tenant_admin.label }}</span>
-                                        <span class="cx-toggle-desc">يجعل المستخدم مديراً بإعدادات داخلية أوسع</span>
+                                        <span class="cx-toggle-title">{{ form.is_branch_supervisor.label }}</span>
+                                        <span class="cx-toggle-desc">يحصل تلقائياً على كل صلاحيات الفرع المختار، عدا صلاحيات مدير النشاط</span>
                                     </div>
-                                    {{ form.is_tenant_admin }}
+                                    {{ form.is_branch_supervisor }}
                                     <div class="cx-toggle-switch"></div>
                                 </label>
                             </div>
+                            {% endif %}
                             <div class="col-md-4">
                                 <label class="cx-toggle-card" for="id_is_active">
                                     <div class="cx-toggle-info">
@@ -295,7 +312,7 @@
             </div>
             <div class="cx-view-footer">
                 <button type="button" class="cx-btn-ghost" data-bs-dismiss="modal">إغلاق</button>
-                {% if user|has_perm_key:'change_users' %}
+                {% if can.change %}
                 <button type="button" class="cx-btn-primary" id="viewEditUserBtn">
                     <i class="fas fa-pen-to-square me-1"></i> تعديل
                 </button>
@@ -311,8 +328,8 @@
 <script>
     window.PERMISSION_GROUPS = {{ permission_groups|safe }};
     window.USER_PERMS = {
-        edit:   {% if user|has_perm_key:'change_users' %}true{% else %}false{% endif %},
-        delete: {% if user|has_perm_key:'delete_users' %}true{% else %}false{% endif %}
+        edit:   {% if can.change %}true{% else %}false{% endif %},
+        delete: {% if can.delete %}true{% else %}false{% endif %}
     };
 </script>
 <script src="{% static 'js/users.js' %}?v=2.0"></script>

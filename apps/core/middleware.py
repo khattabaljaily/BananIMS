@@ -6,7 +6,7 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.core.cache import cache
 from django.utils import timezone
-from apps.core.models import Tenant
+from apps.core.models import Tenant, current_branch_id
 
 
 class MaintenanceModeMiddleware:
@@ -61,12 +61,14 @@ class TenantMiddleware:
         # Skip middleware for superuser in admin
         if request.path.startswith('/admin/'):
             request.tenant = None
+            request.branch = None
             return self.get_response(request)
-        
+
         # Get tenant from user
         if request.user.is_authenticated:
             if request.user.is_superuser or getattr(request.user, 'is_platform_staff', False):
                 request.tenant = None
+                request.branch = None
 
                 admin_dashboard_path = reverse('core:admin_dashboard')
                 safe_paths = [
@@ -80,6 +82,7 @@ class TenantMiddleware:
                     '/subscription-expired/',
                     '/no-tenant/',
                     '/no-permission/',
+                    '/pending-approval/',
                     '/settings/',
                     '/static/',
                     '/media/',
@@ -94,10 +97,20 @@ class TenantMiddleware:
                     return redirect(admin_dashboard_path)
             else:
                 request.tenant = request.user.tenant
-                
-                # Check if tenant is active and subscription is valid
+                request.branch = request.user.branch
+
+                # Check if tenant is approved, active, and subscription is valid
                 if request.tenant:
-                    if not request.tenant.is_active or not request.tenant.is_subscription_valid():
+                    if not request.tenant.is_approved:
+                        _pending_allowed = (
+                            '/pending-approval/',
+                            '/accounts/logout/',
+                            '/static/',
+                            '/media/',
+                        )
+                        if not any(request.path.startswith(p) for p in _pending_allowed):
+                            return redirect('/pending-approval/')
+                    elif not request.tenant.is_active or not request.tenant.is_subscription_valid():
                         _expired_allowed = (
                             '/subscription/',
                             '/support/',
@@ -109,9 +122,46 @@ class TenantMiddleware:
                             return redirect('/subscription/')
         else:
             request.tenant = None
-        
-        response = self.get_response(request)
-        return response
+            request.branch = None
+
+        # عزل سجلات الفرع تلقائياً (راجع BranchScopedManager) طوال هذا الطلب.
+        token = current_branch_id.set(getattr(request.branch, 'id', None))
+        try:
+            return self.get_response(request)
+        finally:
+            current_branch_id.reset(token)
+
+
+class CentralPurchasingMiddleware:
+    """
+    الشراء المركزي (نسخة المؤسسات): المشتريات والموردون وتقاريرهم وحساباتهم
+    من اختصاص الإدارة وحدها. هذا السياج يغطي كل شاشات تطبيقي purchases و suppliers (بما فيها
+    التقارير وطلبات AJAX) دفعة واحدة:
+      - مستخدم الفرع مرفوض مهما كانت صلاحياته؛
+      - مستخدم الإدارة يعمل بنطاق المخزن المركزي (request.central_scope = True).
+    يتجاوز غيرهما تماماً: لا أثر على الباقتين الأساسية والاحترافية.
+    """
+    APPS = ('purchases', 'suppliers')
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        return self.get_response(request)
+
+    def process_view(self, request, view_func, view_args, view_kwargs):
+        tenant = getattr(request, 'tenant', None)
+        if tenant is None or not request.user.is_authenticated:
+            return None
+        match = getattr(request, 'resolver_match', None)
+        app_names = getattr(match, 'app_names', None) or []
+        if not app_names or app_names[0] not in self.APPS or not tenant.is_central_purchasing():
+            return None
+        if getattr(request, 'branch', None) is not None:
+            from apps.accounts.decorators import _deny
+            return _deny(request)
+        request.central_scope = True
+        return None
 
 
 class ActiveTenantMiddleware:
@@ -254,6 +304,7 @@ class TermsMiddleware:
         '/subscription/',
         '/no-tenant/',
         '/no-permission/',
+        '/pending-approval/',
         '/sw.js',
         '/manifest.json',
     )

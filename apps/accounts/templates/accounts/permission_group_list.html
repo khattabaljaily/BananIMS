@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/permissions_management.css' %}?v=4.0">
+<link rel="stylesheet" href="{% static 'css/permissions_management.css' %}?v=3.1">
 {% endblock %}
 
 {% block page_header %}{% endblock %}
@@ -96,6 +96,12 @@
               <div class="pm-editor-title-block">
                 <div class="pm-editor-name-row">
                   <input type="text" id="editorNameInput" class="pm-name-input" placeholder="اسم المجموعة" autocomplete="off">
+                  {% if is_enterprise_tenant %}
+                  <div class="cx-filter-tabs" id="editorScopeTabs" role="group" aria-label="نطاق المجموعة">
+                    <button type="button" class="cx-filter-tab" data-scope="branch">فروع</button>
+                    <button type="button" class="cx-filter-tab" data-scope="admin">إدارة النشاط</button>
+                  </div>
+                  {% endif %}
                   <label class="cx-toggle-card pm-active-toggle" for="editorIsActive" title="تفعيل / تعطيل المجموعة">
                     <div class="cx-toggle-info">
                       <span class="cx-toggle-title pm-toggle-title" id="editorIsActiveLabel">نشط</span>
@@ -116,14 +122,13 @@
                   <span class="pm-kpi-label">صلاحية مفعّلة</span>
                 </div>
               </div>
-              <button class="pm-kpi-chip pm-kpi-chip--members pm-members-btn" id="btnOpenMembers" type="button" title="إدارة الأعضاء">
+              <div class="pm-kpi-chip pm-kpi-chip--members">
                 <i class="fas fa-users"></i>
                 <div class="pm-kpi-text">
                   <span class="pm-kpi-nums" id="editorMemberCount">0</span>
                   <span class="pm-kpi-label">أعضاء</span>
                 </div>
-                <i class="fas fa-pen-to-square pm-members-edit-icon"></i>
-              </button>
+              </div>
               <button class="cx-btn-secondary pm-btn-del" id="btnDeleteGroup" type="button" data-require-perm="delete_permissiongroups">
                 <i class="fas fa-trash-alt"></i> <span>حذف</span>
               </button>
@@ -134,6 +139,15 @@
           <div class="pm-perm-progress">
             <div class="pm-perm-progress-fill" id="permProgressFill" style="width:0%"></div>
           </div>
+        </div>
+
+        {# Members (read-only) — العضوية تُدار من شاشة إدارة المستخدمين #}
+        <div class="pm-members-panel cx-panel">
+          <div class="pm-members-panel-head">
+            <span class="pm-perms-title"><i class="fas fa-users me-2"></i>الأعضاء الحاليون</span>
+            <span class="pm-members-panel-hint">لإضافة أو إزالة عضو، عدّل المستخدم من شاشة إدارة المستخدمين</span>
+          </div>
+          <div class="pm-members-chips" id="membersChips"></div>
         </div>
 
         {# ③ Permissions panel #}
@@ -167,48 +181,6 @@
   </div>{# /pm-split #}
 </div>{# /cx-scene #}
 
-{# ════════════════ Members Modal ════════════════ #}
-<div class="modal fade" id="membersModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered" style="max-width:500px">
-    <div class="modal-content cx-modal">
-      <div class="cx-modal-main">
-        <div class="cx-modal-header">
-          <div>
-            <h5 class="cx-modal-title"><i class="fas fa-users text-primary me-2"></i> أعضاء المجموعة</h5>
-            <p class="cx-modal-subtitle">اختر المستخدمين الذين ينتمون لهذه المجموعة</p>
-          </div>
-          <button type="button" class="cx-modal-close" data-bs-dismiss="modal"><i class="fas fa-times"></i></button>
-        </div>
-        <div class="cx-modal-body" style="padding:1.25rem 1.5rem;">
-          <div class="pm-members-search-wrap mb-3">
-            <div class="cx-toolbar-search">
-              <i class="fas fa-search cx-toolbar-search-icon"></i>
-              <input type="text" id="membersSearch" class="cx-search-input" placeholder="ابحث عن مستخدم…" autocomplete="off">
-            </div>
-          </div>
-          <div class="pm-members-summary mb-2">
-            <span class="cx-stat-badge cx-stat-badge--primary">
-              <i class="fas fa-user-check"></i>
-              <strong id="membersSelectedCount">0</strong>
-              <span>محدد</span>
-            </span>
-            <button type="button" class="pm-members-clear-all cx-btn-ghost" id="btnMembersClearAll" style="font-size:.78rem;padding:.3rem .75rem;">
-              إلغاء تحديد الكل
-            </button>
-          </div>
-          <div class="pm-members-list" id="membersList"></div>
-        </div>
-        <div class="cx-modal-footer">
-          <button type="button" class="cx-btn-ghost" data-bs-dismiss="modal">إلغاء</button>
-          <button type="button" class="cx-btn-primary" id="btnSaveMembers">
-            <i class="fas fa-check me-1"></i> تأكيد الأعضاء
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
 {# ════════════════ Create Group Modal ════════════════ #}
 <div class="modal fade" id="createGroupModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered" style="max-width:480px">
@@ -233,6 +205,16 @@
               <label class="cx-label" for="newGroupDesc">الوصف (اختياري)</label>
               <textarea id="newGroupDesc" class="form-control" rows="2" placeholder="اكتب وصفاً مختصراً لدور هذه المجموعة"></textarea>
             </div>
+            {% if is_enterprise_tenant %}
+            <div class="mb-3">
+              <label class="cx-label">نطاق المجموعة <sup class="cx-required">*</sup></label>
+              <div class="cx-filter-tabs" id="newGroupScopeTabs" role="group" aria-label="نطاق المجموعة" style="width:100%;">
+                <button type="button" class="cx-filter-tab" data-scope="branch" style="flex:1;">فروع</button>
+                <button type="button" class="cx-filter-tab" data-scope="admin" style="flex:1;">إدارة النشاط</button>
+              </div>
+              <div class="form-text">"فروع" لموظفي/مدراء الفروع (مبيعات، عملاء، مخزون...). "إدارة النشاط" للمهام الإدارية، وتقتصر على صلاحيات القوائم الظاهرة في لوحة تحكم مدير النشاط (الفروع، الإعدادات، الخزينة المركزية، المتجر، المنتجات والمخازن، التقارير...).</div>
+            </div>
+            {% endif %}
             <label class="cx-toggle-card" for="newGroupActive">
               <div class="cx-toggle-info">
                 <span class="cx-toggle-title">تفعيل المجموعة فور الإنشاء</span>
@@ -260,6 +242,9 @@
 <script>
   window.PERMISSION_SCHEMA = {{ permission_schema|safe }};
   window.USERS_LIST = {{ users|safe }};
+  window.IS_ENTERPRISE_TENANT = {{ is_enterprise_tenant|yesno:"true,false" }};
+  window.GROUP_SCOPE_EXCLUDED = {{ group_scope_excluded|default:"{}"|safe }};
+  window.GROUP_SCOPE_EXCLUDED_KEYS = {{ group_scope_excluded_keys|default:"{}"|safe }};
 </script>
-<script src="{% static 'js/permission_groups.js' %}?v=3.0"></script>
+<script src="{% static 'js/permission_groups.js' %}?v=3.2"></script>
 {% endblock %}

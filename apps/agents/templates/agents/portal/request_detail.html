@@ -95,7 +95,7 @@
   {% if req.notes %}
   <div style="padding:0 1.35rem 1.1rem;">
     <div class="req-meta-label" style="margin-bottom:.4rem;">ملاحظاتك</div>
-    <div style="background:#faf9ff;border:1px solid #f0eeff;border-radius:9px;padding:.7rem .95rem;font-size:.87rem;color:var(--text);">
+    <div style="background:rgba(var(--primary-rgb),.04);border:1px solid rgba(var(--primary-rgb),.08);border-radius:9px;padding:.7rem .95rem;font-size:.87rem;color:var(--text);">
       {{ req.notes }}
     </div>
   </div>
@@ -149,7 +149,7 @@
       </tbody>
     </table>
   </div>
-  <div style="display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.35rem;background:linear-gradient(135deg,rgba(19,37,57,.05),rgba(250,167,29,.03));border-top:2px solid rgba(19,37,57,.1);">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.35rem;background:linear-gradient(135deg,rgba(var(--primary-rgb),.05),rgba(var(--secondary-rgb),.03));border-top:2px solid rgba(var(--primary-rgb),.1);">
     <span style="font-size:.84rem;font-weight:600;color:var(--text-subtle);"><i class="fas fa-calculator me-1"></i>الإجمالي الكلي</span>
     <span style="font-size:1.2rem;font-weight:800;color:var(--brand-600);" dir="ltr">{{ req.total_amount|money }}</span>
   </div>

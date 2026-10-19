@@ -4,12 +4,13 @@ Stocks Views - عمليات CRUD للمخازن
 """
 import json
 import csv
+from django.db.models.deletion import ProtectedError
 from datetime import timedelta
 from apps.accounts.activity_service import log_activity
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from django.contrib.auth.decorators import login_required
-from apps.accounts.decorators import require_permission
+from apps.accounts.decorators import require_permission, branch_scope_exempt
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponseNotAllowed, JsonResponse, HttpResponse
@@ -17,15 +18,42 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 
 from apps.sales.models import StockMovement
+from apps.core.utils import filter_by_branch_via, enforce_branch_ownership, resolve_report_scope
 
 from .forms import StockForm
-from .models import Stock, StockQuantity, StockTransfer, StockTransferLine, Stocktake, StocktakeLine, ManufacturingOrder
+from .models import Stock, StockQuantity, StockTransfer, StockTransferLine, Stocktake, StocktakeLine, StockDestruction, StockDestructionLine
 from .reports import StocksReportGenerator
-from .services import confirm_stock_transfer, cancel_stock_transfer, confirm_stocktake, confirm_manufacturing_order, cancel_manufacturing_order
+from .scope import opening_balance_stocks
+from .services import (
+    confirm_stock_transfer, cancel_stock_transfer, confirm_stocktake,
+    confirm_stock_destruction, cancel_stock_destruction,
+)
+
+
+def _stock_report_scope(request):
+    """
+    نطاق تقارير المخزن: مثل resolve_report_scope، ويضيف للإدارة خيار
+    «المخزن المركزي» (?branch=central). يُرجع (branch, is_central_admin, branches, central)،
+    ويعلّم الطلب للقوالب: report_central_option (إظهار الخيار) و report_central (المختار).
+    """
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
+    tenant = getattr(request, 'tenant', None)
+    central_option = bool(
+        is_central_admin and tenant is not None and tenant.has_central_warehouse()
+        and request.user.has_perm_key('view_central_reports'))
+    central = central_option and request.GET.get('branch') == 'central'
+    request.report_central_option = central_option
+    request.report_central = central
+    return (None if central else branch), is_central_admin, branches_for_filter, central
 
 
 def _ensure_tenant(request):
     return getattr(request, 'tenant', None)
+
+
+def _is_locked_main_stock(tenant, stock):
+    """النمط المركزي: المخزن الرئيسي (المركزي) نظامي يُنشأ تلقائياً ولا يُعدَّل ولا يُحذف ولا يُعطَّل."""
+    return bool(stock.is_central and tenant.is_central_purchasing())
 
 
 def _serialize_errors(form):
@@ -43,7 +71,7 @@ def stock_list(request):
     if not tenant:
         return redirect('core:no_tenant')
 
-    qs = Stock.objects.for_tenant(tenant)
+    qs = Stock.objects.for_tenant(tenant).for_branch(getattr(request, 'branch', None))
     total = qs.count()
     active = qs.filter(is_active=True).count()
 
@@ -51,7 +79,8 @@ def stock_list(request):
     can_add = active < tenant.max_stocks
 
     context = {
-        'form': StockForm(),
+        'form': StockForm(tenant=tenant, branch=getattr(request, 'branch', None), show_central_toggle=True),
+        'central_exists': Stock.objects.filter(tenant=tenant, is_central=True).exists(),
         'stats': {
             'total': total,
             'active': active,
@@ -81,7 +110,7 @@ def stock_table_api(request):
     search_value = request.GET.get('search[value]', '').strip()
     status_filter = request.GET.get('status', '').strip()
 
-    qs = Stock.objects.for_tenant(tenant)
+    qs = Stock.objects.for_tenant(tenant).for_branch(getattr(request, 'branch', None))
     records_total = qs.count()
 
     if status_filter == 'active':
@@ -101,7 +130,7 @@ def stock_table_api(request):
     order_col = request.GET.get('order[0][column]', '0')
     order_dir = request.GET.get('order[0][dir]', 'asc')
     col_name = request.GET.get(f'columns[{order_col}][data]', 'name')
-    allowed = {'code': 'code', 'name': 'name', 'stock_type': 'stock_type',
+    allowed = {'code': 'code', 'name': 'name',
                'is_active': 'is_active', 'created_at': 'created_at'}
     order_field = allowed.get(col_name, 'name')
     if order_dir == 'desc':
@@ -114,10 +143,9 @@ def stock_table_api(request):
             'id': s.id,
             'code': s.code,
             'name': s.name,
-            'stock_type': s.get_stock_type_display(),
-            'stock_type_raw': s.stock_type,
             'address': s.address or '-',
             'is_default': s.is_default,
+            'is_central': s.is_central,
             'is_active': s.is_active,
         }
         for s in qs
@@ -138,6 +166,7 @@ def stock_table_api(request):
 @login_required
 @require_permission('add_stocks')
 @transaction.atomic
+@branch_scope_exempt('ينشئ مخزناً جديداً يُختم بفرع المنشئ تلقائياً؛ تفريغ is_default عبر كل مخازن الـ tenant هو تصميم متعمَّد (علامة افتراضي واحدة على مستوى النشاط كله لغرض الشراء التلقائي، وليست لكل فرع) — لا قراءة لبيانات فرع آخر')
 def stock_create_api(request):
     tenant = _ensure_tenant(request)
     if not tenant:
@@ -145,20 +174,26 @@ def stock_create_api(request):
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
 
-    # التحقق من الحد المسموح به حسب الباقة
-    current_active = Stock.objects.for_tenant(tenant).filter(is_active=True).count()
-    if current_active >= tenant.max_stocks:
-        return JsonResponse({
-            'success': False,
-            'message': f'لقد وصلت للحد الأقصى المسموح به ({tenant.max_stocks} مخازن). يرجى ترقية الباقة.',
-        }, status=403)
+    # التحقق من الحد المسموح به حسب نوع النسخة والباقة
+    if not Stock.can_add_stock(tenant):
+        if tenant.version_type == 'single_store':
+            message = 'نسخة "محل واحد بمخزن واحد" لا تسمح بأكثر من مخزن واحد. يرجى ترقية الباقة لإضافة مخازن متعددة.'
+        else:
+            message = f'لقد وصلت للحد الأقصى المسموح به ({tenant.max_stocks} مخازن). يرجى ترقية الباقة.'
+        return JsonResponse({'success': False, 'message': message}, status=403)
 
-    form = StockForm(request.POST)
+    branch = getattr(request, 'branch', None)
+    form = StockForm(request.POST, tenant=tenant, branch=branch)
     if form.is_valid():
         stock = form.save(commit=False)
         stock.tenant = tenant
         stock.created_by = request.user
         stock.updated_by = request.user
+        if branch is not None:
+            stock.branch = branch
+        if stock.is_central:
+            stock.branch = None
+            stock.is_default = False
 
         # إذا تم تعيينه كافتراضي، احذف القديم
         # كلتا العمليتين في نفس الـ transaction
@@ -195,6 +230,7 @@ def stock_detail_api(request, pk):
         stock = Stock.objects.for_tenant(tenant).get(pk=pk)
     except Stock.DoesNotExist:
         return JsonResponse({'success': False, 'message': 'المخزن غير موجود'}, status=404)
+    enforce_branch_ownership(request, stock)
 
     return JsonResponse({
         'success': True,
@@ -202,11 +238,12 @@ def stock_detail_api(request, pk):
             'id': stock.id,
             'name': stock.name,
             'code': stock.code,
-            'stock_type': stock.stock_type,
+            'branch': stock.branch_id,
             'address': stock.address,
             'notes': stock.notes,
             'is_active': stock.is_active,
             'is_default': stock.is_default,
+            'is_central': stock.is_central,
         },
     })
 
@@ -229,8 +266,11 @@ def stock_update_api(request, pk):
         stock = Stock.objects.for_tenant(tenant).get(pk=pk)
     except Stock.DoesNotExist:
         return JsonResponse({'success': False, 'message': 'المخزن غير موجود'}, status=404)
+    enforce_branch_ownership(request, stock)
+    if _is_locked_main_stock(tenant, stock):
+        return JsonResponse({'success': False, 'message': 'المخزن الرئيسي نظامي ولا يمكن تعديله أو حذفه.'}, status=400)
 
-    form = StockForm(request.POST, instance=stock)
+    form = StockForm(request.POST, instance=stock, tenant=tenant, branch=getattr(request, 'branch', None))
     if form.is_valid():
         updated = form.save(commit=False)
         updated.updated_by = request.user
@@ -266,6 +306,19 @@ def stock_delete_api(request, pk):
         stock = Stock.objects.for_tenant(tenant).get(pk=pk)
     except Stock.DoesNotExist:
         return JsonResponse({'success': False, 'message': 'المخزن غير موجود'}, status=404)
+    enforce_branch_ownership(request, stock)
+
+    if _is_locked_main_stock(tenant, stock):
+        return JsonResponse({'success': False, 'message': 'المخزن الرئيسي نظامي ولا يمكن تعديله أو حذفه.'}, status=400)
+
+    # المخزن المركزي : يُحذف كغيره ما لم تكن عليه سجلات. المانع الأوضح هنا؛ والحماية
+    # الأخيرة تبقى في ProtectedError أدناه. (النمط المركزي نظامي ومحجوب أعلاه.)
+    if stock.is_central and stock.has_linked_records():
+        return JsonResponse({
+            'success': False,
+            'message': 'لا يمكن حذف المخزن المركزي لوجود فواتير أو شحنات أو حركات أو كميات مرتبطة به. '
+                       'يمكنك تعطيله إن لم تعد تحتاجه.',
+        }, status=400)
 
     if stock.is_system_default:
         return JsonResponse({
@@ -288,7 +341,13 @@ def stock_delete_api(request, pk):
         }, status=400)
 
     stock_name = stock.name
-    stock.delete()
+    try:
+        stock.delete()
+    except ProtectedError:
+        return JsonResponse({
+            'success': False,
+            'message': 'لا يمكن حذف المخزن لوجود حركات أو فواتير مرتبطة به.',
+        }, status=400)
     return JsonResponse({'success': True, 'message': f'تم حذف المخزن "{stock_name}" بنجاح'})
 
 
@@ -310,6 +369,9 @@ def stock_set_default_api(request, pk):
         stock = Stock.objects.for_tenant(tenant).get(pk=pk)
     except Stock.DoesNotExist:
         return JsonResponse({'success': False, 'message': 'المخزن غير موجود'}, status=404)
+    enforce_branch_ownership(request, stock)
+    if _is_locked_main_stock(tenant, stock):
+        return JsonResponse({'success': False, 'message': 'المخزن الرئيسي نظامي ولا يمكن تعديله أو حذفه.'}, status=400)
 
     # عمليتان في transaction واحدة: إلغاء الافتراضي القديم + تعيين الجديد
     Stock.objects.for_tenant(tenant).filter(is_default=True).update(is_default=False)
@@ -323,6 +385,9 @@ def stock_set_default_api(request, pk):
 # صفحة الكميات الافتتاحية
 # ============================================================
 
+OWNER_BRANCH_STOCK_MSG = 'الكميات الافتتاحية لمخازن الفروع من اختصاص الفرع نفسه، لا يعدّلها مدير النشاط.'
+
+
 @login_required
 @require_permission('view_stocks')
 def opening_balance_list(request):
@@ -330,7 +395,7 @@ def opening_balance_list(request):
     if not tenant:
         return redirect('core:no_tenant')
 
-    stocks = Stock.objects.for_tenant(tenant).filter(is_active=True).order_by('-is_default', 'name')
+    stocks = opening_balance_stocks(tenant, getattr(request, 'branch', None)).order_by('-is_default', 'name')
     default_stock = stocks.filter(is_default=True).first() or stocks.first()
 
     return render(request, 'stocks/opening_balance_list.html', {
@@ -361,6 +426,9 @@ def opening_balance_table_api(request):
         stock = Stock.objects.for_tenant(tenant).get(id=stock_id, is_active=True)
     except Stock.DoesNotExist:
         return JsonResponse({'success': False, 'message': 'المخزن غير موجود'}, status=404)
+    enforce_branch_ownership(request, stock)
+    if not opening_balance_stocks(tenant, getattr(request, 'branch', None)).filter(pk=stock.pk).exists():
+        return JsonResponse({'success': False, 'message': OWNER_BRANCH_STOCK_MSG}, status=403)
 
     draw = int(request.GET.get('draw', 1))
     start = int(request.GET.get('start', 0))
@@ -371,7 +439,7 @@ def opening_balance_table_api(request):
         tenant=tenant,
         stock=stock,
         item__is_active=True,
-        item__item_type__in=['product', 'raw_material', 'semi_finished'],
+        item__item_type='product',
     ).select_related('item')
 
     total = qs.count()
@@ -443,6 +511,9 @@ def opening_balance_save_api(request):
         stock = Stock.objects.for_tenant(tenant).get(id=stock_id, is_active=True)
     except Stock.DoesNotExist:
         return JsonResponse({'success': False, 'message': 'المخزن غير موجود'}, status=404)
+    enforce_branch_ownership(request, stock)
+    if not opening_balance_stocks(tenant, getattr(request, 'branch', None)).filter(pk=stock.pk).exists():
+        return JsonResponse({'success': False, 'message': OWNER_BRANCH_STOCK_MSG}, status=403)
 
     if not rows:
         return JsonResponse({'success': False, 'message': 'لا توجد تعديلات للحفظ'}, status=400)
@@ -536,7 +607,7 @@ def stock_quantities_list(request):
     if not tenant:
         return redirect('core:no_tenant')
 
-    stocks = Stock.objects.for_tenant(tenant).filter(is_active=True).order_by('-is_default', 'name')
+    stocks = Stock.objects.for_tenant(tenant).for_branch(getattr(request, 'branch', None)).filter(is_active=True).order_by('-is_default', 'name')
     default_stock = stocks.filter(is_default=True).first() or stocks.first()
 
     return render(request, 'stocks/stock_quantities_list.html', {
@@ -566,7 +637,7 @@ def stock_quantities_table_api(request):
         qs = StockQuantity.objects.filter(
             tenant=tenant,
             item__is_active=True,
-            item__item_type__in=['product', 'raw_material', 'semi_finished'],
+            item__item_type='product',
             stock_id=stock_id,
         ).select_related('item', 'stock').prefetch_related('item__item_units')
 
@@ -608,7 +679,11 @@ def stock_quantities_table_api(request):
         agg_qs = (
             StockQuantity.objects
             .filter(tenant=tenant, item__is_active=True,
-                    item__item_type__in=['product', 'raw_material', 'semi_finished'])
+                    item__item_type='product')
+        )
+        agg_qs = filter_by_branch_via(agg_qs, getattr(request, 'branch', None), field='stock__branch')
+        agg_qs = (
+            agg_qs
             .values('item_id')
             .annotate(
                 total_quantity=Sum('quantity'),
@@ -675,14 +750,18 @@ def stocks_summary_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter, central = _stock_report_scope(request)
 
-    generator = StocksReportGenerator(tenant)
+    generator = StocksReportGenerator(tenant, branch=branch, central=central)
     report_data = generator.get_summary_report()
 
     return render(request, 'stocks/reports/summary.html', {
         'report': report_data,
         'section': 'stocks_reports',
         'report_type': 'summary',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -693,8 +772,9 @@ def stocks_summary_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter, central = _stock_report_scope(request)
 
-    generator = StocksReportGenerator(tenant)
+    generator = StocksReportGenerator(tenant, branch=branch, central=central)
     report_data = generator.get_summary_report()
 
     response = HttpResponse(content_type='text/csv; charset=utf-8')
@@ -717,14 +797,18 @@ def stocks_by_item_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter, central = _stock_report_scope(request)
 
-    generator = StocksReportGenerator(tenant)
+    generator = StocksReportGenerator(tenant, branch=branch, central=central)
     report_data = generator.get_by_item_report()
 
     return render(request, 'stocks/reports/by_item.html', {
         'report': report_data,
         'section': 'stocks_reports',
         'report_type': 'by_item',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -735,8 +819,9 @@ def stocks_by_item_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter, central = _stock_report_scope(request)
 
-    generator = StocksReportGenerator(tenant)
+    generator = StocksReportGenerator(tenant, branch=branch, central=central)
     report_data = generator.get_by_item_report()
 
     response = HttpResponse(content_type='text/csv; charset=utf-8')
@@ -766,14 +851,18 @@ def stocks_by_category_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter, central = _stock_report_scope(request)
 
-    generator = StocksReportGenerator(tenant)
+    generator = StocksReportGenerator(tenant, branch=branch, central=central)
     report_data = generator.get_by_category_report()
 
     return render(request, 'stocks/reports/by_category.html', {
         'report': report_data,
         'section': 'stocks_reports',
         'report_type': 'by_category',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -784,8 +873,9 @@ def stocks_by_category_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter, central = _stock_report_scope(request)
 
-    generator = StocksReportGenerator(tenant)
+    generator = StocksReportGenerator(tenant, branch=branch, central=central)
     report_data = generator.get_by_category_report()
 
     response = HttpResponse(content_type='text/csv; charset=utf-8')
@@ -815,15 +905,16 @@ def stocks_by_stock_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter, central = _stock_report_scope(request)
 
     # Optional stock filter
     stock_id = request.GET.get('stock_id')
 
-    generator = StocksReportGenerator(tenant)
+    generator = StocksReportGenerator(tenant, branch=branch, central=central)
     report_data = generator.get_by_stock_report(stock_id=stock_id)
 
     # stocks list for dropdown
-    stocks_list = Stock.objects.filter(tenant=tenant, is_active=True).order_by('name')
+    stocks_list = Stock.objects.filter(tenant=tenant, is_active=True).for_branch(branch, strict=True).order_by('name')
 
     return render(request, 'stocks/reports/by_stock.html', {
         'report': report_data,
@@ -831,6 +922,9 @@ def stocks_by_stock_report(request):
         'report_type': 'by_stock',
         'stocks': stocks_list,
         'selected_stock_id': stock_id,
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -841,10 +935,11 @@ def stocks_by_stock_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter, central = _stock_report_scope(request)
 
     stock_id = request.GET.get('stock_id')
 
-    generator = StocksReportGenerator(tenant)
+    generator = StocksReportGenerator(tenant, branch=branch, central=central)
     report_data = generator.get_by_stock_report(stock_id=stock_id)
 
     response = HttpResponse(content_type='text/csv; charset=utf-8')
@@ -852,12 +947,11 @@ def stocks_by_stock_report_export(request):
     response.write('\ufeff')
 
     writer = csv.writer(response)
-    writer.writerow(['المخزن', 'النوع', 'عدد المنتجات', 'الكمية المتاحة', 'الكمية المحجوزة', 'إجمالي الكمية', 'القيمة الإجمالية'])
+    writer.writerow(['المخزن', 'عدد المنتجات', 'الكمية المتاحة', 'الكمية المحجوزة', 'إجمالي الكمية', 'القيمة الإجمالية'])
 
     for stock in report_data['data']:
         writer.writerow([
             stock['stock_name'],
-            stock['stock_type'],
             stock['item_count'],
             stock['total_available'],
             stock['total_reserved'],
@@ -889,13 +983,14 @@ def stocks_item_movement_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter, central = _stock_report_scope(request)
 
     item_id = request.GET.get('item_id') or None
     stock_id = request.GET.get('stock_id') or None
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
 
-    generator = StocksReportGenerator(tenant, start_date, end_date)
+    generator = StocksReportGenerator(tenant, start_date, end_date, branch=branch, central=central)
     report = generator.get_item_movement_report(item_id=item_id, stock_id=stock_id)
 
     selected_item_name = ''
@@ -912,6 +1007,9 @@ def stocks_item_movement_report(request):
         'selected_item_name': selected_item_name,
         'selected_stock_id': stock_id,
         'section': 'stocks_reports',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -924,13 +1022,14 @@ def stocks_item_movement_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter, central = _stock_report_scope(request)
 
     item_id = request.GET.get('item_id') or None
     stock_id = request.GET.get('stock_id') or None
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
 
-    report = StocksReportGenerator(tenant, start_date, end_date).get_item_movement_report(item_id=item_id, stock_id=stock_id)
+    report = StocksReportGenerator(tenant, start_date, end_date, branch=branch, central=central).get_item_movement_report(item_id=item_id, stock_id=stock_id)
 
     response = HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = f'attachment; filename="item_movement_{end_date}.csv"'
@@ -948,12 +1047,16 @@ def stocks_low_stock_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter, central = _stock_report_scope(request)
 
-    report = StocksReportGenerator(tenant).get_low_stock_report()
+    report = StocksReportGenerator(tenant, branch=branch, central=central).get_low_stock_report()
 
     return render(request, 'stocks/reports/low_stock.html', {
         'report': report,
         'section': 'stocks_reports',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -966,8 +1069,9 @@ def stocks_low_stock_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter, central = _stock_report_scope(request)
 
-    report = StocksReportGenerator(tenant).get_low_stock_report()
+    report = StocksReportGenerator(tenant, branch=branch, central=central).get_low_stock_report()
     response = HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = 'attachment; filename="low_stock_alert.csv"'
     response.write('﻿')
@@ -988,12 +1092,16 @@ def stocks_valuation_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter, central = _stock_report_scope(request)
 
-    report = StocksReportGenerator(tenant).get_valuation_report()
+    report = StocksReportGenerator(tenant, branch=branch, central=central).get_valuation_report()
 
     return render(request, 'stocks/reports/valuation.html', {
         'report': report,
         'section': 'stocks_reports',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -1003,8 +1111,9 @@ def stocks_valuation_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter, central = _stock_report_scope(request)
 
-    report = StocksReportGenerator(tenant).get_valuation_report()
+    report = StocksReportGenerator(tenant, branch=branch, central=central).get_valuation_report()
     response = HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = 'attachment; filename="inventory_valuation.csv"'
     response.write('﻿')
@@ -1030,6 +1139,7 @@ def stocks_non_moving_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter, central = _stock_report_scope(request)
 
     start_date = request.GET.get('start_date')
     end_date = request.GET.get('end_date')
@@ -1050,13 +1160,16 @@ def stocks_non_moving_report(request):
     start_date = start_date or (timezone.localdate() - timedelta(days=30))
     end_date = end_date or timezone.localdate()
 
-    report = StocksReportGenerator(tenant, start_date, end_date).get_non_moving_report()
+    report = StocksReportGenerator(tenant, start_date, end_date, branch=branch, central=central).get_non_moving_report()
 
     return render(request, 'stocks/reports/non_moving.html', {
         'report': report,
         'start_date': start_date,
         'end_date': end_date,
         'section': 'stocks_reports',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -1067,6 +1180,7 @@ def stocks_non_moving_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter, central = _stock_report_scope(request)
 
     start_date_str = request.GET.get('start_date')
     end_date_str = request.GET.get('end_date')
@@ -1079,7 +1193,7 @@ def stocks_non_moving_report_export(request):
     start_date = start_date or (timezone.localdate() - timedelta(days=30))
     end_date = end_date or timezone.localdate()
 
-    report = StocksReportGenerator(tenant, start_date, end_date).get_non_moving_report()
+    report = StocksReportGenerator(tenant, start_date, end_date, branch=branch, central=central).get_non_moving_report()
     response = HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = 'attachment; filename="non_moving_items.csv"'
     response.write('﻿')
@@ -1098,26 +1212,112 @@ def stocks_non_moving_report_export(request):
 # تحويلات المخزون
 # ============================================================
 
+TRANSFER_STATUS_LABELS = {
+    'draft': 'مسودة', 'confirmed': 'مؤكد', 'in_transit': 'في الطريق',
+    'received': 'تم الاستلام', 'cancelled': 'ملغي',
+}
+TRANSFER_STATUS_COLORS = {
+    'draft': 'secondary', 'confirmed': 'success', 'in_transit': 'warning',
+    'received': 'success', 'cancelled': 'danger',
+}
+
+
+def _branch_side_only(view):
+    """
+    في نسخة الفروع التحويلات شغل الفروع وحدها: الفرع المحوِّل يرسل والمستلِم يعتمد.
+    مدير النشاط (بلا فرع) لا يدخلها؛ النسخ بلا فروع غير متأثرة.
+    """
+    from functools import wraps
+
+    @wraps(view)
+    def wrapper(request, *args, **kwargs):
+        from django.http import Http404
+        tenant = _ensure_tenant(request)
+        if tenant and tenant.version_type == 'multi_branch' and getattr(request, 'branch', None) is None:
+            raise Http404
+        return view(request, *args, **kwargs)
+    return wrapper
+
+
+def _transfers_qs(request, tenant):
+    """
+    تحويلات نطاق الطلب: بلا فرع (نسخة بلا فروع) كلها؛ الفرع ما أرسله (بمسوداته) وما وصله
+    من فروع أخرى بعد إرساله فقط — مسودة الفرع المحوِّل لا تظهر للفرع المستلِم.
+    """
+    qs = StockTransfer.objects.for_tenant(tenant)
+    branch = getattr(request, 'branch', None)
+    if branch is None:
+        return qs
+    outgoing = filter_by_branch_via(qs, branch, field='from_stock__branch')
+    incoming = filter_by_branch_via(qs, branch, field='to_stock__branch').exclude(status='draft')
+    return outgoing | incoming
+
+
+def _get_transfer(request, tenant, pk):
+    from django.http import Http404
+    transfer = (
+        _transfers_qs(request, tenant)
+        .select_related('from_stock__branch', 'to_stock__branch', 'received_by', 'settled_by', 'shortage_destruction')
+        .filter(pk=pk).first()
+    )
+    if transfer is None:
+        raise Http404
+    enforce_branch_ownership(request, transfer, field=['from_stock__branch', 'to_stock__branch'])
+    return transfer
+
+
+def _transfer_side(request, transfer):
+    """admin (نسخة بلا فروع) | sender (فرع المخزن المحوِّل) | receiver (فرع المخزن المستلِم)."""
+    branch = getattr(request, 'branch', None)
+    if branch is None:
+        return 'admin'
+    if transfer.from_stock.branch_id == branch.id:
+        return 'sender'
+    return 'receiver'
+
+
+def _stock_label(stock, with_branch):
+    return f'{stock.name} — {stock.branch.name}' if with_branch and stock.branch_id else stock.name
+
+
+def _notify_transfer(transfer, branch, title, message):
+    """إشعار لفرع أحد طرفي التحويل."""
+    from django.urls import reverse
+    from apps.notifications.models import Notification
+    Notification.objects.create(
+        tenant=transfer.tenant, branch=branch, notification_type='transfer_done',
+        title=title, message=message,
+        link=reverse('stocks:transfer_detail', args=[transfer.pk]), priority='medium')
+
+
 @login_required
 @require_permission('transfer_stocks')
+@_branch_side_only
 def transfer_list(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
 
-    qs = StockTransfer.objects.for_tenant(tenant)
+    branch = getattr(request, 'branch', None)
+    qs = _transfers_qs(request, tenant)
     stats = {
-        'total':     qs.count(),
-        'draft':     qs.filter(status='draft').count(),
-        'confirmed': qs.filter(status='confirmed').count(),
-        'cancelled': qs.filter(status='cancelled').count(),
+        'total':      qs.count(),
+        'draft':      qs.filter(status='draft').count(),
+        'confirmed':  qs.filter(status__in=['confirmed', 'received']).count(),
+        'in_transit': qs.filter(status='in_transit').count(),
+        'pending_shortage': qs.filter(shortage_status='pending').count(),
+        'cancelled':  qs.filter(status='cancelled').count(),
     }
-    stocks = Stock.objects.for_tenant(tenant).filter(is_active=True)
-    return render(request, 'stocks/transfer_list.html', {'stats': stats, 'stocks': stocks})
+    stocks = Stock.objects.for_tenant(tenant).for_branch(branch).filter(is_active=True)
+    return render(request, 'stocks/transfer_list.html', {
+        'stats': stats, 'stocks': stocks,
+        'multi_branch': tenant.version_type == 'multi_branch',
+    })
 
 
 @login_required
 @require_permission('transfer_stocks')
+@_branch_side_only
 def transfer_table_api(request):
     tenant = _ensure_tenant(request)
     if not tenant:
@@ -1130,10 +1330,13 @@ def transfer_table_api(request):
     status_f = request.GET.get('status', '').strip()
     stock_f  = request.GET.get('stock_id', '').strip()
 
-    qs = StockTransfer.objects.for_tenant(tenant).select_related('from_stock', 'to_stock')
+    branch = getattr(request, 'branch', None)
+    qs = _transfers_qs(request, tenant).select_related('from_stock__branch', 'to_stock__branch')
     total = qs.count()
 
-    if status_f:
+    if status_f == 'pending_shortage':
+        qs = qs.filter(shortage_status='pending')
+    elif status_f:
         qs = qs.filter(status=status_f)
     if stock_f:
         qs = qs.filter(Q(from_stock_id=stock_f) | Q(to_stock_id=stock_f))
@@ -1148,21 +1351,29 @@ def transfer_table_api(request):
     filtered = qs.count()
     qs = qs[start:start + length]
 
-    STATUS_LABELS = {'draft': 'مسودة', 'confirmed': 'مؤكد', 'cancelled': 'ملغي'}
-    STATUS_COLORS = {'draft': 'secondary', 'confirmed': 'success', 'cancelled': 'danger'}
-
     rows = []
     for t in qs:
         badge = (
-            f'<span class="badge bg-{STATUS_COLORS.get(t.status,"secondary")}">'
-            f'{STATUS_LABELS.get(t.status, t.status)}</span>'
+            f'<span class="badge bg-{TRANSFER_STATUS_COLORS.get(t.status, "secondary")}">'
+            f'{TRANSFER_STATUS_LABELS.get(t.status, t.status)}</span>'
         )
+        if t.shortage_status == 'pending':
+            badge += ' <span class="badge bg-danger">ناقص بانتظار التسوية</span>'
+        elif t.has_difference:
+            badge += ' <span class="badge bg-light text-dark border">فيه فرق</span>'
+        direction = ''
+        if t.is_inter_branch:
+            if branch is None:
+                direction = 'بين فرعين'
+            else:
+                direction = 'صادر' if t.from_stock.branch_id == branch.id else 'وارد'
         rows.append({
             'DT_RowId': f'row_{t.id}',
             'transfer_number': t.transfer_number,
             'transfer_date': str(t.transfer_date),
-            'from_stock': t.from_stock.name,
-            'to_stock': t.to_stock.name,
+            'from_stock': _stock_label(t.from_stock, t.is_inter_branch),
+            'to_stock': _stock_label(t.to_stock, t.is_inter_branch),
+            'direction': direction,
             'status_badge': badge,
             'status': t.status,
             'total_lines': t.lines.count(),
@@ -1174,13 +1385,20 @@ def transfer_table_api(request):
 
 @login_required
 @require_permission('transfer_stocks')
+@_branch_side_only
 def transfer_create(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
 
     from apps.items.models import Item
-    stocks  = Stock.objects.for_tenant(tenant).filter(is_active=True)
+    from .branch_transfer_services import is_inter_branch
+    branch = getattr(request, 'branch', None)
+    active = Stock.objects.for_tenant(tenant).exclude(is_central=True).filter(is_active=True)
+    stocks = active.for_branch(branch)
+    # الوجهة: مخازن الفرع نفسه، ومخازن الفروع الأخرى (أسماؤها فقط، بلا أرصدتها) للتحويل بين الفروع.
+    multi_branch = tenant.version_type == 'multi_branch'
+    dest_stocks = active.select_related('branch').order_by('branch__name', 'name') if multi_branch else stocks
     items   = Item.objects.for_tenant(tenant).filter(is_active=True, item_type__in=['product', 'material'])
 
     if request.method == 'POST':
@@ -1200,7 +1418,7 @@ def transfer_create(request):
             errors['from_stock'] = ['المخزن المرسِل مطلوب']
         if not to_id:
             errors['to_stock'] = ['المخزن المستلِم مطلوب']
-        if from_id and to_id and from_id == to_id:
+        if from_id and to_id and str(from_id) == str(to_id):
             errors['to_stock'] = ['يجب أن يكون المخزنان مختلفَين']
         if not lines_raw:
             errors['lines'] = ['أضف بنداً واحداً على الأقل']
@@ -1214,6 +1432,14 @@ def transfer_create(request):
             to_stock   = Stock.objects.for_tenant(tenant).get(pk=to_id)
         except Stock.DoesNotExist:
             return JsonResponse({'success': False, 'message': 'مخزن غير موجود'}, status=400)
+        # لا يُشترط أن to_stock يخص فرع المستخدم — إرسال بضاعة لفرع آخر عملية
+        # مشروعة؛ لكن لا يمكنه السحب من مخزن لا يملكه (from_stock تحديداً)،
+        # بنفس منطق treasury_transfer_api (راجع apps/treasury/views.py).
+        enforce_branch_ownership(request, from_stock)
+        if from_stock.is_central or to_stock.is_central:
+            return JsonResponse({'success': False, 'message': 'التحويل من/إلى المخزن المركزي يتم عبر «الشحنات» فقط.'}, status=400)
+        if not to_stock.is_active:
+            return JsonResponse({'success': False, 'message': 'المخزن المستلِم غير نشط.'}, status=400)
 
         with transaction.atomic():
             transfer = StockTransfer.objects.create(
@@ -1222,6 +1448,8 @@ def transfer_create(request):
                 to_stock=to_stock,
                 transfer_date=tdate,
                 notes=notes,
+                is_inter_branch=is_inter_branch(from_stock, to_stock),
+                created_by=request.user, updated_by=request.user,
             )
             for ln in lines_raw:
                 item_id = ln.get('item_id')
@@ -1239,46 +1467,71 @@ def transfer_create(request):
 
         log_activity(request, 'إنشاء تحويل مخزون',
                      f"التحويل: {transfer.transfer_number}\nمن: {from_stock.name}\nإلى: {to_stock.name}", 'create')
-        return JsonResponse({'success': True, 'id': transfer.id,
+        return JsonResponse({'success': True, 'id': transfer.id, 'is_inter_branch': transfer.is_inter_branch,
                              'redirect': f'/stocks/transfers/{transfer.id}/'})
 
-    context = {'stocks': stocks, 'items': items, 'today': str(timezone.localdate())}
+    context = {
+        'stocks': stocks, 'dest_stocks': dest_stocks, 'multi_branch': multi_branch,
+        'own_branch_id': branch.id if branch else None,
+        'items': items, 'today': str(timezone.localdate()),
+    }
     return render(request, 'stocks/transfer_form.html', context)
 
 
 @login_required
 @require_permission('transfer_stocks')
+@_branch_side_only
 def transfer_detail(request, pk):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
 
-    try:
-        transfer = (
-            StockTransfer.objects.for_tenant(tenant)
-            .select_related('from_stock', 'to_stock')
-            .prefetch_related('lines__item')
-            .get(pk=pk)
-        )
-    except StockTransfer.DoesNotExist:
-        from django.http import Http404
-        raise Http404
-
-    return render(request, 'stocks/transfer_detail.html', {'transfer': transfer})
+    transfer = _get_transfer(request, tenant, pk)
+    side = _transfer_side(request, transfer)
+    inter = transfer.is_inter_branch
+    lines = list(transfer.lines.select_related('item'))
+    return render(request, 'stocks/transfer_detail.html', {
+        'transfer': transfer,
+        'lines': lines,
+        'side': side,
+        'from_label': _stock_label(transfer.from_stock, inter),
+        'to_label': _stock_label(transfer.to_stock, inter),
+        'can_send': transfer.status == 'draft' and side != 'receiver',
+        'can_receive': inter and transfer.status == 'in_transit' and side == 'receiver',
+        'can_cancel': side != 'receiver' and (
+            (inter and transfer.status == 'in_transit') or (not inter and transfer.status == 'confirmed')),
+        'can_settle': inter and transfer.shortage_status == 'pending' and side != 'receiver',
+        'can_write_off': request.user.has_perm_key('adjust_stocks'),
+    })
 
 
 @login_required
 @require_permission('transfer_stocks')
+@_branch_side_only
 def transfer_confirm_ajax(request, pk):
+    """تأكيد تحويل داخل الفرع، أو إرسال تحويل بين فرعين (يصبح «في الطريق»)."""
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
     tenant = _ensure_tenant(request)
+    from django.http import Http404
+    from .branch_transfer_services import send_branch_transfer
     try:
-        transfer = StockTransfer.objects.for_tenant(tenant).get(pk=pk)
+        transfer = _get_transfer(request, tenant, pk)
+        if _transfer_side(request, transfer) == 'receiver':
+            return JsonResponse({'success': False, 'message': 'إرسال التحويل من صلاحية الفرع المحوِّل.'}, status=403)
+        if transfer.is_inter_branch:
+            send_branch_transfer(transfer, request.user)
+            log_activity(request, 'إرسال تحويل بين الفروع', f'{transfer.transfer_number}', 'create')
+            _notify_transfer(transfer, transfer.to_stock.branch, 'تحويل وارد في الطريق',
+                             f'التحويل {transfer.transfer_number} من {transfer.from_stock.name} في الطريق إليكم — '
+                             f'اعتمد الكميات الفعلية عند الاستلام.')
+            return JsonResponse({'success': True, 'message': 'تم إرسال التحويل — بانتظار اعتماد الفرع المستلِم'})
         confirm_stock_transfer(transfer)
         log_activity(request, 'تأكيد تحويل مخزون', f'{transfer.transfer_number}', 'create')
         return JsonResponse({'success': True, 'message': 'تم تأكيد التحويل بنجاح'})
-    except (StockTransfer.DoesNotExist, StockQuantity.DoesNotExist):
+    except Http404:
+        return JsonResponse({'success': False, 'message': 'التحويل غير موجود'}, status=404)
+    except StockQuantity.DoesNotExist:
         return JsonResponse({'success': False, 'message': 'التحويل أو الكمية غير موجودة'}, status=404)
     except ValueError as e:
         return JsonResponse({'success': False, 'message': str(e)}, status=400)
@@ -1286,16 +1539,106 @@ def transfer_confirm_ajax(request, pk):
 
 @login_required
 @require_permission('transfer_stocks')
+@_branch_side_only
+def transfer_receive_ajax(request, pk):
+    """اعتماد الفرع المستلِم للكميات الفعلية في تحويل بين فرعين."""
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(['POST'])
+    tenant = _ensure_tenant(request)
+    from django.http import Http404
+    from .branch_transfer_services import receive_branch_transfer
+    try:
+        transfer = _get_transfer(request, tenant, pk)
+    except Http404:
+        return JsonResponse({'success': False, 'message': 'التحويل غير موجود'}, status=404)
+    if _transfer_side(request, transfer) != 'receiver':
+        return JsonResponse({'success': False, 'message': 'اعتماد الاستلام من صلاحية الفرع المستلِم فقط.'}, status=403)
+    try:
+        data = json.loads(request.body or '{}')
+    except (json.JSONDecodeError, ValueError):
+        data = {}
+    received = {}
+    for line_id, qty in (data.get('lines') or {}).items():
+        try:
+            received[int(line_id)] = Decimal(str(qty))
+        except (ValueError, InvalidOperation):
+            return JsonResponse({'success': False, 'message': 'كمية غير صالحة.'}, status=400)
+    try:
+        transfer = receive_branch_transfer(transfer, received, request.user)
+    except ValueError as e:
+        return JsonResponse({'success': False, 'message': str(e)}, status=400)
+    log_activity(request, 'اعتماد استلام تحويل بين الفروع', f'{transfer.transfer_number}', 'update')
+    sender = transfer.from_stock.branch
+    if transfer.shortage_status == 'pending':
+        _notify_transfer(transfer, sender, 'ناقص في استلام تحويل',
+                         f'وصل التحويل {transfer.transfer_number} إلى {transfer.to_stock.name} بكمية أقل من المرسلة — الناقص بانتظار تسويتكم.')
+    elif transfer.has_difference:
+        _notify_transfer(transfer, sender, 'زيادة في استلام تحويل',
+                         f'وصل التحويل {transfer.transfer_number} إلى {transfer.to_stock.name} بكمية أكبر من المرسلة — خُصمت الزيادة من مخزنكم.')
+    else:
+        _notify_transfer(transfer, sender, 'تم استلام التحويل',
+                         f'اعتمد {transfer.to_stock.name} استلام التحويل {transfer.transfer_number} كاملاً.')
+    return JsonResponse({'success': True, 'message': 'تم اعتماد الاستلام'})
+
+
+@login_required
+@require_permission('transfer_stocks')
+@_branch_side_only
+def transfer_settle_ajax(request, pk):
+    """تسوية الناقص: restock (إرجاع لمخزن الفرع المحوِّل) أو write_off (تالف عليه)."""
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(['POST'])
+    tenant = _ensure_tenant(request)
+    from django.http import Http404
+    from .branch_transfer_services import settle_branch_transfer_shortage
+    try:
+        transfer = _get_transfer(request, tenant, pk)
+    except Http404:
+        return JsonResponse({'success': False, 'message': 'التحويل غير موجود'}, status=404)
+    if _transfer_side(request, transfer) == 'receiver':
+        return JsonResponse({'success': False, 'message': 'تسوية الناقص من صلاحية الفرع المحوِّل.'}, status=403)
+    try:
+        data = json.loads(request.body or '{}')
+    except (json.JSONDecodeError, ValueError):
+        data = {}
+    action = data.get('action')
+    if action == 'write_off' and not request.user.has_perm_key('adjust_stocks'):
+        return JsonResponse({'success': False, 'message': 'شطب الناقص تالفاً يحتاج صلاحية تسوية المخزون.'}, status=403)
+    try:
+        transfer = settle_branch_transfer_shortage(transfer, action, request.user)
+    except ValueError as e:
+        return JsonResponse({'success': False, 'message': str(e)}, status=400)
+    label = 'شطب الناقص تالفاً' if action == 'write_off' else 'إرجاع الناقص للمخزن'
+    log_activity(request, f'تسوية ناقص تحويل — {label}', f'{transfer.transfer_number}', 'update')
+    return JsonResponse({'success': True, 'message': f'تمت التسوية: {label}'})
+
+
+@login_required
+@require_permission('transfer_stocks')
+@_branch_side_only
 def transfer_cancel_ajax(request, pk):
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
     tenant = _ensure_tenant(request)
+    from django.http import Http404
+    from .branch_transfer_services import cancel_branch_transfer
     try:
-        transfer = StockTransfer.objects.for_tenant(tenant).get(pk=pk)
-        cancel_stock_transfer(transfer)
+        transfer = _get_transfer(request, tenant, pk)
+        if _transfer_side(request, transfer) == 'receiver':
+            return JsonResponse({'success': False, 'message': 'إلغاء التحويل من صلاحية الفرع المحوِّل.'}, status=403)
+        if transfer.is_inter_branch:
+            was_in_transit = transfer.status == 'in_transit'
+            cancel_branch_transfer(transfer, request.user)
+            if was_in_transit:
+                _notify_transfer(transfer, transfer.to_stock.branch, 'أُلغي تحويل وارد',
+                                 f'ألغى {transfer.from_stock.name} التحويل {transfer.transfer_number} الذي كان في الطريق إليكم.')
+        else:
+            cancel_stock_transfer(transfer)
         log_activity(request, 'إلغاء تحويل مخزون', f'{transfer.transfer_number}', 'delete')
         return JsonResponse({'success': True, 'message': 'تم إلغاء التحويل'})
-    except (StockTransfer.DoesNotExist, StockQuantity.DoesNotExist):
+    except Http404:
+        return JsonResponse({'success': False, 'message': 'التحويل غير موجود'}, status=404)
+    except StockQuantity.DoesNotExist:
         return JsonResponse({'success': False, 'message': 'التحويل غير موجود'}, status=404)
     except ValueError as e:
         return JsonResponse({'success': False, 'message': str(e)}, status=400)
@@ -1303,20 +1646,24 @@ def transfer_cancel_ajax(request, pk):
 
 @login_required
 @require_permission('transfer_stocks')
+@_branch_side_only
 def transfer_delete_draft_ajax(request, pk):
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
     tenant = _ensure_tenant(request)
-    try:
-        transfer = StockTransfer.objects.for_tenant(tenant).get(pk=pk, status='draft')
-        transfer.delete()
-        return JsonResponse({'success': True})
-    except StockTransfer.DoesNotExist:
+    transfer = _transfers_qs(request, tenant).select_related('from_stock', 'to_stock').filter(pk=pk, status='draft').first()
+    if transfer is None:
         return JsonResponse({'success': False, 'message': 'المسودة غير موجودة'}, status=404)
+    enforce_branch_ownership(request, transfer, field=['from_stock__branch', 'to_stock__branch'])
+    if _transfer_side(request, transfer) == 'receiver':
+        return JsonResponse({'success': False, 'message': 'المسودة غير موجودة'}, status=404)
+    transfer.delete()
+    return JsonResponse({'success': True})
 
 
 @login_required
 @require_permission('transfer_stocks')
+@_branch_side_only
 def transfer_items_api(request):
     """Returns available quantity for items in a given stock."""
     tenant = _ensure_tenant(request)
@@ -1339,9 +1686,11 @@ def transfer_items_api(request):
 
     qty_map = {}
     if stock_id and item_ids:
-        for sq in StockQuantity.objects.filter(
+        sq_qs = StockQuantity.objects.filter(
             tenant=tenant, stock_id=stock_id, item_id__in=item_ids
-        ).values('item_id', 'quantity', 'reserved_quantity'):
+        )
+        sq_qs = filter_by_branch_via(sq_qs, getattr(request, 'branch', None), field='stock__branch')
+        for sq in sq_qs.values('item_id', 'quantity', 'reserved_quantity'):
             avail = float((sq['quantity'] or 0) - (sq['reserved_quantity'] or 0))
             qty_map[sq['item_id']] = avail
 
@@ -1378,14 +1727,15 @@ def stocktake_list(request):
     if not tenant:
         return redirect('core:no_tenant')
 
-    qs = Stocktake.objects.for_tenant(tenant)
+    branch = getattr(request, 'branch', None)
+    qs = filter_by_branch_via(Stocktake.objects.for_tenant(tenant), branch, field='stock__branch')
     stats = {
         'total':     qs.count(),
         'draft':     qs.filter(status='draft').count(),
         'confirmed': qs.filter(status='confirmed').count(),
         'cancelled': qs.filter(status='cancelled').count(),
     }
-    stocks = Stock.objects.for_tenant(tenant).filter(is_active=True)
+    stocks = Stock.objects.for_tenant(tenant).for_branch(branch).filter(is_active=True)
     return render(request, 'stocks/stocktake_list.html', {'stats': stats, 'stocks': stocks})
 
 
@@ -1404,6 +1754,7 @@ def stocktake_table_api(request):
     stock_f  = request.GET.get('stock_id', '').strip()
 
     qs = Stocktake.objects.for_tenant(tenant).select_related('stock')
+    qs = filter_by_branch_via(qs, getattr(request, 'branch', None), field='stock__branch')
     total = qs.count()
 
     if status_f:
@@ -1448,7 +1799,7 @@ def stocktake_create(request):
     if not tenant:
         return redirect('core:no_tenant')
 
-    stocks = Stock.objects.for_tenant(tenant).filter(is_active=True)
+    stocks = Stock.objects.for_tenant(tenant).for_branch(getattr(request, 'branch', None)).filter(is_active=True)
 
     if request.method == 'POST':
         try:
@@ -1515,6 +1866,7 @@ def stocktake_detail(request, pk):
     except Stocktake.DoesNotExist:
         from django.http import Http404
         raise Http404
+    enforce_branch_ownership(request, stocktake, field='stock__branch')
 
     return render(request, 'stocks/stocktake_detail.html', {'stocktake': stocktake})
 
@@ -1527,9 +1879,10 @@ def stocktake_save_counts_ajax(request, pk):
         return HttpResponseNotAllowed(['POST'])
     tenant = _ensure_tenant(request)
     try:
-        stocktake = Stocktake.objects.for_tenant(tenant).get(pk=pk, status='draft')
+        stocktake = Stocktake.objects.for_tenant(tenant).select_related('stock').get(pk=pk, status='draft')
     except Stocktake.DoesNotExist:
         return JsonResponse({'success': False, 'message': 'الجرد غير موجود أو مؤكد بالفعل'}, status=404)
+    enforce_branch_ownership(request, stocktake, field='stock__branch')
 
     try:
         data = json.loads(request.body)
@@ -1557,7 +1910,8 @@ def stocktake_confirm_ajax(request, pk):
         return HttpResponseNotAllowed(['POST'])
     tenant = _ensure_tenant(request)
     try:
-        stocktake = Stocktake.objects.for_tenant(tenant).get(pk=pk)
+        stocktake = Stocktake.objects.for_tenant(tenant).select_related('stock').get(pk=pk)
+        enforce_branch_ownership(request, stocktake, field='stock__branch')
         confirm_stocktake(stocktake)
         return JsonResponse({'success': True, 'message': 'تم تأكيد الجرد وتطبيق التعديلات'})
     except Stocktake.DoesNotExist:
@@ -1573,7 +1927,8 @@ def stocktake_cancel_ajax(request, pk):
         return HttpResponseNotAllowed(['POST'])
     tenant = _ensure_tenant(request)
     try:
-        stocktake = Stocktake.objects.for_tenant(tenant).get(pk=pk)
+        stocktake = Stocktake.objects.for_tenant(tenant).select_related('stock').get(pk=pk)
+        enforce_branch_ownership(request, stocktake, field='stock__branch')
         if stocktake.status == 'confirmed':
             return JsonResponse({'success': False, 'message': 'لا يمكن إلغاء جرد مؤكد'}, status=400)
         stocktake.status = 'cancelled'
@@ -1584,188 +1939,229 @@ def stocktake_cancel_ajax(request, pk):
 
 
 # ============================================================
-# MANUFACTURING ORDERS — أوامر التصنيع
+# STOCK DESTRUCTION — سجلات إتلاف المخزون
 # ============================================================
 
 @login_required
-@require_permission('view_stocks')
-def manufacturing_list(request):
+@require_permission('view_stock_destructions')
+def destruction_list(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
-    qs = ManufacturingOrder.objects.filter(tenant=tenant)
+
+    branch = getattr(request, 'branch', None)
+    qs = filter_by_branch_via(StockDestruction.objects.for_tenant(tenant), branch, field='stock__branch')
     stats = {
-        'total': qs.count(),
-        'draft': qs.filter(status='draft').count(),
+        'total':     qs.count(),
+        'draft':     qs.filter(status='draft').count(),
         'confirmed': qs.filter(status='confirmed').count(),
         'cancelled': qs.filter(status='cancelled').count(),
     }
-    return render(request, 'stocks/manufacturing_list.html', {'stats': stats})
+    stocks = Stock.objects.for_tenant(tenant).for_branch(branch).filter(is_active=True)
+    return render(request, 'stocks/destruction_list.html', {'stats': stats, 'stocks': stocks})
 
 
 @login_required
-@require_permission('view_stocks')
-def manufacturing_table_api(request):
+@require_permission('view_stock_destructions')
+def destruction_table_api(request):
     tenant = _ensure_tenant(request)
     if not tenant:
-        return JsonResponse({'success': False, 'message': 'لا يوجد نشاط تجاري'}, status=400)
+        return JsonResponse({'error': 'no tenant'}, status=400)
 
-    draw = int(request.GET.get('draw', 1))
-    start = int(request.GET.get('start', 0))
-    length = int(request.GET.get('length', 25))
-    search_value = request.GET.get('search[value]', '').strip()
-    status_filter = request.GET.get('status', '').strip()
+    draw     = int(request.GET.get('draw', 1))
+    start    = int(request.GET.get('start', 0))
+    length   = int(request.GET.get('length', 25))
+    search   = request.GET.get('search[value]', '').strip()
+    status_f = request.GET.get('status', '').strip()
 
-    qs = ManufacturingOrder.objects.filter(tenant=tenant).select_related('recipe__item', 'stock')
-    records_total = qs.count()
+    qs = StockDestruction.objects.for_tenant(tenant).select_related('stock')
+    qs = filter_by_branch_via(qs, getattr(request, 'branch', None), field='stock__branch')
+    total = qs.count()
 
-    if status_filter:
-        qs = qs.filter(status=status_filter)
+    if status_f:
+        qs = qs.filter(status=status_f)
+    if search:
+        qs = qs.filter(Q(destruction_number__icontains=search) | Q(stock__name__icontains=search))
 
-    if search_value:
-        qs = qs.filter(
-            Q(order_number__icontains=search_value) |
-            Q(recipe__item__name__icontains=search_value)
+    filtered = qs.count()
+    qs = qs[start:start + length]
+
+    STATUS_LABELS = {'draft': 'مسودة', 'confirmed': 'مؤكد', 'cancelled': 'ملغي'}
+    STATUS_COLORS = {'draft': 'warning', 'confirmed': 'success', 'cancelled': 'danger'}
+
+    rows = []
+    for d in qs:
+        badge = (
+            f'<span class="badge bg-{STATUS_COLORS.get(d.status,"secondary")}">'
+            f'{STATUS_LABELS.get(d.status, d.status)}</span>'
         )
+        rows.append({
+            'id': d.id,
+            'destruction_number': d.destruction_number,
+            'destruction_date': str(d.destruction_date),
+            'stock': d.stock.name,
+            'reason': d.get_reason_display(),
+            'total_lines': d.lines.count(),
+            'status_badge': badge,
+            'status': d.status,
+        })
 
-    records_filtered = qs.count()
-    qs = qs.order_by('-order_date', '-id')[start:start + length]
-
-    data = [
-        {
-            'id': o.id,
-            'order_number': o.order_number,
-            'item_name': o.recipe.item.name,
-            'stock_name': o.stock.name,
-            'quantity': str(o.quantity),
-            'order_date': o.order_date.strftime('%Y-%m-%d'),
-            'status': o.status,
-            'status_display': o.get_status_display(),
-            'cost': str(o.cost),
-        }
-        for o in qs
-    ]
-    return JsonResponse({'draw': draw, 'recordsTotal': records_total, 'recordsFiltered': records_filtered, 'data': data})
+    return JsonResponse({'draw': draw, 'recordsTotal': total, 'recordsFiltered': filtered, 'data': rows})
 
 
 @login_required
-@require_permission('add_stocks')
-def manufacturing_create(request):
+@require_permission('add_stock_destructions')
+def destruction_create(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+
+    stocks = Stock.objects.for_tenant(tenant).for_branch(getattr(request, 'branch', None)).filter(is_active=True)
 
     if request.method == 'POST':
-        import json as _json
         try:
-            payload = _json.loads(request.body)
-        except Exception:
-            payload = request.POST.dict()
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, ValueError):
+            data = request.POST.dict()
 
-        from apps.items.models import BOMRecipe
+        stock_id = data.get('stock_id')
+        ddate    = data.get('destruction_date') or str(timezone.localdate())
+        reason   = data.get('reason') or 'damaged'
+        witness  = data.get('witness_name', '')
+        ref      = data.get('reference_number', '')
+        notes    = data.get('notes', '')
+
+        if not stock_id:
+            return JsonResponse({'success': False, 'errors': {'stock_id': ['المخزن مطلوب']}}, status=400)
         try:
-            recipe = BOMRecipe.objects.get(pk=payload.get('recipe_id'), tenant=tenant)
-            stock = Stock.objects.get(pk=payload.get('stock_id'), tenant=tenant)
-            from datetime import datetime as _dt
-            order_date = _dt.strptime(payload.get('order_date', ''), '%Y-%m-%d').date()
-            quantity = Decimal(str(payload.get('quantity', '1')))
-        except Exception as e:
-            return JsonResponse({'success': False, 'message': f'بيانات غير صالحة: {e}'}, status=400)
+            stock = Stock.objects.for_tenant(tenant).get(pk=stock_id)
+        except Stock.DoesNotExist:
+            return JsonResponse({'success': False, 'message': 'المخزن غير موجود'}, status=400)
 
-        order = ManufacturingOrder.objects.create(
-            tenant=tenant,
-            recipe=recipe,
-            stock=stock,
-            quantity=quantity,
-            order_date=order_date,
-            notes=payload.get('notes', ''),
-            created_by=request.user,
-            updated_by=request.user,
+        destruction = StockDestruction.objects.create(
+            tenant=tenant, stock=stock, destruction_date=ddate, reason=reason,
+            witness_name=witness, reference_number=ref, notes=notes,
+            created_by=request.user, updated_by=request.user,
         )
-        log_activity(request, 'إنشاء أمر تصنيع',
-                     f"الأمر: {order.order_number}\nالمنتج: {recipe.item.name}\nالكمية: {quantity}\nالمخزن: {stock.name}", 'create')
-        return JsonResponse({'success': True, 'id': order.id, 'order_number': order.order_number})
+        log_activity(request, 'إنشاء سجل إتلاف', f"{destruction.destruction_number} — {stock.name}", 'create')
+        return JsonResponse({'success': True, 'id': destruction.id,
+                             'redirect': f'/stocks/destructions/{destruction.id}/'})
 
-    from apps.items.models import BOMRecipe
-    recipes = BOMRecipe.objects.filter(tenant=tenant, is_active=True).select_related('item')
-    stocks = Stock.objects.filter(tenant=tenant, is_active=True)
-    return render(request, 'stocks/manufacturing_form.html', {
-        'recipes': recipes,
-        'stocks': stocks,
-        'today': timezone.localdate().strftime('%Y-%m-%d'),
-    })
+    context = {'stocks': stocks, 'today': str(timezone.localdate()), 'reasons': StockDestruction.REASON_CHOICES}
+    return render(request, 'stocks/destruction_form.html', context)
 
 
 @login_required
-@require_permission('view_stocks')
-def manufacturing_detail(request, pk):
+@require_permission('view_stock_destructions')
+def destruction_detail(request, pk):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
-
-    from django.shortcuts import get_object_or_404
-    from django.db.models import F, ExpressionWrapper, DecimalField as DBDecimalField
-    order = get_object_or_404(ManufacturingOrder, pk=pk, tenant=tenant)
-    lines = order.recipe.lines.select_related('component', 'unit').annotate(
-        total_qty=ExpressionWrapper(
-            F('quantity') * order.quantity,
-            output_field=DBDecimalField(max_digits=16, decimal_places=4)
-        ),
-        total_cost=ExpressionWrapper(
-            F('quantity') * order.quantity * F('component__cost_price'),
-            output_field=DBDecimalField(max_digits=16, decimal_places=4)
+    try:
+        destruction = (
+            StockDestruction.objects.for_tenant(tenant)
+            .select_related('stock')
+            .prefetch_related('lines__item')
+            .get(pk=pk)
         )
+    except StockDestruction.DoesNotExist:
+        from django.http import Http404
+        raise Http404
+    enforce_branch_ownership(request, destruction, field='stock__branch')
+    return render(request, 'stocks/destruction_detail.html', {'destruction': destruction, 'tenant': tenant})
+
+
+@login_required
+@require_permission('add_stock_destructions')
+def destruction_add_line_ajax(request, pk):
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(['POST'])
+    tenant = _ensure_tenant(request)
+    try:
+        destruction = StockDestruction.objects.for_tenant(tenant).select_related('stock').get(pk=pk, status='draft')
+    except StockDestruction.DoesNotExist:
+        return JsonResponse({'success': False, 'message': 'السجل غير موجود أو مؤكد بالفعل'}, status=404)
+    enforce_branch_ownership(request, destruction, field='stock__branch')
+
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'success': False, 'message': 'بيانات غير صالحة'}, status=400)
+
+    from apps.items.models import Item
+
+    item_id = data.get('item_id')
+    notes = data.get('notes', '')
+    try:
+        quantity = Decimal(str(data.get('quantity')))
+        if quantity <= 0:
+            raise InvalidOperation
+    except (InvalidOperation, TypeError, ValueError):
+        return JsonResponse({'success': False, 'message': 'الكمية غير صالحة'}, status=400)
+
+    try:
+        item = Item.objects.for_tenant(tenant).get(pk=item_id)
+    except Item.DoesNotExist:
+        return JsonResponse({'success': False, 'message': 'الصنف غير موجود'}, status=400)
+
+    line = StockDestructionLine.objects.create(
+        tenant=tenant, destruction=destruction, item=item,
+        quantity=quantity, unit_cost_snapshot=item.cost_price or Decimal('0'), notes=notes,
     )
-    return render(request, 'stocks/manufacturing_detail.html', {'order': order, 'lines': lines})
+    return JsonResponse({'success': True, 'line': {
+        'id': line.id, 'item_name': item.name,
+        'quantity': str(line.quantity), 'unit_cost': str(line.unit_cost_snapshot),
+        'notes': line.notes,
+    }})
 
 
 @login_required
-@require_permission('add_stocks')
-def manufacturing_confirm_ajax(request, pk):
+@require_permission('add_stock_destructions')
+def destruction_remove_line_ajax(request, pk, line_id):
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
     tenant = _ensure_tenant(request)
     try:
-        order = ManufacturingOrder.objects.get(pk=pk, tenant=tenant)
-        confirm_manufacturing_order(order)
-        return JsonResponse({'success': True, 'message': 'تم تأكيد أمر التصنيع بنجاح'})
-    except ManufacturingOrder.DoesNotExist:
-        return JsonResponse({'success': False, 'message': 'الأمر غير موجود'}, status=404)
+        destruction = StockDestruction.objects.for_tenant(tenant).select_related('stock').get(pk=pk, status='draft')
+    except StockDestruction.DoesNotExist:
+        return JsonResponse({'success': False, 'message': 'السجل غير موجود أو مؤكد بالفعل'}, status=404)
+    enforce_branch_ownership(request, destruction, field='stock__branch')
+
+    StockDestructionLine.objects.filter(tenant=tenant, destruction=destruction, pk=line_id).delete()
+    return JsonResponse({'success': True})
+
+
+@login_required
+@require_permission('confirm_stock_destructions')
+def destruction_confirm_ajax(request, pk):
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(['POST'])
+    tenant = _ensure_tenant(request)
+    try:
+        destruction = StockDestruction.objects.for_tenant(tenant).select_related('stock').get(pk=pk)
+        enforce_branch_ownership(request, destruction, field='stock__branch')
+        confirm_stock_destruction(destruction, request.user)
+        log_activity(request, 'تأكيد سجل إتلاف', destruction.destruction_number, 'update')
+        return JsonResponse({'success': True, 'message': 'تم تأكيد الإتلاف وتطبيقه على المخزون'})
+    except StockDestruction.DoesNotExist:
+        return JsonResponse({'success': False, 'message': 'السجل غير موجود'}, status=404)
     except ValueError as e:
         return JsonResponse({'success': False, 'message': str(e)}, status=400)
-    except Exception as e:
-        return JsonResponse({'success': False, 'message': f'خطأ غير متوقع: {e}'}, status=500)
 
 
 @login_required
-@require_permission('add_stocks')
-def manufacturing_cancel_ajax(request, pk):
+@require_permission('cancel_stock_destructions')
+def destruction_cancel_ajax(request, pk):
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
     tenant = _ensure_tenant(request)
     try:
-        order = ManufacturingOrder.objects.get(pk=pk, tenant=tenant)
-        cancel_manufacturing_order(order)
-        return JsonResponse({'success': True, 'message': 'تم إلغاء أمر التصنيع'})
-    except ManufacturingOrder.DoesNotExist:
-        return JsonResponse({'success': False, 'message': 'الأمر غير موجود'}, status=404)
+        destruction = StockDestruction.objects.for_tenant(tenant).select_related('stock').get(pk=pk)
+        enforce_branch_ownership(request, destruction, field='stock__branch')
+        cancel_stock_destruction(destruction)
+        log_activity(request, 'إلغاء سجل إتلاف', destruction.destruction_number, 'delete')
+        return JsonResponse({'success': True})
+    except StockDestruction.DoesNotExist:
+        return JsonResponse({'success': False, 'message': 'السجل غير موجود'}, status=404)
     except ValueError as e:
         return JsonResponse({'success': False, 'message': str(e)}, status=400)
-    except Exception as e:
-        return JsonResponse({'success': False, 'message': f'خطأ غير متوقع: {e}'}, status=500)
-
-
-@login_required
-@require_permission('add_stocks')
-def manufacturing_delete_ajax(request, pk):
-    if request.method != 'POST':
-        return HttpResponseNotAllowed(['POST'])
-    tenant = _ensure_tenant(request)
-    try:
-        order = ManufacturingOrder.objects.get(pk=pk, tenant=tenant)
-        if order.status != 'draft':
-            return JsonResponse({'success': False, 'message': 'لا يمكن حذف إلا المسودات'}, status=400)
-        order.delete()
-        return JsonResponse({'success': True, 'message': 'تم حذف الأمر'})
-    except ManufacturingOrder.DoesNotExist:
-        return JsonResponse({'success': False, 'message': 'الأمر غير موجود'}, status=404)

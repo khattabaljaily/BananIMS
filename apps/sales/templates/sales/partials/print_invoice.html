@@ -1,9 +1,9 @@
 {% load static %}
 {% load humanize %}
 <style>
-.print-doc--invoice .print-doc-heading { color: {{ settings_obj.invoice_color|default:"#0e6b64" }}; }
-.print-doc--invoice .print-total-row--grand { color: {{ settings_obj.invoice_color|default:"#0e6b64" }}; }
-.print-doc--invoice .footer-line     { background: {{ settings_obj.invoice_color|default:"#0e6b64" }}; }
+.print-doc--invoice .print-doc-heading { color: {{ settings_obj.invoice_color|default:"var(--primary)" }}; }
+.print-doc--invoice .print-total-row--grand { color: {{ settings_obj.invoice_color|default:"var(--primary)" }}; }
+.print-doc--invoice .footer-line     { background: {{ settings_obj.invoice_color|default:"var(--primary)" }}; }
 </style>
 <div class="print-doc print-doc--invoice" dir="rtl">
     <div class="print-head">
@@ -11,7 +11,7 @@
             {% if tenant.logo %}
                 <img src="{{ tenant.logo.url }}" alt="{{ tenant.name }}" class="print-logo">
             {% else %}
-                <img src="{% static 'img/logo/logo-dark.png' %}" alt="{{ tenant.name }}" class="print-logo">
+                <div class="print-logo-mark">{{ tenant.name|first }}</div>
             {% endif %}
             <div>
                 <div class="print-brand-name">{{ tenant.name }}</div>
@@ -89,7 +89,7 @@
                 {% for line in lines %}
                 <tr>
                     <td class="col-sn">{{ forloop.counter }}</td>
-                    <td class="col-product">{{ line.item.name }}</td>
+                    <td class="col-product">{{ line.item.name }}{% if line.serial_number %}<div style="font-size:.75em;color:#555;direction:ltr;text-align:right;">S/N: {{ line.serial_number }}</div>{% endif %}</td>
                     <td class="col-qty">{{ line.quantity|floatformat:"-3u" }}</td>
                     <td class="col-price">{{ line.unit_price|money}}</td>
                     <td class="col-discount">{{ line.discount_percent|money}}%</td>

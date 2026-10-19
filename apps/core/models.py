@@ -4,12 +4,12 @@ Multi-Tenant System
 """
 from contextvars import ContextVar
 
-from django.db import models
+from django.db import models, transaction
 from django.conf import settings
 from django.utils.text import slugify
 from django.utils import timezone
 
-from .constants import DEFAULT_COUNTRY, DEFAULT_TIMEZONE
+from .constants import DEFAULT_TIMEZONE
 
 
 # Context flag used during Tenant deletion to bypass related system-default protection signals
@@ -27,15 +27,62 @@ class TenantQuerySet(models.QuerySet):
         """فلترة البيانات حسب tenant معين"""
         return self.filter(tenant=tenant)
 
+    def for_branch(self, branch, strict=True):
+        """
+        فلترة البيانات حسب فرع معين (للنسخة multi_branch فقط).
+        branch=None لا يفلتر شيء (المستخدم المركزي/الأدمن أو tenant بدون فروع).
+        عند تحديد فرع لا تظهر إلا سجلاته: لا سجلات الفروع الأخرى ولا السجلات
+        بلا فرع (كل شغل الفرع مستقل عن غيره). strict=False يُبقي سلوك إظهار
+        السجلات بلا فرع لحالات خاصة فقط.
+        """
+        if branch is None:
+            return self
+        if strict:
+            return self.filter(branch=branch)
+        return self.filter(models.Q(branch=branch) | models.Q(branch__isnull=True))
+
 
 class TenantManager(models.Manager):
     """Manager مخصص للفلترة التلقائية"""
-    
+
     def get_queryset(self):
         return TenantQuerySet(self.model, using=self._db)
-    
+
     def for_tenant(self, tenant):
         return self.get_queryset().for_tenant(tenant)
+
+    def for_branch(self, branch, strict=True):
+        return self.get_queryset().for_branch(branch, strict=strict)
+
+
+# فرع الطلب الحالي لمستخدم مربوط بفرع (يضبطه TenantMiddleware). يقرؤه
+# BranchScopedManager ليعزل سجلات الفرع تلقائياً في أي استعلام، بدل الاعتماد
+# على أن يتذكر كل view استدعاء for_branch(). خارج دورة الطلب (أوامر الإدارة،
+# المهام الخلفية، الاختبارات المباشرة) يبقى None فلا فلترة.
+current_branch_id = ContextVar('current_branch_id', default=None)
+
+
+class BranchScopedQuerySet(TenantQuerySet):
+    def for_branch(self, branch, strict=True):
+        # سجلات هذه الموديلات تتبع فرعاً واحداً دائماً: لا يُعاد "بلا فرع" لفرع محدد.
+        return super().for_branch(branch, strict=True)
+
+
+class BranchScopedManager(TenantManager):
+    """
+    Manager للسجلات التي يملكها فرع واحد حصراً (العملاء، الموردون، المناديب):
+    عند وجود فرع للطلب الحالي لا تظهر إلا سجلات ذلك الفرع — لا سجلات الفروع
+    الأخرى ولا السجلات بلا فرع. المستخدم المركزي (بلا فرع) يرى الكل كالمعتاد.
+    استعمل `Model.unscoped` فقط حين يلزم فعلاً النظر عبر كل الفروع (مثل توليد
+    الأكواد المتسلسلة على مستوى المشترك).
+    """
+
+    def get_queryset(self):
+        qs = BranchScopedQuerySet(self.model, using=self._db)
+        branch_id = current_branch_id.get()
+        if branch_id is not None:
+            qs = qs.filter(branch_id=branch_id)
+        return qs
 
 
 # ============================================
@@ -65,6 +112,11 @@ class BusinessType(models.Model):
     
     def __str__(self):
         return self.name_ar
+
+    @classmethod
+    def get_default(cls):
+        """نوع النشاط الذي يُسند تلقائياً عند التسجيل — لا يختاره المستخدم."""
+        return cls.objects.filter(is_active=True).order_by('display_order', 'pk').first()
     
     def save(self, *args, **kwargs):
         if not self.slug:
@@ -88,8 +140,10 @@ class Tenant(models.Model):
         ('multi_branch', 'فروع متعددة (محلات ومخازن)'),
     )
     
+    # "تجريبي" ليس باقة — هو حالة الحساب (is_demo)، مستقلة تماماً عن الباقة
+    # المطلوبة. المسجّل يختار إحدى الباقات الحقيقية أدناه منذ التسجيل، والمشرف
+    # هو من يقرر عند الاعتماد إن كان الحساب تجريبياً أم حقيقياً (is_demo).
     SUBSCRIPTION_PLANS = (
-        ('trial', 'تجريبي'),
         ('basic', 'أساسي'),
         ('pro', 'احترافي'),
         ('enterprise', 'مؤسسات'),
@@ -97,12 +151,22 @@ class Tenant(models.Model):
 
     # Features available per plan
     PLAN_FEATURES = {
-        'trial':      {'ai_assistant': True,  'smart_tips': True,  'store': True,  'agents': True,  'auto_backup': True,  'auto_backup_daily': 1},
         'basic':      {'ai_assistant': False, 'smart_tips': False, 'store': False, 'agents': False, 'auto_backup': False, 'auto_backup_daily': 0},
         'pro':        {'ai_assistant': True,  'smart_tips': True,  'store': True,  'agents': True,  'auto_backup': True,  'auto_backup_daily': 1},
         'enterprise': {'ai_assistant': True,  'smart_tips': True,  'store': True,  'agents': True,  'auto_backup': True,  'auto_backup_daily': 2},
     }
-    
+
+    # Version-type / stock / branch / user ceilings per plan — must match the
+    # numbers promised on the pricing page (apps/core/views.py `pricing`).
+    # 'enterprise' branch cap has no marketed number ("فروع متعددة"); 10 is a
+    # sensible default, adjustable per-tenant via the admin tenant form like
+    # any other limit.
+    PLAN_LIMITS = {
+        'basic':      {'allowed_version_types': ['single_store'], 'max_stocks': 1,  'max_branches': 0,  'max_users': 5},
+        'pro':        {'allowed_version_types': ['single_store', 'multi_stock'], 'max_stocks': 5,  'max_branches': 0,  'max_users': 15},
+        'enterprise': {'allowed_version_types': ['single_store', 'multi_stock', 'multi_branch'], 'max_stocks': 20, 'max_branches': 10, 'max_users': 40},
+    }
+
     # Basic Info
     name = models.CharField('اسم النشاط التجاري', max_length=200)
     slug = models.SlugField('الرمز', max_length=200, unique=True)
@@ -119,19 +183,21 @@ class Tenant(models.Model):
     phone = models.CharField('رقم الهاتف', max_length=20, blank=True)
     address = models.TextField('العنوان', blank=True)
     city = models.CharField('المدينة', max_length=100, blank=True)
-    country = models.CharField('البلد', max_length=100, blank=True, default=DEFAULT_COUNTRY)
+    country = models.CharField('البلد', max_length=100, blank=True, default='')
     
     # Subscription
     subscription_plan = models.CharField(
         'الباقة',
         max_length=20,
         choices=SUBSCRIPTION_PLANS,
-        default='trial'
+        default='basic'
     )
     subscription_start = models.DateField('بداية الاشتراك', default=timezone.now)
     subscription_expires = models.DateField('نهاية الاشتراك', null=True, blank=True)
     is_active = models.BooleanField('نشط', default=True)
     is_demo = models.BooleanField('حساب تجريبي', default=False)
+    is_approved = models.BooleanField('معتمد', default=True)
+    approved_at = models.DateTimeField('تاريخ الاعتماد', null=True, blank=True)
     
     # System Settings
     version_type = models.CharField(
@@ -147,7 +213,7 @@ class Tenant(models.Model):
     # Settings
     timezone = models.CharField('المنطقة الزمنية', max_length=50, default=DEFAULT_TIMEZONE)
     language = models.CharField('اللغة', max_length=10, default='ar')
-    currency = models.CharField('العملة', max_length=3, default='QAR')
+    currency = models.CharField('العملة', max_length=3, blank=True, default='')
 
     # Terms of Service
     terms_accepted_at = models.DateTimeField('تاريخ قبول الاتفاقية', null=True, blank=True)
@@ -208,6 +274,40 @@ class Tenant(models.Model):
         """هل الباقة الحالية تتيح ميزة معينة"""
         return bool(self.PLAN_FEATURES.get(self.subscription_plan, {}).get(feature, False))
 
+    @property
+    def plan_limits(self) -> dict:
+        """حدود نوع النسخة/المخازن/الفروع/المستخدمين المسموح بها لباقة هذا المشترك"""
+        return self.PLAN_LIMITS.get(self.subscription_plan, self.PLAN_LIMITS['basic'])
+
+    def plan_allows_version_type(self, version_type: str) -> bool:
+        return version_type in self.plan_limits['allowed_version_types']
+
+    def is_enterprise(self) -> bool:
+        """
+        Gate واحد مركزي لكل منطق Enterprise الجديد (خطة التنفيذ، القسم 1).
+        True فقط لو النسخة multi_branch. أي كود جديد خاص بـ Enterprise يجب أن
+        يُغلَّف بهذا الشرط لضمان عدم تأثر single_store/multi_stock إطلاقاً.
+        """
+        return self.version_type == 'multi_branch'
+
+    def is_central_purchasing(self) -> bool:
+        """المشتريات مركزية دائماً في نسخة المؤسسات: الإدارة وحدها تشتري وتدير الموردين."""
+        return self.is_enterprise()
+
+    def has_central_warehouse(self) -> bool:
+        """يوجد مخزن مركزي وشحنات توزيع على الفروع (نسخة المؤسسات)."""
+        return self.is_enterprise()
+
+    @property
+    def central_purchasing(self) -> bool:
+        """خاصية للاستعلام من شجرة الصلاحيات (requires_flag)."""
+        return self.is_central_purchasing()
+
+    @property
+    def central_warehouse(self) -> bool:
+        """خاصية للاستعلام من شجرة الصلاحيات (requires_flag)."""
+        return self.has_central_warehouse()
+
     def auto_backup_daily_count(self) -> int:
         """عدد النسخ الاحتياطية التلقائية يومياً حسب الباقة"""
         return self.PLAN_FEATURES.get(self.subscription_plan, {}).get('auto_backup_daily', 0)
@@ -231,8 +331,6 @@ class TenantCapabilities(models.Model):
     )
 
     # تتبع المنتجات
-    has_expiry_dates = models.BooleanField('تواريخ انتهاء الصلاحية', default=False)
-    has_batch_numbers = models.BooleanField('أرقام الدُفعات / الباتش', default=False)
     has_serial_numbers = models.BooleanField('أرقام تسلسلية', default=False)
 
     # الكميات
@@ -240,8 +338,14 @@ class TenantCapabilities(models.Model):
 
     # العمليات
     has_services = models.BooleanField('بنود الخدمة', default=False)
-    has_manufacturing = models.BooleanField('التصنيع والوصفات من مواد خام', default=False)
-    has_work_orders = models.BooleanField('أوامر العمل', default=False)
+
+    # نموذج البيع (تجزئة مقابل توزيع بالجملة)
+    has_pos = models.BooleanField('نقطة البيع (POS)', default=True)
+    has_sales_invoice = models.BooleanField('إنشاء فاتورة مبيعات يدوياً', default=False)
+    has_agents_module = models.BooleanField('المناديب ومندوبو المبيعات', default=False)
+
+    # المخزون متعدد المواقع
+    has_branch_stock_lookup = models.BooleanField('الاستعلام عن توفر الصنف بمخازن أخرى', default=False)
 
     created_at = models.DateTimeField('تاريخ الإنشاء', auto_now_add=True)
     updated_at = models.DateTimeField('تاريخ التحديث', auto_now=True)
@@ -260,14 +364,120 @@ class TenantCapabilities(models.Model):
         features = tenant.business_type.features if tenant.business_type else {}
         return cls(
             tenant=tenant,
-            has_expiry_dates=features.get('has_expiry_dates', False),
-            has_batch_numbers=features.get('has_batch_numbers', False),
             has_serial_numbers=features.get('has_serial_numbers', False),
             has_weight_items=features.get('has_weight_items', False),
             has_services=features.get('has_services', False),
-            has_manufacturing=features.get('has_manufacturing', False),
-            has_work_orders=features.get('has_work_orders', False),
+            has_pos=features.get('has_pos', True),
+            has_sales_invoice=features.get('has_sales_invoice', False),
+            has_agents_module=features.get('has_agents_module', False),
+            has_branch_stock_lookup=features.get('has_branch_stock_lookup', False),
         )
+
+
+# ============================================
+# BRANCH (فروع النشاط التجاري)
+# ============================================
+
+class Branch(models.Model):
+    """
+    فرع فيزيائي للنشاط التجاري (للنسخة multi_branch).
+    كل Stock يمكن أن يرتبط بفرع واحد — راجع Stock.branch في apps/stocks/models.py.
+    """
+
+    tenant = models.ForeignKey(
+        Tenant,
+        on_delete=models.CASCADE,
+        verbose_name='المشترك',
+        related_name='branches'
+    )
+    name = models.CharField('اسم الفرع', max_length=200)
+    code = models.CharField('الرمز', max_length=20, blank=True)
+    address = models.TextField('العنوان', blank=True)
+    phone = models.CharField('الهاتف', max_length=20, blank=True)
+    is_active = models.BooleanField('نشط', default=True)
+    is_default = models.BooleanField('الفرع الافتراضي', default=False)
+    manager = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        verbose_name='مدير الفرع',
+        related_name='managed_branches',
+        null=True,
+        blank=True,
+    )
+
+    created_at = models.DateTimeField('تاريخ الإنشاء', auto_now_add=True)
+    updated_at = models.DateTimeField('تاريخ التحديث', auto_now=True)
+
+    class Meta:
+        db_table = 'branches'
+        verbose_name = 'فرع'
+        verbose_name_plural = 'الفروع'
+        ordering = ['-is_default', 'name']
+        unique_together = [('tenant', 'code')]
+        indexes = [
+            models.Index(fields=['tenant', 'is_active']),
+        ]
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            last = (
+                Branch.objects.filter(tenant=self.tenant)
+                .exclude(code='')
+                .order_by('-id')
+                .first()
+            )
+            next_num = 1
+            if last and last.code.startswith('BR-'):
+                try:
+                    next_num = int(last.code.split('-')[-1]) + 1
+                except ValueError:
+                    next_num = Branch.objects.filter(tenant=self.tenant).count() + 1
+            self.code = f"BR-{next_num:03d}"
+
+        if not self.pk and not Branch.objects.filter(tenant=self.tenant).exists():
+            self.is_default = True
+
+        super().save(*args, **kwargs)
+
+    @staticmethod
+    @transaction.atomic
+    def assign_manager(branch, user):
+        """
+        يعيّن مستخدماً مديراً لفرع (خطة تنفيذ Enterprise، القسم 7.1)، ويزامن
+        ذلك مع الآلية الفعلية للأدوار في الكود الحالي: "مدير الفرع" في هذا
+        النظام هو User.is_branch_supervisor=True مربوط بـ User.branch — لا
+        يوجد حقل branch_role منفصل. Branch.manager (هذا الحقل) هو مرآة
+        مساعدة فقط للعرض/الإدارة السريعة (القسم 2.3)، وهذه الدالة هي نقطة
+        الدخول الوحيدة التي يجب أن تُحدِّث الاثنين معاً حتى لا يختلفا.
+
+        - user=None: يزيل مدير الفرع الحالي (يُخفَّض إلى موظف عادي) بلا تعيين بديل.
+        - المدير السابق لنفس الفرع (إن وُجد ومختلف عن user الجديد) يُخفَّض
+          تلقائياً إلى is_branch_supervisor=False — قاعدة "مدير واحد نشط لكل
+          فرع"، مُنفَّذة هنا على مستوى الخدمة لا كقيد DB صارم.
+        """
+        old_manager = branch.manager
+        if old_manager and old_manager != user:
+            old_manager.is_branch_supervisor = False
+            old_manager.save(update_fields=['is_branch_supervisor'])
+
+        branch.manager = user
+        branch.save(update_fields=['manager', 'updated_at'])
+
+        if user is not None:
+            user.branch = branch
+            user.is_branch_supervisor = True
+            user.save(update_fields=['branch', 'is_branch_supervisor'])
+
+    @staticmethod
+    def can_add_branch(tenant):
+        """هل يستطيع هذا الـ tenant إضافة فرع جديد؟"""
+        if tenant.version_type != 'multi_branch':
+            return False
+        current_count = Branch.objects.filter(tenant=tenant, is_active=True).count()
+        return current_count < tenant.max_branches
 
 
 # ============================================
@@ -287,7 +497,7 @@ class Settings(models.Model):
     # Invoice Settings
     invoice_prefix = models.CharField('بادئة الفاتورة', max_length=10, default='INV')
     invoice_footer = models.TextField('تذييل الفاتورة', blank=True)
-    invoice_color = models.CharField('لون الفاتورة', max_length=7, default='#132539')
+    invoice_color = models.CharField('لون الفاتورة', max_length=7, default='#0e6b64')
     print_sale_invoice = models.BooleanField('طباعة فاتورة البيع', default=True)
     print_purchase_invoice = models.BooleanField('طباعة فاتورة الشراء', default=True)
     print_agent_name = models.BooleanField('طباعة اسم المندوب في الفاتورة', default=False)
@@ -342,11 +552,11 @@ class PlatformSettings(models.Model):
     ]
 
     # ── هوية المنصة ─────────────────────────────
-    platform_name    = models.CharField('اسم المنصة', max_length=100, default='BananIMS')
+    platform_name    = models.CharField('اسم المنصة', max_length=100, default='BANAN')
     platform_tagline = models.CharField('الشعار النصي', max_length=200, blank=True)
     platform_logo    = models.ImageField('الشعار', upload_to='platform/', blank=True, null=True)
     platform_favicon = models.ImageField('الأيقونة', upload_to='platform/', blank=True, null=True)
-    primary_color    = models.CharField('اللون الأساسي', max_length=7, default='#132539')
+    primary_color    = models.CharField('اللون الأساسي', max_length=7, default='#0e6b64')
     footer_text      = models.CharField('نص الفوتر', max_length=300, blank=True)
 
     # ── وضع الصيانة ─────────────────────────────
@@ -364,14 +574,14 @@ class PlatformSettings(models.Model):
                                            choices=ANNOUNCEMENT_TYPES, default='info')
 
     # ── الإعدادات الافتراضية للمشتركين الجدد ───
-    default_currency       = models.CharField('العملة الافتراضية', max_length=3, default='QAR')
+    default_currency       = models.CharField('العملة الافتراضية', max_length=3, blank=True, default='')
     default_timezone       = models.CharField('المنطقة الزمنية الافتراضية', max_length=50,
-                                              default='Asia/Qatar')
+                                              default='UTC')
     default_tax_enabled    = models.BooleanField('تفعيل الضريبة افتراضياً', default=False)
     default_tax_value      = models.DecimalField('نسبة الضريبة الافتراضية %',
                                                  max_digits=5, decimal_places=2, default=0)
     default_invoice_prefix = models.CharField('بادئة الفاتورة الافتراضية', max_length=10, default='INV')
-    default_trial_days     = models.IntegerField('أيام التجربة المجانية', default=30)
+    default_trial_days     = models.IntegerField('أيام التجربة المجانية', default=14)
 
     updated_at = models.DateTimeField('آخر تحديث', auto_now=True)
 
@@ -731,7 +941,7 @@ class SocialMediaPost(models.Model):
         ('comparison',     'مقارنة'),
         ('cta',            'دعوة مباشرة'),
         ('engagement',     'تفاعلي'),
-        ('sudan_context',  'السياق السوداني'),
+        ('remote_management', 'إدارة عن بُعد'),
     ]
 
     PUBLISH_CHANNEL_CHOICES = [

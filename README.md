@@ -1,6 +1,6 @@
-# BananIMS — Inventory & Sales Management System
+# BANAN IMS — Inventory Management for Merchants
 
-A multi-tenant SaaS system for inventory and sales management, initially targeting the Qatari and Gulf market with full Arabic (RTL) support.
+A multi-tenant SaaS system for inventory and sales management, built for merchants and product-selling companies — spare parts, electronics and electrical appliances, phones and computers, tools and equipment — with full Arabic (RTL) support.
 
 ---
 
@@ -21,13 +21,13 @@ A multi-tenant SaaS system for inventory and sales management, initially targeti
 - Full data isolation between tenants via `TenantMixin`
 - Three business setups: single store / multiple warehouses / multiple branches
 - Subscription plans: trial / basic / professional / enterprise
-- RBAC system: 26 sections, 145 permissions, split-panel UI for managing groups
+- RBAC system: 30 sections, 170+ permissions, split-panel UI for managing groups
 - Activity log for every operation
 
 ### Core Modules
 - **Customers & Suppliers** — CRUD + ledger + payments
-- **Items** — hierarchical categories, units of measure with conversion factors, BOM for manufacturing, batch/lot tracking with expiry dates
-- **Stocks** — opening balances, inter-warehouse transfers, stocktaking, manufacturing orders
+- **Items** — hierarchical categories, units of measure with conversion factors, barcode/SKU, serial-number tracking, manufacturer and country of origin
+- **Stocks** — opening balances, inter-warehouse transfers, stocktaking, write-offs (damaged / defective / lost)
 - **Sales** — invoices, quotes, returns, POS, deferred delivery
 - **Purchases** — invoices, RFQ (request for quotation), purchase orders, returns
 - **Expenses** — categories + linked to treasuries
@@ -60,8 +60,12 @@ pip install -r requirements.txt
 # Apply migrations
 python manage.py migrate
 
-# Seed business types
+# Business types are synced automatically after migrate
+# (apps/core/data/business_types.json); this re-syncs them manually
 python manage.py create_business_types
+
+# Install the git pre-commit hook (forbidden-terms check)
+bash scripts/install_git_hooks.sh
 
 # Create the superuser
 python manage.py createsuperuser
@@ -75,19 +79,19 @@ python manage.py runserver
 ## Project Structure
 
 ```
-BananIMS/
+bananims/
 ├── PROJECT/          # Django settings
 ├── apps/
 │   ├── core/         # Tenant, middleware, backup, support tickets
 │   ├── accounts/     # User, RBAC, permission groups, activity log
 │   ├── customers/    # Customers + customer portal
 │   ├── suppliers/    # Suppliers
-│   ├── items/        # Products, categories, units, BOM, batches
-│   ├── stocks/       # Warehouses, transfers, stocktaking, manufacturing
+│   ├── items/        # Products, categories, units
+│   ├── stocks/       # Warehouses, transfers, stocktaking, write-offs
 │   ├── sales/        # Sales, quotes, POS, returns
 │   ├── purchases/    # Purchases, RFQ, returns
 │   ├── expenses/     # Expenses
-│   ├── treasury/     # Treasuries, inter-treasury transfers
+│   ├── treasury/     # Treasuries and bank accounts
 │   ├── employees/    # Payroll, advances, incentives
 │   ├── agents/       # Sales agents, commissions, agent portal
 │   ├── notifications/# Smart notifications
@@ -98,8 +102,17 @@ BananIMS/
 │   ├── css/          # CSS files (main, layout, dashboard + per-feature)
 │   └── js/
 ├── media/
+├── branding/         # App name + logo + favicon — see branding/README.md
 └── manage.py
 ```
+
+### White-labeling
+
+Everything that displays the product name, logo, or favicon (login, register,
+password reset, navbar, sidebar, footer, about, pricing, PWA manifest,
+transactional emails) reads from the `branding/` folder — see
+[`branding/README.md`](branding/README.md). Replacing its contents (and
+restarting the service) re-skins the whole app; no template edits needed.
 
 ---
 
@@ -126,6 +139,20 @@ $.ajax({ url: '/sales/api/', ... success: () => showToast('success', '...') });
 
 ---
 
+## Product Boundary
+
+BANAN IMS was forked from a sister BANAN edition built for another sector,
+and is maintained as a separate product with its own roadmap. It must never
+carry that sector's vocabulary or any country-specific positioning — the
+exact list lives in `scripts/check_forbidden_terms.py`, which runs as a
+pre-commit hook and inside the test suite (`apps/core/tests_forbidden_terms.py`).
+
+Shared-core fixes from the sister edition can be brought over with
+`git fetch upstream && git cherry-pick <sha>` (pushing to `upstream` is
+disabled).
+
+---
+
 ## Platform Admin Dashboard
 
 For superusers and platform staff:
@@ -137,4 +164,4 @@ For superusers and platform staff:
 
 ---
 
-**Version:** 1.0 — **Status:** Production — **Last updated:** August 2026
+**Version:** 1.0 — **Last updated:** October 2026

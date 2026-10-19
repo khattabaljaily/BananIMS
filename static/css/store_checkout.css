@@ -1,5 +1,5 @@
 /* ============================================================
-   BananIMS — Store Checkout  v3.0
+   BANAN — Store Checkout  v3.0
    ============================================================ */
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap');
 
@@ -55,7 +55,7 @@ body {
   border-radius: 8px;
   transition: color .15s, background .15s;
 }
-.sco-back:hover { color: var(--brand); background: #eaf3f1; }
+.sco-back:hover { color: var(--brand); background: #f1f5f9; }
 .sco-header__title {
   font-size: .95rem;
   font-weight: 800;
@@ -150,7 +150,7 @@ body {
   margin-bottom: .38rem;
   display: block;
 }
-.sco-req { color: #e5484d; }
+.sco-req { color: #ef4444; }
 .sco-opt { color: var(--sco-t400); font-weight: 400; }
 
 .sco-input {
@@ -168,16 +168,16 @@ body {
 .sco-input:focus {
   border-color: var(--brand);
   background: var(--sco-surface);
-  box-shadow: 0 0 0 3px rgba(19,37,57,.08);
+  box-shadow: 0 0 0 3px rgba(var(--primary-rgb), .08);
 }
-.sco-input--error { border-color: #e5484d; background: #fff5f5; }
+.sco-input--error { border-color: #ef4444; background: #fff5f5; }
 .sco-textarea { resize: vertical; min-height: 80px; }
 /* Phone: LTR digits but right-aligned in the RTL form */
 .sco-input--phone { direction: ltr; text-align: right; }
 
 .sco-error {
   font-size: .75rem;
-  color: #e5484d;
+  color: #ef4444;
   margin-top: .3rem;
   display: flex;
   align-items: center;
@@ -201,7 +201,7 @@ body {
 .sco-pm--active {
   border-color: var(--brand);
   background: var(--sco-surface);
-  box-shadow: 0 0 0 3px rgba(19,37,57,.08);
+  box-shadow: 0 0 0 3px rgba(var(--primary-rgb), .08);
 }
 .sco-pm__icon {
   width: 38px;
@@ -299,3 +299,6 @@ body {
   .sco-steps { display: none; }
   .sco-panel { padding: 1.1rem; }
 }
+
+/* v4 — brand accent (matches storefront) */
+.sco-header { border-top: 3px solid var(--brand); }

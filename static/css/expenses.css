@@ -31,7 +31,7 @@
     }
     .cx-expense-card:hover {
         transform: translateY(-1px);
-        border-color: rgba(19,37,57, 0.24);
+        border-color: rgba(var(--primary-rgb), 0.24);
         box-shadow: 0 16px 34px rgba(15, 23, 42, 0.12);
     }
     .cx-expense-card-head {
@@ -50,7 +50,7 @@
         margin: 0;
         font-size: 0.99rem;
         font-weight: 700;
-        color: var(--text-heading, var(--text-primary));
+        color: var(--text-heading, #111827);
         line-height: 1.2;
     }
     .cx-expense-card-desc {
@@ -84,11 +84,11 @@
     }
     .cx-expense-card-meta-value {
         font-size: 0.92rem;
-        color: var(--text-heading, var(--text-primary));
+        color: var(--text-heading, #111827);
         font-weight: 700;
     }
     .cx-expense-card-amount {
-        color: var(--warning);
+        color: #f59e0b;
         font-size: 1.1rem;
     }
     .cx-expense-card-actions {
@@ -109,7 +109,7 @@
         border-color: rgba(15, 23, 42, 0.12);
     }
     .cx-expense-card-actions .cxr-act--view {
-        background: rgba(19,37,57, 0.08);
+        background: rgba(var(--primary-rgb), 0.08);
     }
     .cx-expense-card-actions .cxr-act--success {
         background: rgba(16, 185, 129, 0.08);

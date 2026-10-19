@@ -16,7 +16,7 @@ class CategoryForm(forms.ModelForm):
         model = Category
         fields = ['name', 'parent', 'icon', 'description', 'display_order', 'is_active']
         widgets = {
-            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'مثال: مسكنات الألم'}),
+            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'مثال: هواتف ذكية'}),
             'parent': forms.Select(attrs={'class': 'form-select'}),
             'icon': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'fa-tag'}),
             'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
@@ -31,7 +31,7 @@ class CategoryForm(forms.ModelForm):
             'is_active': 'نشط',
         }
         help_texts = {
-            'icon': 'رمز FontAwesome يظهر بجانب اسم التصنيف — مثال: fa-mobile أو fa-pills. اتركه فارغاً للأيقونة الافتراضية.',
+            'icon': 'رمز FontAwesome يظهر بجانب اسم التصنيف — مثال: fa-mobile أو fa-plug. اتركه فارغاً للأيقونة الافتراضية.',
             'display_order': 'رقم يحدد موضع التصنيف في القوائم — الأصغر يظهر أولاً. اتركه 0 للترتيب التلقائي.',
             'description': 'ملاحظة أو توضيح داخلي للتصنيف — لا يظهر للعملاء.',
         }
@@ -95,10 +95,10 @@ class ItemForm(forms.ModelForm):
         model = Item
         fields = [
             'name', 'name_en', 'sku', 'barcode', 'item_type',
-            'category',
+            'category', 'supplier',
             'cost_price', 'selling_price', 'min_selling_price', 'tax_rate',
             'min_quantity', 'max_quantity',
-            'track_expiry', 'track_batch', 'track_serial',
+            'track_serial', 'manufacturer', 'country_of_origin',
             'description', 'image', 'is_active', 'is_sellable', 'is_purchasable',
         ]
         widgets = {
@@ -108,9 +108,10 @@ class ItemForm(forms.ModelForm):
             'barcode': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'امسح أو أدخل الباركود'}),
             'item_type': forms.Select(attrs={'class': 'form-select'}),
             'category': forms.Select(attrs={'class': 'form-select'}),
-            'track_expiry': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'track_batch': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'supplier': forms.Select(attrs={'class': 'form-select'}),
             'track_serial': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'manufacturer': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'اسم الشركة المصنعة'}),
+            'country_of_origin': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'مثال: الصين، اليابان، ألمانيا...'}),
             'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
             'image': forms.FileInput(attrs={'class': 'form-control'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
@@ -124,9 +125,10 @@ class ItemForm(forms.ModelForm):
             'barcode': 'الباركود',
             'item_type': 'نوع الصنف',
             'category': 'التصنيف',
-            'track_expiry': 'تتبع تاريخ الانتهاء',
-            'track_batch': 'تتبع رقم الدفعة',
+            'supplier': 'الشركة الموردة',
             'track_serial': 'تتبع الرقم التسلسلي',
+            'manufacturer': 'الشركة المصنعة',
+            'country_of_origin': 'بلد المنشأ',
             'description': 'الوصف',
             'image': 'الصورة',
             'is_active': 'نشط',
@@ -134,24 +136,22 @@ class ItemForm(forms.ModelForm):
             'is_purchasable': 'قابل للشراء',
         }
 
-    def __init__(self, *args, tenant=None, capabilities=None, **kwargs):
+    def __init__(self, *args, tenant=None, **kwargs):
         super().__init__(*args, **kwargs)
         self._tenant = tenant
 
-        # Filter item_type choices based on capabilities
-        allowed_types = ['product', 'service']
-        if capabilities is None or capabilities.has_manufacturing:
-            allowed_types.extend(['raw_material', 'semi_finished'])
-        self.fields['item_type'].choices = [
-            (v, l) for v, l in Item.ITEM_TYPE_CHOICES if v in allowed_types
-        ]
+        from apps.suppliers.models import Supplier
 
         if tenant:
             self.fields['category'].queryset = Category.objects.filter(
                 tenant=tenant, is_active=True
             )
+            self.fields['supplier'].queryset = Supplier.objects.filter(tenant=tenant, is_active=True)
         else:
             self.fields['category'].queryset = Category.objects.none()
+            self.fields['supplier'].queryset = Supplier.objects.none()
+
+        self.fields['supplier'].required = False
 
     def _zero_if_none(self, field):
         value = self.cleaned_data.get(field)

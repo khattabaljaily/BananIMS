@@ -1,0 +1,173 @@
+from django.test import Client
+from django.urls import reverse
+
+from apps.core.test_utils import TenantTestCase, make_item
+from apps.store.models import StoreSettings
+
+
+class StoreCartManualQtyTests(TenantTestCase):
+    def setUp(self):
+        super().setUp()
+        self.store = StoreSettings.objects.create(tenant=self.tenant, is_enabled=True, status_override='open',
+                                                  show_price_list=True)
+        self.item = make_item(self.tenant, name='صنف متجر')
+        self.set_quantity(self.item, self.default_stock, '20')
+        self.anon = Client()
+
+    def test_add_with_manual_qty_and_update_by_typing(self):
+        self.anon.post(reverse('store:cart_add', args=[self.store.slug]), {'item_id': self.item.id, 'qty': '7'})
+        self.anon.post(reverse('store:cart_update', args=[self.store.slug]), {'item_id': self.item.id, 'qty': '12'})
+        r = self.anon.get(reverse('store:cart', args=[self.store.slug]))
+        self.assertContains(r, 'name="qty"')
+        self.assertEqual(r.context['cart_items'][0]['qty'], 12)
+
+    def test_invalid_qty_does_not_crash(self):
+        r = self.anon.post(reverse('store:cart_add', args=[self.store.slug]), {'item_id': self.item.id, 'qty': 'abc'})
+        self.assertEqual(r.status_code, 302)
+        r = self.anon.post(reverse('store:cart_update', args=[self.store.slug]), {'item_id': self.item.id, 'qty': 'x'})
+        self.assertEqual(r.status_code, 302)
+
+
+class PriceListColumnsTests(TenantTestCase):
+    subscription_plan = 'pro'
+
+    def setUp(self):
+        super().setUp()
+        self.store, _ = StoreSettings.objects.update_or_create(
+            tenant=self.tenant,
+            defaults=dict(is_enabled=True, show_price_list=True, show_out_of_stock=True))
+        make_item(self.tenant, name='صنف قائمة')
+
+    def test_default_shows_all_columns(self):
+        r = self.client.get(reverse('store:price_list', args=[self.store.slug]))
+        for h in ('المنتج', 'بلد المنشأ', 'سعر الجملة', 'سعر التجزئة'):
+            self.assertContains(r, h)
+
+    def test_selected_columns_only(self):
+        self.store.price_list_columns = ['name', 'retail']
+        self.store.save()
+        r = self.client.get(reverse('store:price_list', args=[self.store.slug]))
+        self.assertContains(r, 'سعر التجزئة')
+        self.assertNotContains(r, 'سعر الجملة')
+        self.assertNotContains(r, 'بلد المنشأ')
+
+    def test_settings_post_saves_columns(self):
+        self.client.post(reverse('store:manage_settings'), {
+            'display_name': 'x', 'show_prices': 'on', 'show_price_list': 'on',
+            'price_list_columns': ['name', 'unit', 'bogus'],
+        })
+        self.store.refresh_from_db()
+        self.assertEqual(self.store.price_list_columns, ['name', 'unit'])
+
+
+class PriceListUnitAndQtyColumnTests(TenantTestCase):
+    """اسم الوحدة يُقرأ من وحدات الصنف، وعمود «الكمية المطلوبة» يُظهر/يُخفى من إعدادات المتجر."""
+    subscription_plan = 'pro'
+
+    def setUp(self):
+        super().setUp()
+        from apps.items.models import ItemUnit
+        self.store, _ = StoreSettings.objects.update_or_create(
+            tenant=self.tenant,
+            defaults=dict(is_enabled=True, show_price_list=True, show_out_of_stock=True))
+        self.item = make_item(self.tenant, name='صنف بوحدات')
+        ItemUnit.objects.create(tenant=self.tenant, item=self.item, name='كرتونة', factor=12)
+        ItemUnit.objects.create(tenant=self.tenant, item=self.item, name='قطعة', factor=1)
+        self.url = reverse('store:price_list', args=[self.store.slug])
+
+    def test_unit_comes_from_the_items_smallest_unit(self):
+        # الصنف بلا وحدة بيع قديمة (unit)، ووحداته في جدول الوحدات المتعددة
+        self.assertIsNone(self.item.unit_id)
+        r = self.client.get(self.url)
+        self.assertContains(r, '<td class="pl-col-unit">قطعة</td>')
+        self.assertNotContains(r, '<td class="pl-col-unit">-</td>')
+
+    def test_unit_falls_back_to_legacy_unit_field(self):
+        from apps.items.models import Unit
+        make_item(self.tenant, name='صنف قديم', unit=Unit.objects.create(tenant=self.tenant, name='لتر'))
+        r = self.client.get(self.url)
+        self.assertContains(r, '<td class="pl-col-unit">لتر</td>')
+
+    def test_pack_column_does_not_exist_and_old_saved_choice_is_ignored(self):
+        self.assertNotIn('pack', dict(StoreSettings.PRICE_LIST_COLUMNS))
+        # مشترك حفظ إعداداته قديماً وفيها مفتاح العمود المحذوف: لا يُكسر ولا يُعرض
+        self.store.price_list_columns = ['name', 'pack', 'retail']
+        self.store.save()
+        r = self.client.get(self.url)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(self.store.price_list_visible_columns(), {'name', 'retail'})
+
+    def _save_columns(self, columns):
+        # نموذج الإعدادات يقرأ غياب is_enabled/show_out_of_stock كإيقاف، فنرسلهما صراحةً
+        self.client.post(reverse('store:manage_settings'), {
+            'display_name': 'x', 'is_enabled': 'on', 'show_out_of_stock': 'on',
+            'show_prices': 'on', 'show_price_list': 'on', 'price_list_columns': columns,
+        })
+
+    def test_requested_quantity_column_can_be_hidden_and_shown(self):
+        self.assertContains(self.client.get(self.url), 'الكمية المطلوبة')
+
+        self._save_columns(['name', 'unit', 'retail'])
+        r = self.client.get(self.url)
+        self.assertContains(r, 'سعر التجزئة')                # الصفحة موجودة فعلاً
+        self.assertNotContains(r, 'الكمية المطلوبة')
+
+        self._save_columns(['name', 'unit', 'retail', 'qty'])
+        r = self.client.get(self.url)
+        self.assertContains(r, 'سعر التجزئة')
+        self.assertContains(r, 'الكمية المطلوبة')
+
+
+class StoreBranchSelectionTests(TenantTestCase):
+    version_type = 'multi_branch'
+    subscription_plan = 'enterprise'
+
+    def setUp(self):
+        super().setUp()
+        from apps.core.models import Branch
+        from apps.core.test_utils import make_stock
+        from apps.stocks.models import StockQuantity
+        self.b1 = Branch.objects.create(tenant=self.tenant, name='فرع أ')
+        self.b2 = Branch.objects.create(tenant=self.tenant, name='فرع ب')
+        self.s1 = make_stock(self.tenant, name='م1', branch=self.b1, is_default=True)
+        self.s2 = make_stock(self.tenant, name='م2', branch=self.b2, is_default=True)
+        self.i1 = make_item(self.tenant, name='صنف أ')
+        self.i2 = make_item(self.tenant, name='صنف ب')
+        StockQuantity.objects.filter(stock=self.s1, item=self.i1).update(quantity=5)
+        StockQuantity.objects.filter(stock=self.s2, item=self.i2).update(quantity=5)
+        self.store, _ = StoreSettings.objects.update_or_create(
+            tenant=self.tenant, defaults=dict(is_enabled=True, status_override='open'))
+        self.anon = Client()
+
+    def _front(self, **params):
+        return self.anon.get(reverse('store:storefront', args=[self.store.slug]), params)
+
+    def test_branch_name_shown_and_products_follow_branch(self):
+        r = self._front(branch=self.b1.id)
+        self.assertContains(r, 'فرع أ')
+        self.assertContains(r, 'صنف أ')
+        self.assertNotContains(r, 'صنف ب')
+        r = self._front(branch=self.b2.id)
+        self.assertContains(r, 'صنف ب')
+        self.assertNotContains(r, 'صنف أ')
+
+    def test_choice_is_not_remembered_and_invalid_branch_falls_back(self):
+        self._front(branch=self.b2.id)
+        page = self._front()                                   # الرابط العام يعرض الفروع دائماً
+        self.assertContains(page, 'اختر الفرع')
+        self.assertNotContains(page, 'صنف ب')
+        self.assertContains(self._front(branch=99999), 'اختر الفرع')
+
+    def test_order_records_branch_and_approval_uses_its_stock(self):
+        from apps.store.models import OnlineOrder
+        self._front(branch=self.b2.id)
+        self.anon.post(reverse('store:cart_add', args=[self.store.slug]), {'item_id': self.i2.id, 'qty': '2'})
+        r = self.anon.post(reverse('store:checkout', args=[self.store.slug]),
+                           {'name': 'زائر', 'phone': '0912345678', 'payment_method': 'bank'})
+        self.assertEqual(r.status_code, 302)
+        order = OnlineOrder.objects.get(tenant=self.tenant)
+        self.assertEqual(order.branch_id, self.b2.id)
+        from apps.store.services import approve_order
+        invoice = approve_order(order)
+        self.assertEqual(invoice.stock_id, self.s2.id)
+        self.assertEqual(invoice.branch_id, self.b2.id)

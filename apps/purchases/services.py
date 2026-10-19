@@ -6,6 +6,8 @@ from django.utils import timezone
 from apps.sales.models import StockMovement
 from apps.stocks.models import StockQuantity
 from apps.treasury.services import post_treasury_disbursement, post_treasury_receipt
+from apps.bank_accounts.models import BankAccountMovement
+from apps.bank_accounts.services import post_bank_account_disbursement, post_bank_account_receipt
 
 from .models import (
     PurchaseInvoice,
@@ -169,7 +171,25 @@ def _reverse_stock_movements(tenant, invoice):
         )
 
 
-def _apply_payment(tenant, invoice, method, amount, date, reference='', notes=''):
+def _invoice_cash_treasury(tenant, invoice):
+    """
+    الخزينة النقدية لفاتورة الشراء: فاتورة المخزن المركزي تُسدَّد نقداً من خزينة
+    الإدارة المركزية (بالعملة المحلية). غير ذلك: None، فتُختار خزينة المستخدم
+    الافتراضية كالمعتاد (خزينة فرعه).
+    """
+    stock = getattr(invoice, 'stock', None)
+    if stock is None or not stock.is_central:
+        return None
+    from apps.treasury.models import Treasury
+    treasury = Treasury.objects.filter(
+        tenant=tenant, is_head_office=True, is_active=True,
+    ).order_by('id').first()
+    if treasury is None:
+        raise ValueError('لا توجد خزينة للإدارة المركزية لتسجيل الدفع النقدي.')
+    return treasury
+
+
+def _apply_payment(tenant, invoice, method, amount, date, reference='', notes='', bank_account=None):
     amount = Decimal(str(amount or 0))
     if amount <= 0:
         return None
@@ -193,6 +213,18 @@ def _apply_payment(tenant, invoice, method, amount, date, reference='', notes=''
             reference_id=payment.id,
             description=notes or f'دفعة أمر شراء {invoice.invoice_number}',
             user=getattr(invoice, 'updated_by', None) or getattr(invoice, 'created_by', None),
+            treasury=_invoice_cash_treasury(tenant, invoice),
+        )
+    elif method == 'bank':
+        post_bank_account_disbursement(
+            tenant=tenant,
+            amount=amount,
+            date=date,
+            reference_type='purchase_payment',
+            reference_id=payment.id,
+            description=notes or f'دفعة أمر شراء {invoice.invoice_number}',
+            user=getattr(invoice, 'updated_by', None) or getattr(invoice, 'created_by', None),
+            bank_account=bank_account,
         )
 
     return payment
@@ -202,6 +234,12 @@ def _reverse_payments(tenant, invoice):
     payments = list(invoice.payments.filter(is_reversed=False))
     for payment in payments:
         if payment.payment_method == 'cash' and payment.amount > 0:
+            # تُعاد النقدية إلى الخزينة التي دُفع منها فعلاً (الإدارة المركزية للفاتورة المركزية).
+            from apps.treasury.models import TreasuryMovement
+            original = TreasuryMovement.objects.filter(
+                tenant=tenant, reference_type='purchase_payment', reference_id=payment.id,
+                movement_type='disbursement',
+            ).select_related('treasury').order_by('id').first()
             post_treasury_receipt(
                 tenant=tenant,
                 amount=payment.amount,
@@ -209,7 +247,23 @@ def _reverse_payments(tenant, invoice):
                 reference_type='purchase_payment',
                 reference_id=payment.id,
                 description=f'عكس دفعة أمر شراء {invoice.invoice_number}',
+                treasury=original.treasury if original else None,
             )
+        elif payment.payment_method == 'bank' and payment.amount > 0:
+            original_movement = BankAccountMovement.objects.filter(
+                tenant=tenant, reference_type='purchase_payment', reference_id=payment.id,
+            ).first()
+            movement_bank_account = original_movement.bank_account if original_movement else invoice.bank_account
+            if movement_bank_account:
+                post_bank_account_receipt(
+                    tenant=tenant,
+                    amount=payment.amount,
+                    date=timezone.localdate(),
+                    reference_type='purchase_payment',
+                    reference_id=payment.id,
+                    description=f'عكس دفعة أمر شراء {invoice.invoice_number}',
+                    bank_account=movement_bank_account,
+                )
 
         payment.is_reversed = True
         payment.save(update_fields=['is_reversed', 'updated_at'])
@@ -310,7 +364,6 @@ def confirm_purchase_invoice(invoice: PurchaseInvoice, user, reapply_stock=True)
         raise ValueError('لا يمكن تأكيد أمر شراء فارغ.')
 
     if reapply_stock:
-        from apps.items.models import ItemBatch
         for line in lines:
             qty_base = (line.quantity * (line.unit_factor or Decimal('1'))).quantize(Decimal('0.0001'))
             _add_stock(
@@ -321,17 +374,6 @@ def confirm_purchase_invoice(invoice: PurchaseInvoice, user, reapply_stock=True)
                 unit_cost=line.unit_cost,
                 invoice=invoice,
             )
-            if line.batch_number or line.expiry_date:
-                ItemBatch.objects.create(
-                    tenant=tenant,
-                    item=line.item,
-                    stock=invoice.stock,
-                    batch_number=line.batch_number or '',
-                    expiry_date=line.expiry_date,
-                    quantity_received=qty_base,
-                    quantity_remaining=qty_base,
-                    purchase_date=invoice.invoice_date,
-                )
 
     total = invoice.grand_total
     pm = invoice.payment_method
@@ -347,7 +389,10 @@ def confirm_purchase_invoice(invoice: PurchaseInvoice, user, reapply_stock=True)
     # ── فحص الحد الائتماني للمورد ──────────────────────────────
     if invoice.supplier and pm in ('credit', 'mixed'):
         from django.db.models import Sum as _CLSum
-        supplier = invoice.supplier
+        # قفل صف المورد لمنع تجاوز الحد الائتماني عبر Race Condition بين
+        # أمري شراء آجلين لنفس المورد يُؤكَّدان في نفس اللحظة.
+        from apps.suppliers.models import Supplier
+        supplier = Supplier.objects.select_for_update().get(pk=invoice.supplier_id)
         credit_limit = supplier.credit_limit or Decimal('0')
         if credit_limit > 0:
             current_balance = (
@@ -397,7 +442,9 @@ def confirm_purchase_invoice(invoice: PurchaseInvoice, user, reapply_stock=True)
     elif pm == 'bank':
         if not bank_reference:
             raise ValueError('يرجى إدخال مرجع التحويل البنكي.')
-        _apply_payment(tenant, invoice, 'bank', total, invoice.invoice_date, reference=bank_reference)
+        if not invoice.bank_account:
+            raise ValueError('يرجى اختيار الحساب البنكي.')
+        _apply_payment(tenant, invoice, 'bank', total, invoice.invoice_date, reference=bank_reference, bank_account=invoice.bank_account)
         if invoice.supplier:
             _apply_supplier_ledger(
                 tenant=tenant, supplier=invoice.supplier, amount=total,
@@ -429,11 +476,13 @@ def confirm_purchase_invoice(invoice: PurchaseInvoice, user, reapply_stock=True)
             raise ValueError('الجزء الآجل في الدفع المختلط يتطلب اختيار مورد.')
         if bank_amt > 0 and not bank_reference:
             raise ValueError('يرجى إدخال مرجع التحويل البنكي للجزء البنكي.')
+        if bank_amt > 0 and not invoice.bank_account:
+            raise ValueError('يرجى اختيار الحساب البنكي للجزء البنكي.')
 
         if cash_amt > 0:
             _apply_payment(tenant, invoice, 'cash', cash_amt, invoice.invoice_date)
         if bank_amt > 0:
-            _apply_payment(tenant, invoice, 'bank', bank_amt, invoice.invoice_date, reference=bank_reference)
+            _apply_payment(tenant, invoice, 'bank', bank_amt, invoice.invoice_date, reference=bank_reference, bank_account=invoice.bank_account)
 
         if invoice.supplier:
             _apply_supplier_ledger(
@@ -540,6 +589,20 @@ def confirm_purchase_return(purchase_return: PurchaseReturn, user) -> PurchaseRe
             reference_id=purchase_return.id,
             description=f'استلام مرتجع شراء {purchase_return.return_number}',
             user=user,
+            treasury=_invoice_cash_treasury(tenant, invoice),
+        )
+    elif purchase_return.refund_method == 'bank':
+        if not invoice.bank_account:
+            raise ValueError('استرداد المرتجع بنكياً يتطلب أن يكون لأمر الشراء حساب بنكي محدد.')
+        post_bank_account_receipt(
+            tenant=tenant,
+            amount=total,
+            date=purchase_return.return_date,
+            reference_type='purchase_return',
+            reference_id=purchase_return.id,
+            description=f'استلام مرتجع شراء {purchase_return.return_number}',
+            user=user,
+            bank_account=invoice.bank_account,
         )
 
     if invoice.supplier:
@@ -614,6 +677,11 @@ def cancel_purchase_return(purchase_return: PurchaseReturn, user) -> PurchaseRet
         inv_line.save(update_fields=['returned_quantity', 'updated_at'])
 
     if purchase_return.refund_method == 'cash' and purchase_return.total_returned > 0:
+        from apps.treasury.models import TreasuryMovement
+        original = TreasuryMovement.objects.filter(
+            tenant=tenant, reference_type='purchase_return', reference_id=purchase_return.id,
+            movement_type='receipt',
+        ).select_related('treasury').order_by('id').first()
         post_treasury_disbursement(
             tenant=tenant,
             amount=purchase_return.total_returned,
@@ -622,7 +690,24 @@ def cancel_purchase_return(purchase_return: PurchaseReturn, user) -> PurchaseRet
             reference_id=purchase_return.id,
             description=f'عكس استلام مرتجع شراء {purchase_return.return_number}',
             user=user,
+            treasury=original.treasury if original else None,
         )
+    elif purchase_return.refund_method == 'bank' and purchase_return.total_returned > 0:
+        original_movement = BankAccountMovement.objects.filter(
+            tenant=tenant, reference_type='purchase_return', reference_id=purchase_return.id,
+        ).first()
+        movement_bank_account = original_movement.bank_account if original_movement else invoice.bank_account
+        if movement_bank_account:
+            post_bank_account_disbursement(
+                tenant=tenant,
+                amount=purchase_return.total_returned,
+                date=timezone.localdate(),
+                reference_type='purchase_return',
+                reference_id=purchase_return.id,
+                description=f'عكس استلام مرتجع شراء {purchase_return.return_number}',
+                user=user,
+                bank_account=movement_bank_account,
+            )
 
     _reverse_supplier_ledger(tenant, 'purchase_return', purchase_return.id)
 
@@ -648,7 +733,7 @@ def edit_confirmed_purchase_invoice(invoice: PurchaseInvoice, header_data: dict,
 
     allowed = {
         'supplier', 'stock', 'invoice_date', 'payment_method',
-        'cash_amount', 'bank_amount', 'bank_reference', 'notes',
+        'cash_amount', 'bank_amount', 'bank_reference', 'bank_account', 'notes',
     }
     for field, value in header_data.items():
         if field in allowed:
@@ -668,9 +753,8 @@ def edit_confirmed_purchase_invoice(invoice: PurchaseInvoice, header_data: dict,
             quantity=Decimal(str(ld['quantity'])),
             unit_cost=Decimal(str(ld['unit_cost'])),
             tax_rate=Decimal(str(ld.get('tax_rate', 0))),
-            batch_number=ld.get('batch_number', '') or '',
+            unit_factor=Decimal(str(ld.get('unit_factor', 1) or 1)),
             serial_number=ld.get('serial_number', '') or '',
-            expiry_date=ld.get('expiry_date') or None,
         )
         line.calculate()
         new_lines.append(line)
@@ -699,6 +783,11 @@ def build_purchase_from_post(tenant, stock, data: dict, lines_data: list, user) 
     if data.get('supplier_id'):
         supplier = Supplier.objects.get(id=data['supplier_id'], tenant=tenant)
 
+    bank_account = None
+    if data.get('bank_account_id'):
+        from apps.bank_accounts.models import BankAccount
+        bank_account = BankAccount.objects.get(id=data['bank_account_id'], tenant=tenant, is_active=True)
+
     invoice = PurchaseInvoice.objects.create(
         tenant=tenant,
         supplier=supplier,
@@ -708,18 +797,19 @@ def build_purchase_from_post(tenant, stock, data: dict, lines_data: list, user) 
         cash_amount=Decimal(str(data.get('cash_amount', 0))),
         bank_amount=Decimal(str(data.get('bank_amount', 0))),
         bank_reference=data.get('bank_reference', ''),
+        bank_account=bank_account,
         notes=data.get('notes', ''),
         status='draft',
         created_by=user,
         updated_by=user,
     )
 
-    from apps.items.models import Unit as ItemUnit
+    from apps.items.models import unit_for_item_unit
     for ld in lines_data:
         item = Item.objects.get(id=ld['item_id'], tenant=tenant)
         unit_obj = None
         if ld.get('unit_id'):
-            unit_obj = ItemUnit.objects.filter(pk=ld['unit_id'], tenant=tenant).first()
+            unit_obj = unit_for_item_unit(tenant, ld['unit_id'])
         line = PurchaseInvoiceLine(
             tenant=tenant,
             invoice=invoice,
@@ -729,9 +819,7 @@ def build_purchase_from_post(tenant, stock, data: dict, lines_data: list, user) 
             tax_rate=Decimal(str(ld.get('tax_rate', 0))),
             unit=unit_obj,
             unit_factor=Decimal(str(ld.get('unit_factor', 1) or 1)),
-            batch_number=ld.get('batch_number', '') or '',
             serial_number=ld.get('serial_number', '') or '',
-            expiry_date=ld.get('expiry_date') or None,
             created_by=user,
             updated_by=user,
         )

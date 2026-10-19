@@ -5,7 +5,7 @@
 {% block page_description %}إعدادات النظام العامة — هوية النظام، الصيانة، الإشعارات، الإعدادات الافتراضية{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/admin_settings.css' %}?v=2.1">
+<link rel="stylesheet" href="{% static 'css/admin_settings.css' %}?v=1.2">
 {% endblock %}
 
 {% block content %}
@@ -220,22 +220,6 @@
                         <input type="hidden" name="section" value="defaults">
 
                         <div class="col-md-6">
-                            <label class="asy-label">العملة الافتراضية</label>
-                            <select id="defaultCurrencySelect" name="default_currency" class="asy-select">
-                                {% for code, label in currency_choices %}
-                                <option value="{{ code }}" {% if ps.default_currency == code %}selected{% endif %}>{{ label }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="asy-label">المنطقة الزمنية الافتراضية</label>
-                            <select id="defaultTimezoneSelect" name="default_timezone" class="asy-select">
-                                {% for tz in timezones %}
-                                <option value="{{ tz }}" {% if ps.default_timezone == tz %}selected{% endif %}>{{ tz }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-md-6">
                             <label class="asy-label">بادئة الفاتورة الافتراضية</label>
                             <input type="text" name="default_invoice_prefix" class="asy-input"
                                    value="{{ ps.default_invoice_prefix }}" maxlength="10" placeholder="INV">
@@ -369,17 +353,5 @@ document.querySelectorAll('input[type=file]').forEach(fi => {
         if (btn && fi.files[0]) btn.querySelector('i').className = 'fas fa-check';
     });
 });
-
-// ── Auto-select currency based on timezone ─────────────────────
-(function () {
-    const TZ_CURRENCY = {{ timezone_currency_map_json|safe }};
-    const tzSel  = document.getElementById('defaultTimezoneSelect');
-    const curSel = document.getElementById('defaultCurrencySelect');
-    if (!tzSel || !curSel) return;
-    tzSel.addEventListener('change', function () {
-        var code = TZ_CURRENCY[this.value];
-        if (code) curSel.value = code;
-    });
-}());
 </script>
 {% endblock %}

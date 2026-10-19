@@ -15,7 +15,7 @@ from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
-from .decorators import require_permission
+from .decorators import require_head_office_scoped_permission, require_permission
 from django.db import transaction
 from django.db.models import Q
 from django.urls import reverse
@@ -26,10 +26,14 @@ from django.utils import timezone as _tz
 from apps.core.models import Tenant, Settings
 from .models import UserActivity
 from .activity_service import log_activity
-from apps.core.constants import COUNTRY_TIMEZONE_MAP, COUNTRY_CURRENCY_MAP, TIMEZONE_CURRENCY_MAP, CURRENCY_AR, DEFAULT_COUNTRY, get_timezone_for_country
+from apps.core.constants import COUNTRY_TIMEZONE_MAP, COUNTRY_CURRENCY_MAP, CURRENCY_AR, get_timezone_for_country
 from .models import PermissionGroup, User
 from .forms import Step1UserForm, Step2BusinessForm, Step3SettingsForm, RegistrationRequestForm, LoginForm, UserManagementForm, PasswordResetForm, SetPasswordForm
-from .permissions import get_permission_keys, get_permission_schema
+from .permissions import (
+    get_permission_keys, filter_schema_for_tenant,
+    get_branch_supervisor_permission_keys, get_enterprise_owner_permission_keys,
+    branch_supervisor_excluded_categories, enterprise_owner_excluded_categories, get_scope_excluded_permission_keys,
+)
 
 
 def _wants_json(request):
@@ -78,22 +82,61 @@ def _json_ok(data=None, msg='تمت العملية بنجاح'):
     return JsonResponse(payload, json_dumps_params={'ensure_ascii': False})
 
 
+def _manageable_users(request, tenant):
+    """
+    المستخدمون الذين يجوز للمستخدم الحالي إدارتهم من شاشة المستخدمين.
+    مستخدم مربوط بفرع (مدير الفرع): موظفو فرعه فقط — لا مستخدمو الفروع الأخرى
+    ولا مدير النشاط. بلا فرع (نسخ غير المؤسسات): كل مستخدمي النشاط كالمعتاد.
+    """
+    qs = User.objects.for_tenant(tenant)
+    if _is_head_office(request):
+        # نطاق إدارة النشاط: موظفو الإدارة بلا فرع فقط — لا مدير النشاط ولا موظفي الفروع.
+        return qs.filter(branch__isnull=True, is_tenant_admin=False, is_superuser=False)
+    branch = getattr(request, 'branch', None)
+    if branch is not None:
+        qs = qs.filter(branch=branch, is_tenant_admin=False, is_superuser=False)
+    return qs
+
+
+def _is_head_office(request):
+    """True لو نفّذ require_head_office_scoped_permission نطاق إدارة النشاط لهذا الطلب."""
+    return bool(getattr(request, 'head_office_scope', False))
+
+
+def _user_form(request, tenant, *args, **kwargs):
+    return UserManagementForm(*args, tenant=tenant, forced_branch=getattr(request, 'branch', None),
+                              head_office=_is_head_office(request), **kwargs)
+
+
+def _users_perm(request, action):
+    """صلاحية الإجراء في نطاق الطلب: مستخدمو إدارة النشاط أو المستخدمون المعتادون."""
+    return request.user.has_perm_key(f'{action}_admin_users' if _is_head_office(request) else f'{action}_users')
+
+
+def _branch_protected_user_error(request, target):
+    """مستخدم الفرع لا يعدّل/يحذف مشرف الفرع (ولا نفسه) من هذه الشاشة."""
+    if getattr(request, 'branch', None) is None:
+        return None
+    if target.is_branch_supervisor or target.pk == request.user.pk:
+        return _json_error('لا يمكنك تعديل مشرف الفرع أو حسابك من هذه الشاشة', status=403)
+    return None
+
+
 @login_required
-@require_permission('view_users')
+@require_head_office_scoped_permission('view_users', 'view_admin_users')
 def user_list(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
 
-    qs = User.objects.for_tenant(tenant)
+    qs = _manageable_users(request, tenant)
     total = qs.count()
     active = qs.filter(is_active=True).count()
     inactive = total - active
 
-    groups = PermissionGroup.objects.filter(
-        tenant=tenant,
-        is_active=True
-    ).values('id', 'name')
+    # is_owner_group مستبعدة عمداً — راجع apps/accounts/models.py::PermissionGroup.is_owner_group
+    form = _user_form(request, tenant)
+    groups = form.fields['permission_groups'].queryset.values('id', 'name')
 
     context = {
         'stats': {
@@ -101,14 +144,17 @@ def user_list(request):
             'active': active,
             'inactive': inactive,
         },
-        'form': UserManagementForm(tenant=tenant),
+        'form': form,
         'permission_groups': json.dumps(list(groups), ensure_ascii=False),
+        'branch_locked': getattr(request, 'branch', None) is not None or _is_head_office(request),
+        'head_office': _is_head_office(request),
+        'can': {action: _users_perm(request, action) for action in ('add', 'change', 'delete')},
     }
     return render(request, 'accounts/user_list.html', context)
 
 
 @login_required
-@require_permission('view_users')
+@require_head_office_scoped_permission('view_users', 'view_admin_users')
 def user_table_api(request):
     tenant = _ensure_tenant(request)
     if not tenant:
@@ -120,7 +166,7 @@ def user_table_api(request):
     search_value = request.GET.get('search[value]', '').strip()
     status = request.GET.get('status', '').strip()
 
-    queryset = User.objects.for_tenant(tenant)
+    queryset = _manageable_users(request, tenant)
     records_total = queryset.count()
 
     if status == 'active':
@@ -173,14 +219,19 @@ def user_table_api(request):
         'recordsFiltered': records_filtered,
         'data': data,
         'perms': {
-            'edit': request.user.has_perm_key('change_users'),
-            'delete': request.user.has_perm_key('delete_users'),
+            'edit': _users_perm(request, 'change'),
+            'delete': _users_perm(request, 'delete'),
         },
     }, json_dumps_params={'ensure_ascii': False})
 
 
+def _active_users_count(tenant):
+    """عدد المستخدمين المحسوبين ضمن حد الباقة: النشطون فقط."""
+    return User.objects.filter(tenant=tenant, is_active=True).count()
+
+
 @login_required
-@require_permission('add_users')
+@require_head_office_scoped_permission('add_users', 'add_admin_users')
 def user_create_api(request):
     tenant = _ensure_tenant(request)
     if not tenant:
@@ -188,21 +239,23 @@ def user_create_api(request):
     if request.method != 'POST':
         return JsonResponse({'success': False, 'message': 'الطريقة غير مسموحة'}, status=405, json_dumps_params={'ensure_ascii': False})
     
-    current_count = User.objects.filter(tenant=tenant).count()
-    if current_count >= tenant.max_users:
+    # المستخدمون المعطَّلون لا يُحسبون ضمن حد الباقة، فيمكن إنشاء حساب معطَّل
+    # حتى عند بلوغ الحد، ويُفحص الحد عند التفعيل.
+    wants_active = request.POST.get('is_active') == 'on'
+    if wants_active and _active_users_count(tenant) >= tenant.max_users:
         return JsonResponse(
             {
                 'success': False,
                 'message': (
-                    f'وصلت إلى الحد الأقصى للمستخدمين ({tenant.max_users}). '
-                    'يرجى التواصل مع الدعم لترقية الاشتراك.'
+                    f'لقد وصلت للحد الأقصى المسموح به من المستخدمين ({tenant.max_users}). '
+                    'يرجى ترقية الباقة لزيادة الحد.'
                 ),
             },
             status=403,
             json_dumps_params={'ensure_ascii': False}
         )
 
-    form = UserManagementForm(request.POST, tenant=tenant)
+    form = _user_form(request, tenant, request.POST)
     if not form.is_valid():
         return JsonResponse({
             'success': False,
@@ -218,13 +271,13 @@ def user_create_api(request):
 
 
 @login_required
-@require_permission('view_users')
+@require_head_office_scoped_permission('view_users', 'view_admin_users')
 def user_detail_api(request, pk):
     tenant = _ensure_tenant(request)
     if not tenant:
         return _json_error('لا يوجد نشاط تجاري')
 
-    user = get_object_or_404(User.objects.for_tenant(tenant), pk=pk)
+    user = get_object_or_404(_manageable_users(request, tenant), pk=pk)
     
     active_groups = [group.id for group in user.permission_groups.filter(is_active=True)]
     
@@ -235,7 +288,9 @@ def user_detail_api(request, pk):
         'last_name': user.last_name,
         'email': user.email,
         'phone': getattr(user, 'phone', ''),
+        'branch': user.branch_id,
         'is_tenant_admin': getattr(user, 'is_tenant_admin', False),
+        'is_branch_supervisor': getattr(user, 'is_branch_supervisor', False),
         'is_active': user.is_active,
         'permission_groups': active_groups,
         'is_agent_user': hasattr(user, 'agent_profile'),
@@ -243,7 +298,7 @@ def user_detail_api(request, pk):
 
 
 @login_required
-@require_permission('change_users')
+@require_head_office_scoped_permission('change_users', 'change_admin_users')
 def user_update_api(request, pk):
     tenant = _ensure_tenant(request)
     if not tenant:
@@ -251,9 +306,18 @@ def user_update_api(request, pk):
     if request.method != 'POST':
         return JsonResponse({'success': False, 'message': 'الطريقة غير مسموحة'}, status=405, json_dumps_params={'ensure_ascii': False})
 
-    user = get_object_or_404(User.objects.for_tenant(tenant), pk=pk)
-    
-    form = UserManagementForm(request.POST, instance=user, tenant=tenant)
+    user = get_object_or_404(_manageable_users(request, tenant), pk=pk)
+    protected = _branch_protected_user_error(request, user)
+    if protected:
+        return protected
+
+    if (not user.is_active and request.POST.get('is_active') == 'on'
+            and _active_users_count(tenant) >= tenant.max_users):
+        return _json_error(
+            f'لا يمكن تفعيل المستخدم: وصلت للحد الأقصى من المستخدمين النشطين ({tenant.max_users}). '
+            'عطّل مستخدماً آخر أو رقِّ الباقة.', status=403)
+
+    form = _user_form(request, tenant, request.POST, instance=user)
     if not form.is_valid():
         return JsonResponse({
             'success': False,
@@ -267,7 +331,7 @@ def user_update_api(request, pk):
 
 
 @login_required
-@require_permission('delete_users')
+@require_head_office_scoped_permission('delete_users', 'delete_admin_users')
 def user_delete_api(request, pk):
     tenant = _ensure_tenant(request)
     if not tenant:
@@ -278,11 +342,23 @@ def user_delete_api(request, pk):
     if request.user.pk == pk:
         return _json_error('لا يمكن حذف المستخدم الحالي')
 
-    user = get_object_or_404(User.objects.for_tenant(tenant), pk=pk)
+    user = get_object_or_404(_manageable_users(request, tenant), pk=pk)
+    protected = _branch_protected_user_error(request, user)
+    if protected:
+        return protected
     if hasattr(user, 'agent_profile'):
         return _json_error('لا يمكن حذف هذا المستخدم لأنه مرتبط بمندوب. احذف المندوب أولاً أو افصل الحساب منه.')
     user.delete()
     return _json_ok(None, 'تم حذف المستخدم بنجاح')
+
+
+def _manageable_groups(tenant):
+    """
+    مجموعات الصلاحيات التي تُعرض وتُدار من شاشة "المجموعات والصلاحيات": تُستبعد
+    مجموعة "مدير النشاط" التلقائية (is_owner_group) — هي ملف صلاحيات صاحب
+    الاشتراك نفسه، فلا تُعرض ولا تُعدَّل ولا تُحذف ولا تُمنح لأحد من هنا.
+    """
+    return PermissionGroup.objects.filter(tenant=tenant, is_owner_group=False)
 
 
 @login_required
@@ -294,12 +370,23 @@ def permission_group_list(request):
 
     # تمرير المستخدمين والمجموعات إلى الـ template
     users = User.objects.for_tenant(tenant).filter(is_active=True).values('id', 'username', 'first_name', 'last_name')
-    
-    schema = get_permission_schema()
+
+    schema = filter_schema_for_tenant(tenant)
+    central = tenant.is_central_purchasing()
 
     return render(request, 'accounts/permission_group_list.html', {
         'permission_schema': json.dumps(schema, ensure_ascii=False),
         'users': json.dumps(list(users), ensure_ascii=False),
+        'is_enterprise_tenant': tenant.is_enterprise(),
+        'group_scope_excluded': json.dumps({
+            'branch': sorted(branch_supervisor_excluded_categories(central)),
+            'admin': sorted(enterprise_owner_excluded_categories(central)),
+        }, ensure_ascii=False),
+        # مفاتيح موسومة بنطاق مستبعد داخل أقسام مشتركة (مثل تقارير تفاصيل الفرع).
+        'group_scope_excluded_keys': json.dumps({
+            'branch': get_scope_excluded_permission_keys('admin_only', central),
+            'admin': get_scope_excluded_permission_keys('branch_ops', central),
+        }),
     })
 
 
@@ -315,7 +402,7 @@ def permission_group_table_api(request):
     length = int(request.GET.get('length', 25))
     search_value = request.GET.get('search[value]', '').strip()
 
-    queryset = PermissionGroup.objects.filter(tenant=tenant)
+    queryset = _manageable_groups(tenant)
     total = queryset.count()
 
     if search_value:
@@ -332,6 +419,7 @@ def permission_group_table_api(request):
             'member_count': group.users.count(),
             'permission_count': len(group.get_permission_keys()),
             'is_active': group.is_active,
+            'scope': group.scope,
         }
         for group in groups
     ]
@@ -347,7 +435,10 @@ def permission_group_table_api(request):
 @login_required
 @require_permission('view_permissiongroups')
 def permission_group_schema_api(request):
-    return _json_ok(get_permission_schema())
+    tenant = _ensure_tenant(request)
+    if not tenant:
+        return _json_error('لا يوجد نشاط تجاري')
+    return _json_ok(filter_schema_for_tenant(tenant))
 
 
 @login_required
@@ -357,7 +448,7 @@ def permission_group_detail_api(request, pk):
     if not tenant:
         return _json_error('لا يوجد نشاط تجاري')
 
-    group = get_object_or_404(PermissionGroup.objects.filter(tenant=tenant), pk=pk)
+    group = get_object_or_404(_manageable_groups(tenant), pk=pk)
     return _json_ok({
         'id': group.id,
         'name': group.name,
@@ -365,7 +456,33 @@ def permission_group_detail_api(request, pk):
         'is_active': group.is_active,
         'permissions': group.permissions,
         'users': [user.id for user in group.users.filter(is_active=True)],
+        'scope': group.scope,
     })
+
+
+def _valid_keys_for_scope(tenant, scope):
+    """
+    مفاتيح الصلاحيات المسموح حفظها في مجموعة صلاحيات، حسب نطاقها. نطاق
+    'branch'/'admin' لا يُنفَّذ إلا لنسخة المؤسسات — يعكس تماماً نفس
+    الفلترة المطبّقة تلقائياً على مشرف الفرع/مدير النشاط (راجع
+    apps/accounts/permissions.py) بدل الثقة بما يُرسله العميل فقط.
+
+    بالإضافة لذلك، نتقاطع دائماً مع filter_schema_for_tenant (نفس الفلترة
+    المطبّقة وقت العرض) — بدونها كان بإمكان tenant غير Enterprise حفظ مفتاح
+    صلاحية لميزة لا تدعمها باقته/قدراته أصلاً (لا يظهر أصلاً كـ checkbox في
+    الواجهة) لو أُرسل يدوياً في الطلب.
+    """
+    central = tenant.is_central_purchasing()
+    if tenant.is_enterprise() and scope == 'branch':
+        base_keys = set(get_branch_supervisor_permission_keys(central))
+    elif tenant.is_enterprise() and scope == 'admin':
+        base_keys = set(get_enterprise_owner_permission_keys(central))
+    else:
+        base_keys = set(get_permission_keys())
+
+    tenant_schema = filter_schema_for_tenant(tenant)
+    tenant_visible_keys = {key for perms in tenant_schema.values() for key in perms}
+    return base_keys & tenant_visible_keys
 
 
 @login_required
@@ -380,17 +497,23 @@ def permission_group_create_api(request):
     name = request.POST.get('name', '').strip()
     description = request.POST.get('description', '').strip()
     permissions_json = request.POST.get('permissions', '{}')
-    user_ids = request.POST.getlist('users[]')
+    scope = request.POST.get('scope', '').strip()
+    if scope not in dict(PermissionGroup.SCOPE_CHOICES):
+        scope = ''
 
     if not name:
         return _json_error('يرجى إدخال اسم المجموعة')
+    if PermissionGroup.objects.filter(tenant=tenant, name=name).exists():
+        return _json_error('توجد مجموعة صلاحيات بهذا الاسم بالفعل')
+    if tenant.is_enterprise() and not scope:
+        return _json_error('يرجى تحديد نطاق المجموعة (فروع أو إدارة النشاط)')
 
     try:
         permissions = json.loads(permissions_json)
     except ValueError:
         permissions = {}
 
-    valid_keys = set(get_permission_keys())
+    valid_keys = _valid_keys_for_scope(tenant, scope)
     # Build complete permissions dict with all valid keys (default to False)
     sanitized_permissions = {
         key: bool(permissions.get(key, False))
@@ -401,12 +524,10 @@ def permission_group_create_api(request):
         tenant=tenant,
         name=name,
         description=description,
+        scope=scope if tenant.is_enterprise() else '',
         permissions=sanitized_permissions,
         is_active=request.POST.get('is_active') == 'on',
     )
-
-    if user_ids:
-        group.users.set(User.objects.filter(tenant=tenant, id__in=user_ids))
 
     enabled_count = sum(1 for p in sanitized_permissions.values() if p)
     log_activity(request, 'إنشاء مجموعة صلاحيات جديدة',
@@ -428,21 +549,25 @@ def permission_group_update_api(request, pk):
     if request.method != 'POST':
         return _json_error('الطريقة غير مسموحة', status=405)
 
-    group = get_object_or_404(PermissionGroup.objects.filter(tenant=tenant), pk=pk)
+    group = get_object_or_404(_manageable_groups(tenant), pk=pk)
     name = request.POST.get('name', '').strip()
     description = request.POST.get('description', '').strip()
     permissions_json = request.POST.get('permissions', '{}')
-    user_ids = request.POST.getlist('users[]')
+    scope = request.POST.get('scope', group.scope).strip()
+    if scope not in dict(PermissionGroup.SCOPE_CHOICES):
+        scope = ''
 
     if not name:
         return _json_error('يرجى إدخال اسم المجموعة')
+    if PermissionGroup.objects.filter(tenant=tenant, name=name).exclude(pk=group.pk).exists():
+        return _json_error('توجد مجموعة صلاحيات بهذا الاسم بالفعل')
 
     try:
         permissions = json.loads(permissions_json)
     except ValueError:
         permissions = {}
 
-    valid_keys = set(get_permission_keys())
+    valid_keys = _valid_keys_for_scope(tenant, scope)
     # Build complete permissions dict with all valid keys (default to False)
     sanitized_permissions = {
         key: bool(permissions.get(key, False))
@@ -451,13 +576,12 @@ def permission_group_update_api(request, pk):
 
     group.name = name
     group.description = description
+    group.scope = scope if tenant.is_enterprise() else ''
     group.permissions = sanitized_permissions
     group.is_active = request.POST.get('is_active') == 'on'
     group.save()
 
-    # فقط تحديث المستخدمين إذا تم إرسال مستخدمين (قائمة غير فارغة)
-    if user_ids:
-        group.users.set(User.objects.filter(tenant=tenant, id__in=user_ids))
+    # العضوية لا تُعدَّل من هنا: تُسند المجموعات للمستخدم من شاشة إدارة المستخدمين.
 
     enabled_count = sum(1 for p in sanitized_permissions.values() if p)
     return _json_ok({
@@ -477,15 +601,14 @@ def permission_group_delete_api(request, pk):
     if request.method != 'POST':
         return _json_error('الطريقة غير مسموحة', status=405)
 
-    group = get_object_or_404(PermissionGroup.objects.filter(tenant=tenant), pk=pk)
+    group = get_object_or_404(_manageable_groups(tenant), pk=pk)
     group.delete()
     return _json_ok(None, 'تم حذف المجموعة بنجاح')
 
 
 
 
-REGISTRATION_WHATSAPP_NUMBER = '97433933700'
-REGISTRATION_CONTACT_EMAIL = 'info@banantechnology.com'
+REGISTRATION_WHATSAPP_NUMBER = '249110100110'
 REGISTRATION_REQUEST_RECIPIENT = 'khattabaljaily@gmail.com'
 
 
@@ -496,7 +619,6 @@ def registration_closed(request):
     return render(request, 'accounts/registration_closed.html', {
         'form': form,
         'whatsapp_number': REGISTRATION_WHATSAPP_NUMBER,
-        'contact_email': REGISTRATION_CONTACT_EMAIL,
     })
 
 
@@ -517,14 +639,15 @@ def registration_request_api(request):
     data = form.cleaned_data
     version_label = dict(RegistrationRequestForm.VERSION_CHOICES).get(data['version_type'], data['version_type'])
 
+    from apps.core.branding import get_brand_name
     email_context = {
         'personal_email': data['personal_email'],
-        'business_type': data['business_type'].name_ar,
         'business_name': data['business_name'],
         'phone': data['phone'],
         'address': data['address'],
         'version_type': version_label,
         'now': _tz.now(),
+        'app_name': get_brand_name(),
     }
 
     subject = f"طلب إنشاء حساب جديد - {data['business_name']}"
@@ -610,8 +733,7 @@ def register_step2(request):
         return redirect('accounts:register_step1')
     
     country_timezone_map_json = json.dumps(COUNTRY_TIMEZONE_MAP, ensure_ascii=False)
-    country_currency_map_json = json.dumps(COUNTRY_CURRENCY_MAP, ensure_ascii=False)
-    timezone_preview = get_timezone_for_country(DEFAULT_COUNTRY)
+    timezone_preview = '—'
 
     if request.method == 'POST':
         form = Step2BusinessForm(request.POST)
@@ -620,7 +742,6 @@ def register_step2(request):
             timezone_value = get_timezone_for_country(country_value)
             # حفظ البيانات في Session
             request.session['reg_step2'] = {
-                'business_type_id': form.cleaned_data['business_type'].id,
                 'business_name': form.cleaned_data['business_name'],
                 'phone': form.cleaned_data['phone'],
                 'address': form.cleaned_data['address'],
@@ -644,18 +765,18 @@ def register_step2(request):
                 'message': _first_error_message(errors),
                 'errors': errors,
             }, status=400, json_dumps_params={'ensure_ascii': False})
-        timezone_preview = get_timezone_for_country(request.POST.get('country', DEFAULT_COUNTRY))
+        country_posted = request.POST.get('country', '')
+        timezone_preview = get_timezone_for_country(country_posted) if country_posted else '—'
     else:
-        initial = request.session.get('reg_step2', {})
+        initial = dict(request.session.get('reg_step2', {}))
         form = Step2BusinessForm(initial=initial)
-        timezone_preview = get_timezone_for_country(initial.get('country', DEFAULT_COUNTRY))
+        timezone_preview = get_timezone_for_country(initial['country']) if initial.get('country') else '—'
 
     return render(request, 'accounts/register_step2.html', {
         'form': form,
         'step': 2,
         'total_steps': 3,
         'country_timezone_map_json': country_timezone_map_json,
-        'country_currency_map_json': country_currency_map_json,
         'timezone_preview': timezone_preview,
     })
 
@@ -685,10 +806,12 @@ def register_step3(request):
                     
                     # 1. إنشاء Tenant
                     from apps.core.models import BusinessType
-                    business_type = BusinessType.objects.get(id=step2_data['business_type_id'])
+                    business_type = BusinessType.get_default()
                     
-                    subscription_plan = form.cleaned_data.get('subscription_plan', 'trial')
-                    trial_duration = 30
+                    from apps.core.models import PlatformSettings
+                    subscription_plan = form.cleaned_data.get('subscription_plan', 'basic')
+                    trial_duration = PlatformSettings.get().default_trial_days
+                    plan_limits = Tenant.PLAN_LIMITS.get(subscription_plan, Tenant.PLAN_LIMITS['basic'])
 
                     tenant = Tenant.objects.create(
                         name=step2_data['business_name'],
@@ -696,13 +819,23 @@ def register_step3(request):
                         phone=step2_data['phone'],
                         address=step2_data['address'],
                         city=step2_data['city'],
+                        country=step2_data['country'],
                         subscription_plan=subscription_plan,
                         subscription_start=_tz.localdate(),
-                        subscription_expires=_tz.localdate() + timedelta(days=trial_duration),  # شهران تجريبيان مجاناً
+                        subscription_expires=_tz.localdate() + timedelta(days=trial_duration),
+                        # كل تسجيل ذاتي يبدأ كحساب تجريبي — المشرف يقرر عند
+                        # الاعتماد إن كان يبقى تجريبياً أم يتحول لحساب حقيقي.
+                        is_demo=True,
                         version_type=form.cleaned_data['version_type'],
-                        max_stocks=form.cleaned_data['num_stocks'],
-                        timezone=form.cleaned_data['timezone'],
-                        currency=form.cleaned_data['currency'],
+                        # المخازن والفروع وعدد المستخدمين تتحدد من الباقة مباشرة، مو من
+                        # إدخال حر بالنموذج — نفس حدود صفحة الأسعار بالضبط.
+                        max_stocks=plan_limits['max_stocks'],
+                        max_branches=plan_limits['max_branches'],
+                        max_users=plan_limits['max_users'],
+                        # المنطقة الزمنية والعملة تُشتقّان من الدولة المختارة في الخطوة 2
+                        timezone=step2_data['timezone'],
+                        currency=COUNTRY_CURRENCY_MAP[step2_data['country']],
+                        is_approved=False,
                     )
                     
                     # 2. إنشاء User
@@ -738,6 +871,7 @@ def register_step3(request):
                         from django.template.loader import render_to_string
                         from django.utils import timezone as tz
                         from django.conf import settings as django_settings
+                        from apps.core.branding import get_brand_name
                         html_body = render_to_string('core/email/new_tenant_notification.html', {
                             'tenant': tenant,
                             'admin_full_name': user.get_full_name() or step1_data['username'],
@@ -745,11 +879,12 @@ def register_step3(request):
                             'admin_email': step1_data.get('email', ''),
                             'created_at': tz.now(),
                             'dashboard_url': request.build_absolute_uri('/tenants/'),
+                            'app_name': get_brand_name(),
                         })
                         msg = EmailMessage(
                             subject=f'New Tenant Registered: {tenant.name}',
                             body=html_body,
-                            from_email='BananIMS <{}>'.format(django_settings.EMAIL_HOST_USER),
+                            from_email='{} <{}>'.format(get_brand_name(), django_settings.EMAIL_HOST_USER),
                             to=['khattabaljaily@gmail.com'],
                         )
                         msg.content_subtype = 'html'
@@ -758,41 +893,50 @@ def register_step3(request):
                         import logging
                         logging.getLogger(__name__).error('registration email failed: %s', _email_err, exc_info=True)
 
-                    # 7. Send welcome email to the new tenant admin
-                    try:
-                        from django.core.mail import EmailMessage
-                        from django.template.loader import render_to_string
-                        from django.utils import timezone as tz
-                        from django.conf import settings as django_settings
-                        welcome_html = render_to_string('accounts/email/welcome_tenant_email.html', {
-                            'tenant': tenant,
-                            'admin_full_name': user.get_full_name() or step1_data['username'],
-                            'admin_username': step1_data['username'],
-                            'admin_email': step1_data.get('email', ''),
-                            'created_at': tz.now(),
-                            'login_url': request.build_absolute_uri(reverse('accounts:login')),
-                        })
-                        welcome_msg = EmailMessage(
-                            subject='🎉 مرحباً بك في Banan',
-                            body=welcome_html,
-                            from_email='BananIMS <{}>'.format(django_settings.EMAIL_HOST_USER),
-                            to=[step1_data['email']],
-                        )
-                        welcome_msg.content_subtype = 'html'
-                        welcome_msg.send(fail_silently=False)
-                    except Exception as _welcome_err:
-                        import logging
-                        logging.getLogger(__name__).error('welcome email failed: %s', _welcome_err, exc_info=True)
+                    # 7. Send "pending approval" email to the new tenant admin (backgrounded
+                    # so a slow/unreachable SMTP server can never block this request)
+                    def _send_pending_email(tenant_id, admin_email, admin_full_name):
+                        try:
+                            from django.core.mail import EmailMessage
+                            from django.template.loader import render_to_string
+                            from django.conf import settings as django_settings
+                            from apps.core.branding import get_brand_name
+                            tenant_obj = Tenant.objects.get(pk=tenant_id)
+                            html_body = render_to_string('accounts/email/trial_pending_email.html', {
+                                'tenant': tenant_obj,
+                                'admin_full_name': admin_full_name,
+                                'app_name': get_brand_name(),
+                            })
+                            msg = EmailMessage(
+                                subject=f'طلبك قيد المراجعة - {tenant_obj.name}',
+                                body=html_body,
+                                from_email='{} <{}>'.format(get_brand_name(), django_settings.EMAIL_HOST_USER),
+                                to=[admin_email],
+                            )
+                            msg.content_subtype = 'html'
+                            if admin_email:
+                                msg.send(fail_silently=False)
+                        except Exception as _e:
+                            import logging
+                            logging.getLogger(__name__).error('pending approval email failed: %s', _e, exc_info=True)
+
+                    import threading
+                    _pending_email_args = (tenant.id, user.email, user.get_full_name() or step1_data['username'])
+                    transaction.on_commit(lambda: threading.Thread(
+                        target=_send_pending_email,
+                        args=_pending_email_args,
+                        daemon=True,
+                    ).start())
 
                     if _wants_json(request):
                         return JsonResponse({
                             'success': True,
-                            'message': f'مرحباً {user.get_full_name()}! تم إنشاء حسابك بنجاح',
-                            'redirect_url': reverse('core:dashboard'),
+                            'message': f'مرحباً {user.get_full_name()}! تم إنشاء حسابك بنجاح، حسابك الآن قيد المراجعة',
+                            'redirect_url': reverse('core:pending_approval'),
                         })
 
-                    messages.success(request, f'مرحباً {user.get_full_name()}! تم إنشاء حسابك بنجاح')
-                    return redirect('core:dashboard')
+                    messages.success(request, f'مرحباً {user.get_full_name()}! تم إنشاء حسابك بنجاح، حسابك الآن قيد المراجعة')
+                    return redirect('core:pending_approval')
                     
             except Exception as e:
                 if _wants_json(request):
@@ -809,21 +953,18 @@ def register_step3(request):
                 'errors': errors,
             }, status=400, json_dumps_params={'ensure_ascii': False})
     else:
-        session_data = request.session.get('reg_step2', {})
-        initial_timezone = session_data.get('timezone', get_timezone_for_country(session_data.get('country', DEFAULT_COUNTRY)))
-        form = Step3SettingsForm(initial={'timezone': initial_timezone})
+        form = Step3SettingsForm()
 
     session_data = request.session.get('reg_step2', {})
-    session_country = session_data.get('country', DEFAULT_COUNTRY)
-    suggested_currency = COUNTRY_CURRENCY_MAP.get(session_country, 'SDG')
+    tenant_currency = COUNTRY_CURRENCY_MAP.get(session_data.get('country', ''), '')
 
     return render(request, 'accounts/register_step3.html', {
         'form': form,
         'step': 3,
         'total_steps': 3,
-        'timezone_currency_map_json': json.dumps(TIMEZONE_CURRENCY_MAP, ensure_ascii=False),
-        'currency_ar_json': json.dumps(CURRENCY_AR, ensure_ascii=False),
-        'suggested_currency': suggested_currency,
+        'plan_limits_json': json.dumps(Tenant.PLAN_LIMITS, ensure_ascii=False),
+        'tenant_currency': tenant_currency,
+        'tenant_currency_label': CURRENCY_AR.get(tenant_currency, tenant_currency),
     })
 
 
@@ -991,10 +1132,12 @@ def password_reset_request(request):
                 reverse('accounts:password_reset_confirm', kwargs={'uidb64': uid, 'token': token})
             )
 
-            subject = 'إعادة تعيين كلمة المرور - منصة بنان'
+            from apps.core.branding import get_brand_name
+            subject = f'إعادة تعيين كلمة المرور - منصة {get_brand_name()}'
             message = render_to_string('accounts/email/password_reset_email.html', {
                 'user': user,
                 'reset_url': reset_url,
+                'app_name': get_brand_name(),
             })
 
             try:
@@ -1041,7 +1184,7 @@ def password_reset_confirm(request, uidb64, token):
         else:
             form = SetPasswordForm()
     else:
-        messages.error(request, 'رابط إعادة التعيين غير صحيح أو منتهي الصلاحية')
+        messages.error(request, 'رابط إعادة التعيين غير صحيح أو انتهت مدته')
         return redirect('accounts:password_reset_request')
 
     return render(request, 'accounts/password_reset_confirm.html', {
@@ -1064,29 +1207,74 @@ def password_reset_complete(request):
 
 @login_required
 def activity_log(request):
+    from urllib.parse import urlencode
+
+    from django.core.paginator import Paginator
+
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:dashboard')
 
-    is_admin = request.user.is_tenant_admin
+    me = request.user
+    is_admin = me.is_tenant_admin
+    # مدير الفرع (مشرف الفرع) يرى نشاط مستخدمي فرعه كلهم؛ بقية مستخدمي الفرع يرون نشاطهم فقط.
+    is_branch_manager = bool(not is_admin and me.is_branch_supervisor and me.branch_id)
+    can_see_others = is_admin or is_branch_manager
 
     users_qs = None
     selected_user_id = request.GET.get('user', '').strip()
 
-    if is_admin:
+    if can_see_others:
         from .models import User as AccountUser
         users_qs = AccountUser.objects.filter(tenant=tenant).order_by('first_name', 'username')
         qs = UserActivity.objects.filter(tenant=tenant).select_related('user')
-        if selected_user_id:
+        if is_branch_manager:
+            users_qs = users_qs.filter(branch_id=me.branch_id)
+            qs = qs.filter(Q(branch_id=me.branch_id) | Q(user__branch_id=me.branch_id))
+        if selected_user_id and users_qs.filter(pk=selected_user_id).exists():
             qs = qs.filter(user_id=selected_user_id)
+        else:
+            selected_user_id = ''
     else:
-        qs = UserActivity.objects.filter(tenant=tenant, user=request.user)
+        selected_user_id = ''
+        qs = UserActivity.objects.filter(tenant=tenant, user=me)
+        branch = getattr(request, 'branch', None)
+        if branch is not None:
+            qs = qs.filter(Q(branch=branch) | Q(branch__isnull=True))
 
-    qs = qs.order_by('-created_at')[:500]
+    def _parse_date(value):
+        try:
+            return datetime.strptime(value, '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            return None
+
+    date_from_raw = request.GET.get('date_from', '').strip()
+    date_to_raw = request.GET.get('date_to', '').strip()
+    date_from, date_to = _parse_date(date_from_raw), _parse_date(date_to_raw)
+    # نطاق زمني صريح بتوقيت المشترك (لا __date، فهو يحتاج جداول المناطق الزمنية في MySQL)
+    if date_from:
+        qs = qs.filter(created_at__gte=_tz.make_aware(datetime.combine(date_from, datetime.min.time())))
+    if date_to:
+        qs = qs.filter(created_at__lt=_tz.make_aware(datetime.combine(date_to + timedelta(days=1), datetime.min.time())))
+
+    paginator = Paginator(qs.order_by('-created_at', '-id'), 24)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    filter_params = {k: v for k, v in (
+        ('user', selected_user_id),
+        ('date_from', date_from.isoformat() if date_from else ''),
+        ('date_to', date_to.isoformat() if date_to else ''),
+    ) if v}
 
     return render(request, 'accounts/activity_log.html', {
-        'activities': qs,
+        'activities': page_obj,
+        'page_obj': page_obj,
+        'total_count': paginator.count,
         'users': users_qs,
         'selected_user_id': selected_user_id,
-        'is_admin_view': is_admin,
+        'date_from': date_from.isoformat() if date_from else '',
+        'date_to': date_to.isoformat() if date_to else '',
+        'has_filters': bool(filter_params),
+        'filter_qs': urlencode(filter_params),
+        'is_admin_view': can_see_others,
+        'is_branch_manager_view': is_branch_manager,
     })

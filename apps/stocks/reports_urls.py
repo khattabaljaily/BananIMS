@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views
+from . import central_reports, views
 
 app_name = 'reports'
 
@@ -35,4 +35,10 @@ urlpatterns = [
     # Non-Moving Items
     path('non-moving/', views.stocks_non_moving_report, name='non_moving_report'),
     path('non-moving/export/', views.stocks_non_moving_report_export, name='non_moving_report_export'),
+
+    # Central warehouse shipments (head office only)
+    path('shipments-in-transit/', central_reports.shipments_in_transit_report, name='shipments_in_transit_report'),
+    path('shipments-in-transit/export/', central_reports.shipments_in_transit_report_export, name='shipments_in_transit_report_export'),
+    path('shipment-differences/', central_reports.shipment_differences_report, name='shipment_differences_report'),
+    path('shipment-differences/export/', central_reports.shipment_differences_report_export, name='shipment_differences_report_export'),
 ]

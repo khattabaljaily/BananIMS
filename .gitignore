@@ -46,6 +46,7 @@ perms.json
 # IDE
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 *~
@@ -61,6 +62,7 @@ run_tests.sh
 generate_report.py
 .coverage
 .pytest_cache/
+deploy.cnf
 htmlcov/
 
 # Backup files
@@ -68,6 +70,11 @@ htmlcov/
 *.backup
 *.sql
 *.cnf
+logs/
 
 # Local reference files
 SYSTEM_BRIEF.md
+deploy
+
+# Local database / tenant backups — never commit
+backups/

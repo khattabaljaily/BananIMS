@@ -8,10 +8,10 @@
   max-width:480px; margin:0 auto;
 }
 .exp-hero {
-  background:linear-gradient(135deg,#1e1b4b 0%,#312e81 60%,var(--indigo-700) 100%);
+  background:linear-gradient(135deg,#0b2530 0%,#123844 60%,#164e63 100%);
   border-radius:20px; padding:1.5rem 1.75rem;
   display:flex; align-items:center; gap:1rem;
-  box-shadow:0 8px 32px rgba(10,22,34,.25);
+  box-shadow:0 8px 32px rgba(67,56,202,.25);
   position:relative; overflow:hidden;
 }
 .exp-hero::before {
@@ -23,7 +23,7 @@
   width:52px; height:52px; border-radius:14px;
   background:rgba(255,255,255,.12);
   display:flex; align-items:center; justify-content:center;
-  font-size:1.5rem; color:#a5b4fc; flex-shrink:0;
+  font-size:1.5rem; color:#4fbcb0; flex-shrink:0;
 }
 .exp-hero__title { color:#fff; font-size:1.15rem; font-weight:800; margin:0; }
 .exp-hero__sub   { color:rgba(255,255,255,.65); font-size:.82rem; margin-top:2px; }
@@ -79,8 +79,8 @@
   border:none; cursor:pointer; transition:all .15s; font-family:inherit;
 }
 .exp-btn--primary {
-  background:linear-gradient(135deg,var(--primary-hover),#6d28d9); color:#fff;
-  box-shadow:0 4px 14px rgba(29,58,86,.3);
+  background:linear-gradient(135deg,var(--primary-hover),var(--secondary)); color:#fff;
+  box-shadow:0 4px 14px rgba(79,70,229,.3);
 }
 .exp-btn--primary:hover { opacity:.9; color:#fff; }
 .exp-btn--ghost {
@@ -97,7 +97,7 @@
     <div class="exp-hero__icon"><i class="fas fa-clock"></i></div>
     <div>
       <div class="exp-hero__title">انتهى اشتراكك</div>
-      <div class="exp-hero__sub">نظام بنان لإدارة المخزون والمبيعات</div>
+      <div class="exp-hero__sub">نظام {{ app_name }} لإدارة المخزون والمبيعات</div>
     </div>
   </div>
 
@@ -108,7 +108,7 @@
       <div class="exp-alert__title">الوصول موقوف مؤقتاً</div>
       <div class="exp-alert__desc">
         انتهت صلاحية اشتراكك. بياناتك محفوظة ومؤمّنة تماماً وستعود للعمل فور تجديد الاشتراك.
-        تواصل مع فريق بنان لتجديد الاشتراك في أقرب وقت.
+        تواصل مع فريق {{ app_name }} لتجديد الاشتراك في أقرب وقت.
       </div>
     </div>
   </div>
@@ -118,10 +118,10 @@
     <div class="exp-wa__icon"><i class="fab fa-whatsapp"></i></div>
     <div class="exp-wa__body">
       <div class="exp-wa__title">تواصل معنا عبر واتساب</div>
-      <div class="exp-wa__sub">للتواصل السريع مع فريق بنان</div>
+      <div class="exp-wa__sub">للتواصل السريع مع فريق {{ app_name }}</div>
     </div>
     {% with user_name=request.user.get_full_name|default:request.user.username tenant_name=request.tenant.name|default:"" %}
-    <a href="https://wa.me/97433933700?text={% filter urlencode %}مرحباً، أنا {{ user_name }} من {{ tenant_name }} - مستخدم برنامج بنان.{% endfilter %}"
+    <a href="https://wa.me/249110100110?text={% filter urlencode %}مرحباً، أنا {{ user_name }} من {{ tenant_name }} - مستخدم برنامج {{ app_name }}.{% endfilter %}"
        target="_blank" rel="noopener" class="exp-wa__btn">
       <i class="fab fa-whatsapp"></i> تواصل معنا
     </a>

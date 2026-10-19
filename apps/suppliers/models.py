@@ -1,9 +1,20 @@
 from django.db import models
 
-from apps.core.models import TenantMixin
+from apps.core.models import TenantMixin, TenantManager, BranchScopedManager
 
 
 class Supplier(TenantMixin):
+    # عزل تلقائي بفرع الطلب (BranchScopedManager)؛ unscoped للتعامل عبر كل الفروع
+    objects = BranchScopedManager()
+    unscoped = TenantManager()
+    branch = models.ForeignKey(
+        'core.Branch',
+        on_delete=models.SET_NULL,
+        verbose_name='الفرع',
+        related_name='suppliers',
+        null=True,
+        blank=True,
+    )
     code = models.CharField('كود المورد', max_length=20, blank=True)
     name = models.CharField('اسم المورد', max_length=200)
     phone = models.CharField('رقم الهاتف', max_length=20, blank=True)
@@ -11,6 +22,7 @@ class Supplier(TenantMixin):
     city = models.CharField('المدينة', max_length=100, blank=True)
     address = models.TextField('العنوان', blank=True)
     notes = models.TextField('ملاحظات', blank=True)
+
 
     opening_balance = models.DecimalField('المديونية الافتتاحية', max_digits=12, decimal_places=2, default=0)
     credit_limit = models.DecimalField('الحد الائتماني', max_digits=12, decimal_places=2, default=0)
@@ -35,7 +47,7 @@ class Supplier(TenantMixin):
     def save(self, *args, **kwargs):
         if not self.code:
             last_supplier = (
-                Supplier.objects.filter(tenant=self.tenant)
+                Supplier.unscoped.filter(tenant=self.tenant)
                 .exclude(code='')
                 .order_by('-id')
                 .first()
@@ -45,6 +57,6 @@ class Supplier(TenantMixin):
                 try:
                     next_number = int(last_supplier.code.split('-')[-1]) + 1
                 except ValueError:
-                    next_number = Supplier.objects.filter(tenant=self.tenant).count() + 1
+                    next_number = Supplier.unscoped.filter(tenant=self.tenant).count() + 1
             self.code = f"SUP-{next_number:05d}"
         super().save(*args, **kwargs)

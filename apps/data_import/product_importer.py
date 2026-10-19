@@ -1,0 +1,249 @@
+"""
+Row-processing engine for the product import commit step.
+
+Mirrors, rather than reinvents, three existing ORM/logic patterns:
+- opening balance:  apps/stocks/views.py `opening_balance_save_api`
+- default stock:    apps/stocks/views.py (`filter(is_default=True).first() or .first()`)
+- per-product units: apps/items/views.py `_save_item_units` (the same helper the
+  manual "add product" form uses — a product's units are NOT a shared/tenant-level
+  list, they're defined per-product as an optional smaller+larger pair)
+"""
+import json
+import logging
+from decimal import Decimal, InvalidOperation
+from django.db import transaction, IntegrityError
+from django.utils import timezone
+
+from apps.items.models import Category, Item
+from apps.items.views import _save_item_units
+from apps.items.dedup import find_existing_item_match
+from apps.suppliers.models import Supplier
+from apps.stocks.models import Stock, StockQuantity
+from apps.stocks.scope import opening_balance_stocks
+from apps.sales.models import StockMovement
+from apps.ai.services import smart_map_headers, match_category_name
+from apps.core.io_utils import parse_uploaded_file, smart_get, safe_decimal, bool_from_str
+
+from .schemas import get_product_schema
+from .gating import products_import_blocked_reason
+
+logger = logging.getLogger('data_import')
+
+def _name_lookup(queryset):
+    return {obj.name.strip().lower(): obj for obj in queryset}
+
+
+def import_products(tenant, uploaded_file, user):
+    """Returns {'created': int, 'updated': int, 'errors': [...], 'possible_duplicates': [...]}"""
+    empty_result = {'created': 0, 'updated': 0, 'possible_duplicates': []}
+    if products_import_blocked_reason(tenant):
+        return {**empty_result, 'errors': [{'row': 0, 'field': '', 'message': 'أضف تصنيفاً واحداً على الأقل أولاً'}]}
+
+    rows, err = parse_uploaded_file(uploaded_file)
+    if err:
+        return {**empty_result, 'errors': [{'row': 0, 'field': '', 'message': err}]}
+    if not rows:
+        return {**empty_result, 'errors': [{'row': 0, 'field': '', 'message': 'الملف فارغ أو لا يحتوي على بيانات'}]}
+
+    schema = get_product_schema(tenant)
+    schema_by_field = {s['field']: s for s in schema}
+    has_stock_column = 'stock' in schema_by_field
+
+    ai_schema = [
+        {'field': s['field'], 'description': s['description'], 'required': s.get('required', False)}
+        for s in schema
+    ]
+    actual_headers = list(rows[0].keys())
+    try:
+        mapping = smart_map_headers(actual_headers, ai_schema)
+    except Exception:
+        mapping = {}
+
+    categories = _name_lookup(Category.objects.for_tenant(tenant).filter(is_active=True))
+    user_branch = user.branch if getattr(user, 'branch_id', None) else None
+    stocks = _name_lookup(opening_balance_stocks(tenant, user_branch))
+    suppliers = _name_lookup(Supplier.objects.for_tenant(tenant).filter(is_active=True))
+
+    default_stock = None
+    if not has_stock_column:
+        active_stocks = opening_balance_stocks(tenant, user_branch).order_by('-is_default', 'name')
+        default_stock = active_stocks.filter(is_default=True).first() or active_stocks.first()
+
+    category_ai_cache: dict = {}
+
+    def resolve_category(raw: str):
+        if not raw:
+            return None, None
+        key = raw.strip().lower()
+        if key in categories:
+            return categories[key], None
+        if raw in category_ai_cache:
+            cached = category_ai_cache[raw]
+            return (categories.get(cached.strip().lower()), None) if cached else (None, f'التصنيف "{raw}" غير موجود')
+        matched = match_category_name(raw, [c.name for c in categories.values()])
+        category_ai_cache[raw] = matched
+        if matched and matched.strip().lower() in categories:
+            return categories[matched.strip().lower()], None
+        return None, f'التصنيف "{raw}" غير موجود — اختره من القائمة المنسدلة'
+
+    def resolve_stock(raw: str):
+        if not raw:
+            return default_stock, None
+        key = raw.strip().lower()
+        if key in stocks:
+            return stocks[key], None
+        return None, f'المخزن "{raw}" غير موجود'
+
+    def resolve_supplier(raw: str):
+        """Unlike category/stock, an unknown supplier name is created on the
+        fly — pricelists rarely have a pre-curated supplier list, and this
+        field exists purely for the tenant's own later filtering."""
+        raw = (raw or '').strip()
+        if not raw:
+            return None
+        key = raw.lower()
+        if key in suppliers:
+            return suppliers[key]
+        supplier = Supplier.objects.create(tenant=tenant, name=raw, created_by=user, updated_by=user)
+        suppliers[key] = supplier
+        return supplier
+
+    created = 0
+    updated = 0
+    errors = []
+    possible_duplicates = []
+
+    for i, row in enumerate(rows, start=2):
+        try:
+            with transaction.atomic():
+                name = smart_get(row, 'name', mapping, schema_by_field['name']['header_ar'], 'اسم المنتج', 'الاسم', 'name')
+                if not name:
+                    errors.append({'row': i, 'field': 'name', 'message': 'اسم المنتج مطلوب'})
+                    continue
+
+                category_raw = smart_get(row, 'category', mapping, schema_by_field.get('category', {}).get('header_ar', ''), 'التصنيف', 'category')
+                category, cat_err = resolve_category(category_raw)
+                if cat_err:
+                    errors.append({'row': i, 'field': 'category', 'message': cat_err})
+                    continue
+
+                supplier_raw = smart_get(row, 'supplier', mapping, schema_by_field.get('supplier', {}).get('header_ar', ''), 'الشركة الموردة', 'supplier')
+                supplier = resolve_supplier(supplier_raw)
+
+                base_unit_name = smart_get(row, 'base_unit_name', mapping, schema_by_field.get('base_unit_name', {}).get('header_ar', ''), 'اسم الوحدة الأساسية', 'base_unit_name')
+                large_unit_name = smart_get(row, 'large_unit_name', mapping, schema_by_field.get('large_unit_name', {}).get('header_ar', ''), 'اسم وحدة أكبر', 'large_unit_name')
+                large_unit_count_raw = smart_get(row, 'large_unit_count', mapping, schema_by_field.get('large_unit_count', {}).get('header_ar', ''), 'large_unit_count')
+
+                units_data = []
+                if large_unit_name and not base_unit_name:
+                    errors.append({'row': i, 'field': 'base_unit_name', 'message': 'حدّد اسم الوحدة الأساسية أولاً قبل تحديد وحدة أكبر'})
+                    continue
+                if base_unit_name:
+                    units_data.append({'name': base_unit_name, 'factor': 1})
+                if large_unit_name:
+                    large_unit_count = safe_decimal(large_unit_count_raw, default=Decimal('0'))
+                    if large_unit_count <= 0:
+                        errors.append({'row': i, 'field': 'large_unit_count', 'message': 'حدّد كم وحدة أساسية داخل الوحدة الأكبر'})
+                        continue
+                    units_data.append({'name': large_unit_name, 'factor': float(large_unit_count)})
+
+                target_stock = default_stock
+                if has_stock_column:
+                    stock_raw = smart_get(row, 'stock', mapping, schema_by_field['stock']['header_ar'], 'المخزن', 'stock')
+                    target_stock, stock_err = resolve_stock(stock_raw)
+                    if stock_err:
+                        errors.append({'row': i, 'field': 'stock', 'message': stock_err})
+                        continue
+
+                kwargs = {
+                    'tenant': tenant, 'created_by': user, 'updated_by': user,
+                    'name': name, 'category': category, 'supplier': supplier,
+                    'is_active': True,
+                }
+
+                for spec in schema:
+                    field = spec['field']
+                    if field in ('name', 'category', 'supplier', 'base_unit_name', 'large_unit_name', 'large_unit_count',
+                                 'opening_quantity', 'stock'):
+                        continue
+                    raw_value = smart_get(row, field, mapping, spec['header_ar'], field)
+                    if spec['dtype'] == 'decimal':
+                        kwargs[field] = safe_decimal(raw_value, default=Decimal('0'))
+                    elif spec['dtype'] == 'bool':
+                        kwargs[field] = bool_from_str(raw_value) if raw_value else False
+                    elif spec['dtype'] == 'choice_fixed':
+                        label_to_value = {label: value for value, label in spec['choices']}
+                        kwargs[field] = label_to_value.get(raw_value, spec['choices'][0][0])
+                    else:
+                        kwargs[field] = raw_value
+
+                dup_match = find_existing_item_match(
+                    tenant, name=name,
+                    barcode=kwargs.get('barcode', ''),
+                    sku=kwargs.get('sku', ''),
+                )
+
+                if dup_match and dup_match['match_type'] in ('barcode', 'sku', 'exact'):
+                    # Re-importing/overlapping supplier lists should update the
+                    # existing tenant-specific fields, not create a full duplicate.
+                    existing = dup_match['item']
+                    update_fields = []
+                    for field in ('cost_price', 'selling_price', 'min_selling_price', 'tax_rate',
+                                  'min_quantity', 'max_quantity'):
+                        if field in kwargs:
+                            setattr(existing, field, kwargs[field])
+                            update_fields.append(field)
+                    existing.updated_by = user
+                    update_fields.append('updated_by')
+                    existing.save(update_fields=list(set(update_fields)))
+                    updated += 1
+                    continue
+
+                if dup_match and dup_match['match_type'] == 'fuzzy':
+                    possible_duplicates.append({
+                        'row': i, 'field': 'name',
+                        'existing_item_id': dup_match['item'].id,
+                        'existing_item_name': dup_match['item'].name,
+                        'confidence': dup_match['confidence'],
+                    })
+
+                item = Item(**kwargs)
+                item.save()
+
+                if units_data:
+                    _save_item_units(item, json.dumps(units_data), tenant)
+
+                opening_qty = safe_decimal(
+                    smart_get(row, 'opening_quantity', mapping, schema_by_field.get('opening_quantity', {}).get('header_ar', ''), 'الكمية الافتتاحية', 'opening_quantity'),
+                    default=Decimal('0'),
+                )
+
+                if opening_qty and target_stock and item.item_type != 'service':
+                    sq = StockQuantity.objects.select_for_update().get(
+                        tenant=tenant, stock=target_stock, item=item,
+                    )
+                    sq.quantity = opening_qty
+                    sq.opening_quantity = opening_qty
+                    sq.save(update_fields=['quantity', 'opening_quantity'])
+
+                    StockMovement.objects.create(
+                        tenant=tenant, item=item, stock=target_stock,
+                        movement_type='opening_in', direction='in',
+                        quantity=opening_qty, unit_cost=item.cost_price or Decimal('0'),
+                        movement_date=timezone.localdate(),
+                        reference_type='opening_balance', reference_id=sq.id,
+                        balance_after=sq.quantity, notes='رصيد افتتاحي عبر استيراد المنتجات',
+                    )
+
+                created += 1
+        except IntegrityError as exc:
+            logger.error('product import row %d: %s', i, exc)
+            errors.append({'row': i, 'field': 'sku', 'message': 'رمز المنتج (SKU) أو بيانات أخرى مكررة'})
+        except (InvalidOperation, ValueError) as exc:
+            logger.error('product import row %d: %s', i, exc)
+            errors.append({'row': i, 'field': '', 'message': f'قيمة غير صالحة: {exc}'})
+        except Exception as exc:
+            logger.error('product import row %d: %s', i, exc, exc_info=True)
+            errors.append({'row': i, 'field': '', 'message': str(exc)})
+
+    return {'created': created, 'updated': updated, 'errors': errors, 'possible_duplicates': possible_duplicates}

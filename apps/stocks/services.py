@@ -3,7 +3,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.sales.models import StockMovement
-from .models import StockQuantity, StockTransfer, StockTransferLine, Stocktake, StocktakeLine, ManufacturingOrder
+from .models import StockQuantity, StockTransfer, StockTransferLine, Stocktake, StocktakeLine
 
 
 def _get_sq(tenant, stock, item):
@@ -33,6 +33,10 @@ def confirm_stock_transfer(transfer):
     """
     if transfer.status != 'draft':
         raise ValueError('يمكن تأكيد المسودات فقط')
+    if transfer.from_stock.is_central or transfer.to_stock.is_central:
+        raise ValueError('التحويل من/إلى المخزن المركزي يتم عبر «الشحنات» فقط.')
+    if transfer.is_inter_branch:
+        raise ValueError('التحويل بين الفروع يُرسَل ثم يعتمد الفرع المستلِم استلامه.')
 
     tenant = transfer.tenant
     lines = list(transfer.lines.select_related('item'))
@@ -169,7 +173,15 @@ def confirm_stocktake(stocktake):
             continue
 
         sq = _get_sq(tenant, stocktake.stock, item)
-        sq.quantity += diff
+        new_quantity = sq.quantity + diff
+        if new_quantity < 0:
+            # نادر لكن ممكن: system_quantity المُسجَّلة وقت بدء الجرد أصبحت
+            # قديمة بسبب عملية بيع/تحويل جرت بعدها وقبل تأكيد الجرد.
+            raise ValueError(
+                f"تعذّر تأكيد الجرد: تطبيق فرق «{item.name}» ({diff:g}) على الرصيد "
+                f"الحالي ({sq.quantity:g}) يُنتج كمية سالبة. أعد عدّ هذا الصنف."
+            )
+        sq.quantity = new_quantity
         sq.save(update_fields=['quantity', 'updated_at'])
 
         direction = 'in' if diff > 0 else 'out'
@@ -191,112 +203,49 @@ def confirm_stocktake(stocktake):
 
 
 # ─────────────────────────────────────────────
-# Manufacturing Order Services
+# Stock Destruction services (إتلاف المخزون)
 # ─────────────────────────────────────────────
 
 @transaction.atomic
-def confirm_manufacturing_order(order):
-    if order.status != 'draft':
-        raise ValueError('الأمر ليس في حالة مسودة')
+def confirm_stock_destruction(destruction, user):
+    """
+    يطبّق الإتلاف: ينقص StockQuantity.quantity (مصدر الحقيقة)، ويسجّل
+    StockMovement لكل بند.
+    """
+    if destruction.status != 'draft':
+        raise ValueError('يمكن تأكيد المسودات فقط')
 
-    recipe = order.recipe
-    total_cost = Decimal('0')
+    lines = list(destruction.lines.select_related('item'))
+    if not lines:
+        raise ValueError('لا توجد بنود في سجل الإتلاف')
 
-    for bom_line in recipe.lines.select_related('component', 'unit').all():
-        factor = Decimal('1')
-        if bom_line.unit and bom_line.unit.factor:
-            factor = bom_line.unit.factor
-        needed = (bom_line.quantity * factor * order.quantity).quantize(Decimal('0.0001'))
-
-        sq = _get_or_create_sq(order.tenant, order.stock, bom_line.component)
-        if sq.quantity < needed:
+    for line in lines:
+        sq = _get_sq(destruction.tenant, destruction.stock, line.item)
+        if sq.quantity < line.quantity:
             raise ValueError(
-                f"رصيد «{bom_line.component.name}» غير كافٍ. "
-                f"المتاح: {sq.quantity}، المطلوب: {needed}."
+                f'الكمية المتاحة من «{line.item.name}» ({sq.quantity:g}) أقل من كمية الإتلاف المطلوبة ({line.quantity:g}).'
             )
-        sq.quantity -= needed
+        sq.quantity -= line.quantity
         sq.save(update_fields=['quantity', 'updated_at'])
 
         StockMovement.objects.create(
-            tenant=order.tenant,
-            item=bom_line.component,
-            stock=order.stock,
-            movement_type='adjustment_out',
-            direction='out',
-            quantity=needed,
-            unit_cost=bom_line.component.cost_price,
+            tenant=destruction.tenant, item=line.item, stock=destruction.stock,
+            movement_type='destruction_out', direction='out',
+            quantity=line.quantity, unit_cost=line.unit_cost_snapshot,
+            movement_date=destruction.destruction_date,
+            reference_type='stock_destruction', reference_id=destruction.id,
             balance_after=sq.quantity,
-            reference_type='manufacturing_order',
-            reference_id=order.id,
-            movement_date=order.order_date,
-            notes=f"استهلاك في تصنيع {recipe.item.name} — أمر {order.order_number}",
+            notes=f'إتلاف {destruction.destruction_number} — {destruction.get_reason_display()}',
         )
-        total_cost += (bom_line.component.cost_price * needed)
 
-    # Add finished product
-    finished_sq = _get_or_create_sq(order.tenant, order.stock, recipe.item)
-    finished_sq.quantity += order.quantity
-    finished_sq.save(update_fields=['quantity', 'updated_at'])
-
-    unit_cost = (total_cost / order.quantity).quantize(Decimal('0.01')) if order.quantity else Decimal('0')
-    StockMovement.objects.create(
-        tenant=order.tenant,
-        item=recipe.item,
-        stock=order.stock,
-        movement_type='adjustment_in',
-        direction='in',
-        quantity=order.quantity,
-        unit_cost=unit_cost,
-        balance_after=finished_sq.quantity,
-        reference_type='manufacturing_order',
-        reference_id=order.id,
-        movement_date=order.order_date,
-        notes=f"إنتاج {order.quantity:g} {recipe.item.name} — أمر {order.order_number}",
-    )
-
-    order.cost = total_cost
-    order.status = 'confirmed'
-    order.save(update_fields=['cost', 'status', 'updated_at'])
+    destruction.status = 'confirmed'
+    destruction.confirmed_by = user
+    destruction.confirmed_at = timezone.now()
+    destruction.save(update_fields=['status', 'confirmed_by', 'confirmed_at', 'updated_at'])
 
 
-@transaction.atomic
-def cancel_manufacturing_order(order):
-    if order.status != 'confirmed':
-        raise ValueError('لا يمكن إلغاء أمر غير مؤكد')
-
-    movements = StockMovement.objects.filter(
-        tenant=order.tenant,
-        reference_type='manufacturing_order',
-        reference_id=order.id,
-        is_reversal=False,
-    ).select_related('item').select_for_update()
-
-    for mv in movements:
-        sq = _get_or_create_sq(order.tenant, order.stock, mv.item)
-        if mv.direction == 'out':
-            # component was deducted → restore it
-            sq.quantity += mv.quantity
-        else:
-            # finished product was added → remove it
-            if sq.quantity < mv.quantity:
-                raise ValueError(f"لا يمكن عكس الأمر: رصيد «{mv.item.name}» غير كافٍ.")
-            sq.quantity -= mv.quantity
-        sq.save(update_fields=['quantity', 'updated_at'])
-        flipped_dir = 'in' if mv.direction == 'out' else 'out'
-        StockMovement.objects.create(
-            tenant=order.tenant,
-            item=mv.item,
-            stock=mv.stock,
-            movement_type='adjustment_in' if flipped_dir == 'in' else 'adjustment_out',
-            direction=flipped_dir,
-            quantity=mv.quantity,
-            unit_cost=mv.unit_cost,
-            balance_after=sq.quantity,
-            reference_type=mv.reference_type,
-            reference_id=mv.reference_id,
-            movement_date=timezone.localdate(),
-            notes=f'إلغاء أمر تصنيع: {mv.notes}' if mv.notes else 'إلغاء أمر تصنيع',
-            is_reversal=True,
-        )
-    order.status = 'cancelled'
-    order.save(update_fields=['status', 'updated_at'])
+def cancel_stock_destruction(destruction):
+    if destruction.status == 'confirmed':
+        raise ValueError('لا يمكن إلغاء سجل إتلاف مؤكد')
+    destruction.status = 'cancelled'
+    destruction.save(update_fields=['status', 'updated_at'])

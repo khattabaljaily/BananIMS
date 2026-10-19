@@ -3,7 +3,7 @@
 {% load humanize %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=5.0">
+<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=4.1">
 {% endblock %}
 
 {% block page_header %}{% endblock %}
@@ -27,7 +27,7 @@
                 <button onclick="window.print()" class="rpt-hero-btn">
                     <i class="fas fa-print"></i> طباعة
                 </button>
-                <a href="{% url 'reports:summary_report_export' %}?start_date={{ start_date|date:"Y-m-d" }}&end_date={{ end_date|date:"Y-m-d" }}" class="rpt-hero-btn">
+                <a href="{% url 'reports:summary_report_export' %}?start_date={{ start_date|date:"Y-m-d" }}&end_date={{ end_date|date:"Y-m-d" }}{% if selected_branch %}&branch={{ selected_branch.id }}{% endif %}" class="rpt-hero-btn">
                     <i class="fas fa-download"></i> تصدير CSV
                 </a>
                 <a href="{% url 'reports:reports' %}" class="rpt-hero-btn">
@@ -50,6 +50,7 @@
                 <input type="date" id="end_date" name="end_date"
                     value="{{ end_date|date:"Y-m-d" }}" class="form-control">
             </div>
+            {% include 'components/report_branch_filter.html' %}
             <div class="col-md-2 d-flex align-items-end">
                 <button type="submit" class="rpt-filter-btn rpt-filter-btn--sales">
                     <i class="fas fa-search me-1"></i>بحث
@@ -120,7 +121,7 @@
                     <tbody>
                         {% for row in report.details %}
                         <tr>
-                            <td class="fw-bold" style="color:#667eea">{{ row.invoice_number }}</td>
+                            <td class="fw-bold" style="color:var(--primary)">{{ row.invoice_number }}</td>
                             <td class="text-muted">{{ row.invoice_date|date:"Y-m-d" }}</td>
                             <td>{{ row.customer_name }}</td>
                             <td class="text-end text-muted">{{ row.total_quantity }}</td>
@@ -132,7 +133,7 @@
                         <tr class="rpt-total-row">
                             <td colspan="3"><i class="fas fa-calculator me-2"></i>الإجمالي</td>
                             <td class="text-end">{{ report.summary.total_quantity }}</td>
-                            <td class="text-end fw-bold" style="color:#667eea">{{ report.summary.total_amount }}</td>
+                            <td class="text-end fw-bold" style="color:var(--primary)">{{ report.summary.total_amount }}</td>
                         </tr>
                     </tfoot>
                 </table>
@@ -169,9 +170,9 @@
                 data: amounts,
                 fill: true,
                 tension: 0.4,
-                borderColor: '#667eea',
-                backgroundColor: 'rgba(102,126,234,0.12)',
-                pointBackgroundColor: '#667eea',
+                borderColor: getComputedStyle(document.documentElement).getPropertyValue('--primary').trim(),
+                backgroundColor: `rgba(${getComputedStyle(document.documentElement).getPropertyValue('--primary-rgb').trim()},0.12)`,
+                pointBackgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--primary').trim(),
                 pointRadius: amounts.length > 20 ? 2 : 4,
                 pointHoverRadius: 6,
             }]

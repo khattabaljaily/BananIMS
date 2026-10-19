@@ -1,6 +1,6 @@
 /**
  * BananIMS — Permissions Management v3.0
- * Split-panel UI: dirty bar at top, members modal
+ * Split-panel UI: dirty bar at top, read-only members list
  */
 (function () {
     'use strict';
@@ -24,22 +24,57 @@
         'الموردين':                'fa-truck',
         'المنتجات والخدمات':       'fa-box',
         'التصنيفات':               'fa-tags',
-        'وحدات القياس':            'fa-weight-scale',
         'المخازن':                 'fa-warehouse',
+        'الفروع':                  'fa-code-branch',
+        'إتلاف المخزون':           'fa-fire-burner',
         'المبيعات':                'fa-file-invoice-dollar',
         'المشتريات':               'fa-cart-shopping',
         'المصروفات':               'fa-money-bill-wave',
         'الخزائن':                 'fa-vault',
+        'الحسابات البنكية':        'fa-building-columns',
+        'المناديب':                'fa-person-chalkboard',
+        'الموظفين':                'fa-user-tie',
+        'رواتب الموظفين':          'fa-file-invoice-dollar',
+        'سلف الموظفين':            'fa-hand-holding-dollar',
+        'حوافز الموظفين':          'fa-star',
         'الذكاء الاصطناعي':        'fa-robot',
         'المتجر الإلكتروني':       'fa-store',
         'الإشعارات':               'fa-bell',
-        'التقارير — المبيعات':     'fa-chart-line',
-        'التقارير — المشتريات':    'fa-chart-bar',
-        'التقارير — المخزون':      'fa-boxes-stacked',
-        'التقارير — المصروفات':    'fa-receipt',
-        'التقارير — الخزائن':      'fa-coins',
-        'التقارير — المالية':      'fa-scale-balanced',
+        'تقارير المبيعات':         'fa-chart-line',
+        'تقارير المشتريات':        'fa-chart-bar',
+        'تقارير المخزن':           'fa-boxes-stacked',
+        'تقارير الحسابات':         'fa-scale-balanced',
+        'تقارير المناديب':         'fa-people-arrows',
     };
+
+    /* ── Scope awareness (Enterprise tenants only) ──────────────
+       'branch' groups exclude the same categories the code already hides
+       from branch supervisors automatically; 'admin' groups exclude the
+       same categories already hidden from the enterprise owner — see
+       apps/accounts/permissions.py BRANCH_SUPERVISOR_EXCLUDED_CATEGORIES /
+       ENTERPRISE_OWNER_EXCLUDED_CATEGORIES. */
+    const isEnterprise  = !!window.IS_ENTERPRISE_TENANT;
+    const scopeExcluded = window.GROUP_SCOPE_EXCLUDED || { branch: [], admin: [] };
+    // مفاتيح مفردة مستبعدة داخل أقسام مشتركة (مثل تقارير تفاصيل الفرع لمجموعات إدارة النشاط)
+    const scopeExcludedKeys = window.GROUP_SCOPE_EXCLUDED_KEYS || { branch: [], admin: [] };
+
+    function permsForScope(perms, scope) {
+        if (!isEnterprise || !scope || !scopeExcludedKeys[scope]) return Object.entries(perms);
+        const excluded = new Set(scopeExcludedKeys[scope]);
+        return Object.entries(perms).filter(([key]) => !excluded.has(key));
+    }
+
+    function categoriesForScope(scope) {
+        if (!isEnterprise || !scope || !scopeExcluded[scope]) return Object.keys(schema);
+        const excluded = new Set(scopeExcluded[scope]);
+        return Object.keys(schema).filter(name => !excluded.has(name));
+    }
+
+    function scopeTotal(scope) {
+        return categoriesForScope(scope).reduce((s, name) => s + permsForScope(schema[name] || {}, scope).length, 0);
+    }
+
+    const SCOPE_LABELS = { branch: 'فروع', admin: 'إدارة النشاط' };
 
     /* ── State ───────────────────────────────────────────────── */
     const schema   = window.PERMISSION_SCHEMA || {};
@@ -52,9 +87,11 @@
     let activeGroupData = null;
     let originalSnap  = null;
     let isDirty       = false;
+    let activeScope   = ''; // '' | 'branch' | 'admin' — current editor's group scope
+    let createScope   = ''; // draft scope chosen in the "new group" modal
 
-    // Members state — array of user IDs currently selected for the group
-    let selectedUserIds = [];
+    // أعضاء المجموعة للعرض فقط — العضوية تُدار من شاشة إدارة المستخدمين
+    let memberIds = [];
 
     /* ── DOM shortcuts ───────────────────────────────────────── */
     const q  = (sel, ctx = document) => ctx.querySelector(sel);
@@ -76,6 +113,8 @@
     const editorIsActive      = q('#editorIsActive');
     const editorIsActiveLabel = q('#editorIsActiveLabel');
     const editorMemberCount   = q('#editorMemberCount');
+    const editorScopeTabs     = q('#editorScopeTabs');
+    const newGroupScopeTabs   = q('#newGroupScopeTabs');
 
     // KPI / progress
     const enabledCount     = q('#enabledCount');
@@ -97,15 +136,8 @@
     // Dirty bar
     const pmDirtyBar  = q('#pmDirtyBar');
 
-    // Members modal
-    const membersModalEl       = q('#membersModal');
-    const membersModal         = new bootstrap.Modal(membersModalEl);
-    const btnOpenMembers       = q('#btnOpenMembers');
-    const membersList          = q('#membersList');
-    const membersSearch        = q('#membersSearch');
-    const membersSelectedCount = q('#membersSelectedCount');
-    const btnMembersClearAll   = q('#btnMembersClearAll');
-    const btnSaveMembers       = q('#btnSaveMembers');
+    // Members (read-only)
+    const membersChips = q('#membersChips');
 
     // Create modal
     const createGroupModal   = new bootstrap.Modal(q('#createGroupModal'));
@@ -154,14 +186,21 @@
         }
 
         groupList.innerHTML = list.map(g => {
-            const p = pct(g.permission_count, TOTAL);
+            const total = (isEnterprise && g.scope) ? scopeTotal(g.scope) : TOTAL;
+            const p = pct(g.permission_count, total);
             const active = g.id === activeGroupId;
+            const scopeBadge = (isEnterprise && g.scope)
+                ? `<span class="pm-group-scope-badge pm-group-scope-badge--${esc(g.scope)}">${esc(SCOPE_LABELS[g.scope] || g.scope)}</span>`
+                : '';
             return `
                 <div class="pm-group-item${active ? ' is-active' : ''}${!g.is_active ? ' is-inactive' : ''}"
                      data-id="${g.id}" role="button" tabindex="0">
                     <div class="pm-group-avatar">${esc(initials(g.name))}</div>
                     <div class="pm-group-body">
-                        <p class="pm-group-name">${esc(g.name)}</p>
+                        <div class="pm-group-name-row">
+                            <p class="pm-group-name">${esc(g.name)}</p>
+                            ${scopeBadge}
+                        </div>
                         <p class="pm-group-meta">${g.member_count} عضو · ${g.permission_count} صلاحية</p>
                         <div class="pm-group-prog-wrap">
                             <div class="pm-group-prog-fill" style="width:${p}%"></div>
@@ -217,14 +256,27 @@
         editorIsActive.checked            = group.is_active;
         editorIsActiveLabel.textContent   = group.is_active ? 'نشط' : 'غير نشط';
 
-        // Members — store as local state, show count
-        selectedUserIds = [...(group.users || [])];
-        editorMemberCount.textContent = selectedUserIds.length;
+        // Members — read-only list
+        memberIds = [...(group.users || [])];
+        editorMemberCount.textContent = memberIds.length;
+        renderMembers();
+
+        // Scope (Enterprise only) — '' for legacy groups shows every category
+        // until the admin explicitly picks one, same as before this feature.
+        activeScope = group.scope || '';
+        setEditorScopeTabs(activeScope);
 
         // Permissions
-        renderSections(group.permissions || {});
+        renderSections(group.permissions || {}, activeScope);
 
         originalSnap = snapshot();
+    }
+
+    function setEditorScopeTabs(scope) {
+        if (!editorScopeTabs) return;
+        qq('.cx-filter-tab', editorScopeTabs).forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.scope === scope);
+        });
     }
 
     /* ── Dirty tracking ──────────────────────────────────────── */
@@ -234,7 +286,7 @@
             name:   editorNameInput.value.trim(),
             desc:   editorDescInput.value.trim(),
             active: editorIsActive.checked,
-            users:  [...selectedUserIds].sort(),
+            scope:  activeScope,
             perms:  getSelectedPerms(),
         });
     }
@@ -258,12 +310,15 @@
 
     /* ── Permissions rendering ───────────────────────────────── */
 
-    function renderSections(selectedPerms) {
-        totalCount.textContent = TOTAL;
+    function renderSections(selectedPerms, scope) {
+        const visibleCategories = new Set(categoriesForScope(scope));
+        totalCount.textContent = scopeTotal(scope);
         permSections.innerHTML = '';
 
         Object.entries(schema).forEach(([secName, perms]) => {
-            const entries       = Object.entries(perms);
+            if (!visibleCategories.has(secName)) return;
+            const entries       = permsForScope(perms, scope);
+            if (!entries.length) return;
             const enabledInSec  = entries.filter(([k]) => selectedPerms[k]).length;
             const icon          = ICONS[secName] || 'fa-circle-dot';
             const p             = pct(enabledInSec, entries.length);
@@ -356,10 +411,11 @@
     }
 
     function refreshTotals() {
+        const total   = scopeTotal(activeScope);
         const checked = qq('.pm-perm-cb:checked', permSections).length;
-        const p = pct(checked, TOTAL);
+        const p = pct(checked, total);
         enabledCount.textContent      = checked;
-        totalCount.textContent        = TOTAL;
+        totalCount.textContent        = total;
         permProgressFill.style.width  = `${p}%`;
     }
 
@@ -377,8 +433,8 @@
         fd.append('name',        name);
         fd.append('description', editorDescInput.value.trim());
         fd.append('is_active',   editorIsActive.checked ? 'on' : '');
+        fd.append('scope',       activeScope);
         fd.append('permissions', JSON.stringify(getSelectedPerms()));
-        selectedUserIds.forEach(uid => fd.append('users[]', uid));
 
         fetch(API.update(activeGroupId), {
             method: 'POST',
@@ -404,7 +460,7 @@
                         allGroups[idx].name             = name;
                         allGroups[idx].is_active        = editorIsActive.checked;
                         allGroups[idx].permission_count = permCount;
-                        allGroups[idx].member_count     = selectedUserIds.length;
+                        allGroups[idx].scope            = activeScope;
                     }
                     renderGroupList();
                 } else {
@@ -443,82 +499,22 @@
             });
     }
 
-    /* ── Members modal ───────────────────────────────────────── */
+    /* ── Members (read-only) ─────────────────────────────────── */
 
-    // Tracks the draft selection inside the modal (before confirming)
-    let modalDraftIds = [];
-
-    function openMembersModal() {
-        // Copy current state into draft
-        modalDraftIds = [...selectedUserIds];
-        renderMembersList('');
-        membersSearch.value = '';
-        membersModal.show();
-        setTimeout(() => membersSearch.focus(), 300);
-    }
-
-    function renderMembersList(filterStr) {
-        const q = filterStr.toLowerCase().trim();
-        membersList.innerHTML = '';
-
-        const visible = q
-            ? allUsers.filter(u => {
-                const full = `${u.first_name} ${u.last_name} ${u.username}`.toLowerCase();
-                return full.includes(q);
-            })
-            : allUsers;
-
-        if (!visible.length) {
-            membersList.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--text-tertiary);font-size:.82rem;">لا يوجد مستخدمون مطابقون</div>';
+    function renderMembers() {
+        const usersById = new Map(allUsers.map(u => [u.id, u]));
+        const members = memberIds.map(id => usersById.get(id)).filter(Boolean);
+        if (!members.length) {
+            membersChips.innerHTML = '<span class="pm-members-empty">لا يوجد أعضاء في هذه المجموعة</span>';
             return;
         }
-
-        visible.forEach(u => {
-            const checked = modalDraftIds.includes(u.id);
-            const row = document.createElement('div');
-            row.className = `pm-member-row${checked ? ' is-checked' : ''}`;
-            row.dataset.uid = u.id;
-
-            const displayName = (u.first_name && u.last_name)
-                ? `${u.first_name} ${u.last_name}`
-                : u.username;
-
-            row.innerHTML = `
-                <div class="pm-member-avatar">${esc(initials(displayName))}</div>
-                <div class="pm-member-info">
-                    <div class="pm-member-name">${esc(displayName)}</div>
-                    <div class="pm-member-username">@${esc(u.username)}</div>
-                </div>
-                <div class="pm-member-check"><i class="fas fa-check"></i></div>`;
-
-            row.addEventListener('click', () => {
-                const uid = +row.dataset.uid;
-                if (modalDraftIds.includes(uid)) {
-                    modalDraftIds = modalDraftIds.filter(id => id !== uid);
-                    row.classList.remove('is-checked');
-                } else {
-                    modalDraftIds.push(uid);
-                    row.classList.add('is-checked');
-                }
-                updateMembersSelectedCount();
-            });
-
-            membersList.appendChild(row);
-        });
-
-        updateMembersSelectedCount();
-    }
-
-    function updateMembersSelectedCount() {
-        membersSelectedCount.textContent = modalDraftIds.length;
-    }
-
-    // Confirm members: commit draft → selectedUserIds, update chip, mark dirty
-    function confirmMembers() {
-        selectedUserIds = [...modalDraftIds];
-        editorMemberCount.textContent = selectedUserIds.length;
-        membersModal.hide();
-        markDirty();
+        membersChips.innerHTML = members.map(u => {
+            const displayName = (u.first_name && u.last_name) ? `${u.first_name} ${u.last_name}` : u.username;
+            return `<span class="pm-member-chip" title="@${esc(u.username)}">
+                        <span class="pm-member-avatar">${esc(initials(displayName))}</span>
+                        <span class="pm-member-name">${esc(displayName)}</span>
+                    </span>`;
+        }).join('');
     }
 
     /* ── Create group modal ──────────────────────────────────── */
@@ -527,6 +523,8 @@
         newGroupName.value = '';
         newGroupDesc.value = '';
         newGroupActive.checked = true;
+        createScope = '';
+        if (newGroupScopeTabs) qq('.cx-filter-tab', newGroupScopeTabs).forEach(btn => btn.classList.remove('active'));
         q('.js-form-errors', createGroupForm).classList.add('d-none');
         createGroupModal.show();
         setTimeout(() => newGroupName.focus(), 300);
@@ -538,6 +536,13 @@
         if (!name) { newGroupName.classList.add('is-invalid'); return; }
         newGroupName.classList.remove('is-invalid');
 
+        if (isEnterprise && !createScope) {
+            const errEl = q('.js-form-errors', createGroupForm);
+            errEl.textContent = 'يرجى تحديد نطاق المجموعة (فروع أو إدارة النشاط)';
+            errEl.classList.remove('d-none');
+            return;
+        }
+
         const origHtml = createGroupSubmit.innerHTML;
         createGroupSubmit.disabled = true;
         createGroupSubmit.innerHTML = '<span class="pm-spinner" style="width:13px;height:13px;border-width:2px;display:inline-block;vertical-align:middle;margin-left:.35rem"></span> جارٍ الإنشاء…';
@@ -546,6 +551,7 @@
         fd.append('name',        name);
         fd.append('description', newGroupDesc.value.trim());
         fd.append('is_active',   newGroupActive.checked ? 'on' : '');
+        fd.append('scope',       createScope);
         fd.append('permissions', '{}');
 
         fetch(API.create, {
@@ -565,6 +571,7 @@
                         description: newGroupDesc.value.trim(),
                         is_active: newGroupActive.checked,
                         member_count: 0, permission_count: 0,
+                        scope: isEnterprise ? createScope : '',
                     });
                     allGroups.sort((a, b) => a.name.localeCompare(b.name, 'ar'));
                     renderGroupList();
@@ -608,6 +615,28 @@
     btnNewGroup.addEventListener('click', openCreate);
     if (btnNewGroupEmpty)   btnNewGroupEmpty.addEventListener('click', openCreate);
     if (btnNewGroupSidebar) btnNewGroupSidebar.addEventListener('click', openCreate);
+
+    if (editorScopeTabs) {
+        qq('.cx-filter-tab', editorScopeTabs).forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (btn.dataset.scope === activeScope) return;
+                const keptPerms = getSelectedPerms();
+                activeScope = btn.dataset.scope;
+                setEditorScopeTabs(activeScope);
+                renderSections(keptPerms, activeScope);
+                markDirty();
+            });
+        });
+    }
+
+    if (newGroupScopeTabs) {
+        qq('.cx-filter-tab', newGroupScopeTabs).forEach(btn => {
+            btn.addEventListener('click', () => {
+                createScope = btn.dataset.scope;
+                qq('.cx-filter-tab', newGroupScopeTabs).forEach(b => b.classList.toggle('active', b === btn));
+            });
+        });
+    }
 
     sidebarSearch.addEventListener('input', renderGroupList);
 
@@ -653,17 +682,6 @@
     });
 
     btnDeleteGroup.addEventListener('click', deleteGroup);
-
-    // Members modal
-    btnOpenMembers.addEventListener('click', openMembersModal);
-    btnSaveMembers.addEventListener('click', confirmMembers);
-
-    membersSearch.addEventListener('input', () => renderMembersList(membersSearch.value));
-
-    btnMembersClearAll.addEventListener('click', () => {
-        modalDraftIds = [];
-        renderMembersList(membersSearch.value);
-    });
 
     window.addEventListener('beforeunload', e => {
         if (isDirty) { e.preventDefault(); e.returnValue = ''; }

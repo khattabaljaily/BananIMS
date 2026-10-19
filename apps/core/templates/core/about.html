@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}عن النظام | بنان{% endblock %}
+{% block title %}عن النظام | {{ app_name }}{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/about.css' %}?v=4.5">
+<link rel="stylesheet" href="{% static 'css/about.css' %}?v=3.6">
 {% endblock %}
 
 {% block body %}
@@ -13,8 +13,11 @@
 <!-- ══ TOP BAR ════════════════════════════════════════════════════ -->
 <nav class="ab-topbar" id="ab-topbar">
     <a href="/" class="ab-topbar__brand">
-        <img src="{% static 'img/logo/logo-color.png' %}" alt="بنان" height="32">
-        <span>بنان</span>
+        <span class="brand-mark brand-mark--on-light">
+            <img src="{% static 'logo/logo-dark.png' %}" alt="" class="brand-mark__icon brand-mark__icon--dark">
+            <img src="{% static 'logo/logo-light.png' %}" alt="" class="brand-mark__icon brand-mark__icon--light">
+            <span class="brand-wordmark">{{ app_name }}</span>
+        </span>
     </a>
     <div class="ab-topbar__links">
         <a href="{% url 'core:pricing' %}" class="ab-topbar__link">الأسعار</a>
@@ -38,15 +41,15 @@
         <div class="ab-hero__inner">
             <span class="ab-hero__badge ab-reveal">
                 <span class="ab-hero__badge-dot"></span>
-                نظام SaaS متكامل مدعوم بذكاء اصطناعي
+                نظام SaaS متكامل لإدارة الأعمال، مدعوم بذكاء اصطناعي
             </span>
             <h1 class="ab-hero__title ab-reveal ab-reveal--d1">
-                أدِر نشاطك التجاري<br>
+                أدِر نشاطك<br>
                 <span class="ab-hero__accent" id="ab-typing-target">بذكاء وسرعة</span>
             </h1>
             <p class="ab-hero__sub ab-reveal ab-reveal--d2">
-                بنان هو نظام إدارة مخزون ومبيعات متكامل يجمع كل عملياتك في مكان واحد —
-                من الفاتورة حتى التقرير، ومن الشراء حتى التسليم.
+                {{ app_name }} هو نظام إدارة مخزون ومبيعات للتجار وشركات بيع المنتجات — قطع الغيار، الإلكترونيات والأجهزة الكهربائية،
+                الهواتف والحواسيب، والأدوات والمعدات — يجمع كل عملياتك في مكان واحد، من الشراء حتى البيع والتحصيل.
             </p>
             <div class="ab-hero__actions ab-reveal ab-reveal--d3 mt-3">
                 <a href="{% url 'accounts:register_step1' %}" class="ab-btn ab-btn--white ab-btn--lg">
@@ -68,6 +71,9 @@
     <div class="ab-hero__scroll-hint">
         <div class="ab-scroll-indicator"><div class="ab-scroll-dot"></div></div>
     </div>
+    <svg class="ab-hero__wave" viewBox="0 0 1440 60" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M0,32 C240,60 480,4 720,20 C960,36 1200,58 1440,26 L1440,60 L0,60 Z"></path>
+    </svg>
 </section>
 
 <!-- ══ STATS ══════════════════════════════════════════════════════ -->
@@ -75,8 +81,8 @@
     <div class="ab-container">
         <div class="ab-stats__inner">
             <div class="ab-stat ab-sr">
-                <div class="ab-stat__num ab-count" data-target="10" data-suffix="+">0</div>
-                <div class="ab-stat__label">قطاعات تجارية مدعومة</div>
+                <div class="ab-stat__num"><i class="fas fa-barcode"></i></div>
+                <div class="ab-stat__label">تتبع الأرقام التسلسلية والباركود</div>
             </div>
             <div class="ab-stat__divider"></div>
             <div class="ab-stat ab-sr">
@@ -85,7 +91,7 @@
             </div>
             <div class="ab-stat__divider"></div>
             <div class="ab-stat ab-sr">
-                <div class="ab-stat__num ab-count" data-target="145" data-suffix="">0</div>
+                <div class="ab-stat__num ab-count" data-target="170" data-suffix="+">0</div>
                 <div class="ab-stat__label">صلاحية قابلة للتخصيص</div>
             </div>
             <div class="ab-stat__divider"></div>
@@ -102,28 +108,6 @@
     </div>
 </section>
 
-<!-- ══ BUSINESS TYPES ════════════════════════════════════════════ -->
-<section class="ab-section ab-section--white">
-    <div class="ab-container">
-        <div class="ab-section__head ab-sr">
-            <span class="ab-section__kicker"><i class="fas fa-store"></i> القطاعات المدعومة</span>
-            <h2 class="ab-section__title">مناسب لكل نشاط تجاري</h2>
-            <p class="ab-section__desc">واحد من كل عشرة أنشطة تجارية مختلفة؟ بنان يتكيف مع طبيعة عملك تلقائياً.</p>
-        </div>
-        <div class="ab-sectors-grid ab-sr">
-            <div class="ab-sector-chip"><i class="fas fa-pills"></i> صيدليات</div>
-            <div class="ab-sector-chip"><i class="fas fa-shopping-cart"></i> سوبرماركت</div>
-            <div class="ab-sector-chip"><i class="fas fa-utensils"></i> مطاعم وكافيهات</div>
-            <div class="ab-sector-chip"><i class="fas fa-mobile-alt"></i> إلكترونيات</div>
-            <div class="ab-sector-chip"><i class="fas fa-car"></i> قطع غيار سيارات</div>
-            <div class="ab-sector-chip"><i class="fas fa-toolbox"></i> مواد بناء وأدوات</div>
-            <div class="ab-sector-chip"><i class="fas fa-leaf"></i> مواد غذائية وزراعية</div>
-            <div class="ab-sector-chip"><i class="fas fa-couch"></i> أثاث ومفروشات</div>
-            <div class="ab-sector-chip ab-sector-chip--more"><i class="fas fa-plus"></i> وأكثر</div>
-        </div>
-    </div>
-</section>
-
 <!-- ══ HOW IT WORKS ══════════════════════════════════════════════ -->
 <section class="ab-hiw">
     <div class="ab-hiw__bg"></div>
@@ -136,19 +120,19 @@
 
         <div class="ab-hiw__track">
             <!-- Step 1 -->
-            <div class="ab-hiw__card ab-sr" style="--step-color:var(--primary);--step-glow:rgba(19,37,57,.18);">
+            <div class="ab-hiw__card ab-sr" style="--step-color:var(--primary);--step-glow:rgba(var(--primary-rgb),.18);">
                 <div class="ab-hiw__card-top">
                     <div class="ab-hiw__num">١</div>
                     <div class="ab-hiw__icon-wrap">
                         <i class="fas fa-user-plus"></i>
                     </div>
                 </div>
-                <h4 class="ab-hiw__title">سجّل وأنشئ نشاطك</h4>
-                <p class="ab-hiw__text">اختر نوع نشاطك وأضف بياناته الأساسية. النظام يضبط نفسه تلقائياً حسب قطاعك.</p>
+                <h4 class="ab-hiw__title">سجّل نشاطك</h4>
+                <p class="ab-hiw__text">أضف بيانات نشاطك الأساسية، والنظام يجهّز لك المخزن والخزينة والإعدادات الأساسية تلقائياً.</p>
                 <ul class="ab-hiw__list">
                     <li><i class="fas fa-check"></i> دقيقتان للتسجيل</li>
                     <li><i class="fas fa-check"></i> لا تقنية مطلوبة</li>
-                    <li><i class="fas fa-check"></i> فترة تجريبية مجانية</li>
+                    <li><i class="fas fa-check"></i> تجربة مجانية لمدة 14 يوماً</li>
                 </ul>
                 <div class="ab-hiw__tag">البداية</div>
             </div>
@@ -164,11 +148,11 @@
                     </div>
                 </div>
                 <h4 class="ab-hiw__title">أضف منتجاتك ومخزونك</h4>
-                <p class="ab-hiw__text">أدخل منتجاتك يدوياً أو استورد قائمتك كاملةً من ملف Excel أو CSV في ثوانٍ.</p>
+                <p class="ab-hiw__text">أدخل منتجاتك يدوياً أو استورد قائمتك كاملة من Excel أو CSV، مع الباركود ووحدات القياس والأرصدة الافتتاحية.</p>
                 <ul class="ab-hiw__list">
                     <li><i class="fas fa-check"></i> استيراد Excel/CSV</li>
+                    <li><i class="fas fa-check"></i> وحدات قياس متعددة</li>
                     <li><i class="fas fa-check"></i> مخازن متعددة</li>
-                    <li><i class="fas fa-check"></i> تصنيفات مرنة</li>
                 </ul>
                 <div class="ab-hiw__tag">الإعداد</div>
             </div>
@@ -196,7 +180,7 @@
             <div class="ab-hiw__arrow"><i class="fas fa-chevron-left"></i></div>
 
             <!-- Step 4 -->
-            <div class="ab-hiw__card ab-sr" style="--step-color:#a855f7;--step-glow:rgba(168,85,247,.18);">
+            <div class="ab-hiw__card ab-sr" style="--step-color:var(--secondary);--step-glow:rgba(var(--secondary-rgb),.18);">
                 <div class="ab-hiw__card-top">
                     <div class="ab-hiw__num">٤</div>
                     <div class="ab-hiw__icon-wrap">
@@ -222,38 +206,94 @@
     </div>
 </section>
 
+<!-- ══ WHO IT'S FOR ═══════════════════════════════════════════════ -->
+<section class="ab-section ab-section--white">
+    <div class="ab-container">
+        <div class="ab-section__head ab-sr">
+            <span class="ab-section__kicker"><i class="fas fa-store"></i> مصمم لكل تاجر</span>
+            <h2 class="ab-section__title">مناسب لكل محل وشركة تبيع منتجات</h2>
+            <p class="ab-section__desc">من المحل الواحد إلى شركة التوزيع متعددة الفروع، {{ app_name }} يتكيف مع حجم نشاطك.</p>
+        </div>
+        <div class="ab-sectors-grid ab-sr">
+            <div class="ab-sector-chip"><i class="fas fa-gears"></i> قطع الغيار</div>
+            <div class="ab-sector-chip"><i class="fas fa-plug"></i> الإلكترونيات والأجهزة الكهربائية</div>
+            <div class="ab-sector-chip"><i class="fas fa-mobile-screen"></i> الهواتف والحواسيب</div>
+            <div class="ab-sector-chip"><i class="fas fa-screwdriver-wrench"></i> الأدوات والمعدات</div>
+            <div class="ab-sector-chip"><i class="fas fa-truck-ramp-box"></i> تجارة الجملة والتوزيع</div>
+        </div>
+    </div>
+</section>
+
 <!-- ══ WHY ════════════════════════════════════════════════════════ -->
 <section class="ab-section ab-section--white">
     <div class="ab-container">
         <div class="ab-section__head ab-sr">
-            <span class="ab-section__kicker"><i class="fas fa-bolt"></i> لماذا بنان؟</span>
+            <span class="ab-section__kicker"><i class="fas fa-bolt"></i> لماذا {{ app_name }}؟</span>
             <h2 class="ab-section__title">ليس مجرد نظام محاسبة</h2>
-            <p class="ab-section__desc">بنان منظومة متكاملة تربط عملياتك من الشراء حتى التسليم حتى التحليل.</p>
+            <p class="ab-section__desc">{{ app_name }} منظومة متكاملة تربط عمليات نشاطك من الشراء حتى التسليم حتى التحليل.</p>
         </div>
         <div class="ab-compare ab-sr">
             <div class="ab-compare__col ab-compare__col--before">
-                <div class="ab-compare__label"><i class="fas fa-times-circle"></i> بدون بنان</div>
+                <div class="ab-compare__label"><i class="fas fa-times-circle"></i> بدون {{ app_name }}</div>
                 <ul class="ab-compare__list">
                     <li><i class="fas fa-times"></i> جداول Excel منفصلة ومتضاربة</li>
-                    <li><i class="fas fa-times"></i> لا تعرف رصيد مخزونك إلا وقت الجرد</li>
+                    <li><i class="fas fa-times"></i> بضاعة راكدة تُكتشف متأخراً في المخزن</li>
                     <li><i class="fas fa-times"></i> مديونيات ضائعة وعملاء غاضبون</li>
                     <li><i class="fas fa-times"></i> تقارير تُعدّ يدوياً وتستغرق ساعات</li>
                     <li><i class="fas fa-times"></i> لا رقابة على موظفيك وصلاحياتهم</li>
                     <li><i class="fas fa-times"></i> بيانات عرضة للفقدان في أي وقت</li>
-                    <li><i class="fas fa-times"></i> تغيّر سعر الدولار؟ تعديل كل سعر يدوياً</li>
                 </ul>
             </div>
             <div class="ab-compare__arrow"><i class="fas fa-arrow-left"></i></div>
             <div class="ab-compare__col ab-compare__col--after">
-                <div class="ab-compare__label"><i class="fas fa-check-circle"></i> مع بنان</div>
+                <div class="ab-compare__label"><i class="fas fa-check-circle"></i> مع {{ app_name }}</div>
                 <ul class="ab-compare__list">
                     <li><i class="fas fa-check"></i> كل شيء في مكان واحد، متزامن لحظياً</li>
-                    <li><i class="fas fa-check"></i> رصيد المخزون يتحدث تلقائياً مع كل فاتورة</li>
+                    <li><i class="fas fa-check"></i> تقرير بالأصناف الراكدة وتنبيه عند نقص المخزون</li>
                     <li><i class="fas fa-check"></i> كشف حساب كامل لكل عميل بضغطة واحدة</li>
                     <li><i class="fas fa-check"></i> 36+ تقرير جاهز في ثوانٍ</li>
-                    <li><i class="fas fa-check"></i> 145 صلاحية دقيقة لكل دور ومستخدم</li>
+                    <li><i class="fas fa-check"></i> أكثر من 170 صلاحية دقيقة لكل دور ومستخدم</li>
                     <li><i class="fas fa-check"></i> نسخ احتياطي يومي تلقائي ومحمي</li>
                 </ul>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ══ SERIAL SPOTLIGHT ═══════════════════════════════════════════ -->
+<section class="ab-section ab-hc-spotlight">
+    <div class="ab-container">
+        <div class="ab-hc-spotlight__inner ab-sr">
+            <div class="ab-hc-spotlight__badge"><i class="fas fa-barcode"></i> تتبع دقيق لكل قطعة</div>
+            <div class="ab-hc-spotlight__body">
+                <div class="ab-hc-spotlight__text">
+                    <h2 class="ab-hc-spotlight__title">الأرقام التسلسلية والاستيراد السريع</h2>
+                    <p class="ab-hc-spotlight__sub">اعرف أين ذهبت كل قطعة، وأدخل مخزونك كاملاً في دقائق</p>
+                    <ul class="ab-hc-spotlight__list">
+                        <li><i class="fas fa-check-circle"></i> فعّل تتبع الرقم التسلسلي للأصناف التي تحتاجه، وسجّله في فواتير الشراء والبيع</li>
+                        <li><i class="fas fa-check-circle"></i> استورد آلاف المنتجات من ملف Excel مع مطابقة ذكية لأعمدة الملف</li>
+                        <li><i class="fas fa-check-circle"></i> كشف تلقائي للأصناف المكررة بالباركود أو الرمز أو الاسم، مع تحديث الصنف الموجود بدلاً من تكراره</li>
+                        <li><i class="fas fa-check-circle"></i> الشركة المصنعة وبلد المنشأ لكل صنف، وقائمة أسعار مطبوعة مجمّعة حسب الشركة المصنعة</li>
+                        <li><i class="fas fa-check-circle"></i> عند نفاد صنف في نقطة البيع، اعرف فوراً توفره في مخازنك الأخرى</li>
+                    </ul>
+                </div>
+                <div class="ab-hc-spotlight__visual">
+                    <div class="ab-hc-card">
+                        <div class="ab-hc-card__label">وقت إدخال مخزون نشاط جديد</div>
+                        <div class="ab-hc-card__eq">
+                            <div class="ab-hc-card__item">
+                                <span class="ab-hc-card__item-name">إدخال يدوي صنفاً بصنف</span>
+                                <span class="ab-hc-card__item-price">أسابيع</span>
+                            </div>
+                            <div class="ab-hc-card__arrow"><i class="fas fa-arrow-left"></i></div>
+                            <div class="ab-hc-card__item ab-hc-card__item--local">
+                                <span class="ab-hc-card__item-name">استيراد من ملف Excel</span>
+                                <span class="ab-hc-card__item-price">دقائق</span>
+                            </div>
+                        </div>
+                        <div class="ab-hc-card__update"><i class="fas fa-robot"></i> مطابقة الأعمدة وكشف التكرار بالذكاء الاصطناعي</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -289,7 +329,7 @@
                 <div class="ab-tab-panel ab-tab-panel--active" data-panel="inventory">
                     <div class="ab-tab-panel__grid">
                         <div class="ab-tab-feat">
-                            <div class="ab-tab-feat__icon" style="background:var(--indigo-50);color:var(--primary)"><i class="fas fa-warehouse"></i></div>
+                            <div class="ab-tab-feat__icon" style="background:#ecfeff;color:var(--primary)"><i class="fas fa-warehouse"></i></div>
                             <div class="ab-tab-feat__name">مخازن متعددة</div>
                             <p class="ab-tab-feat__text">أنشئ مخازن غير محدودة وتابع رصيد كل منتج في كل موقع بشكل مستقل.</p>
                         </div>
@@ -309,19 +349,14 @@
                             <p class="ab-tab-feat__text">إشعارات تلقائية عند وصول أي منتج لحد إعادة الطلب المحدد.</p>
                         </div>
                         <div class="ab-tab-feat">
-                            <div class="ab-tab-feat__icon" style="background:#f5f3ff;color:#7c3aed"><i class="fas fa-industry"></i></div>
-                            <div class="ab-tab-feat__name">إدارة التصنيع</div>
-                            <p class="ab-tab-feat__text">أوامر التصنيع مع قوائم المكونات (BOM) لتحويل المواد الخام لمنتجات نهائية.</p>
+                            <div class="ab-tab-feat__icon" style="background:#f5f3ff;color:#0ea5e9"><i class="fas fa-fire-burner"></i></div>
+                            <div class="ab-tab-feat__name">سجلات الإتلاف</div>
+                            <p class="ab-tab-feat__text">وثّق إخراج البضاعة التالفة أو المعيبة أو المفقودة من المخزون بسجل مؤكد وقيمة محسوبة.</p>
                         </div>
                         <div class="ab-tab-feat">
-                            <div class="ab-tab-feat__icon" style="background:#ecfdf5;color:#059669"><i class="fas fa-file-import"></i></div>
-                            <div class="ab-tab-feat__name">استيراد وتصدير Excel</div>
-                            <p class="ab-tab-feat__text">استورد قائمة منتجاتك بالكامل من Excel أو CSV في دقيقة واحدة.</p>
-                        </div>
-                        <div class="ab-tab-feat">
-                            <div class="ab-tab-feat__icon" style="background:#fdf4ff;color:#a21caf"><i class="fas fa-layer-group"></i></div>
-                            <div class="ab-tab-feat__name">تتبع الدفعات (Batch)</div>
-                            <p class="ab-tab-feat__text">سجّل كل دفعة توريد برقمها وتاريخ صلاحيتها، وتابع رصيد كل دفعة على حدة.</p>
+                            <div class="ab-tab-feat__icon" style="background:#fdf4ff;color:var(--primary)"><i class="fas fa-barcode"></i></div>
+                            <div class="ab-tab-feat__name">الباركود ووحدات القياس</div>
+                            <p class="ab-tab-feat__text">اطبع باركود لكل صنف وتابع الكميات بوحدات قياس متعددة (قطعة، كرتونة، متر...) بسهولة.</p>
                         </div>
                     </div>
                 </div>
@@ -350,14 +385,14 @@
                             <p class="ab-tab-feat__text">أنشئ عرض سعر وحوّله لفاتورة بضغطة واحدة عند القبول.</p>
                         </div>
                         <div class="ab-tab-feat">
-                            <div class="ab-tab-feat__icon" style="background:#fdf4ff;color:#a21caf"><i class="fas fa-users"></i></div>
+                            <div class="ab-tab-feat__icon" style="background:#fdf4ff;color:var(--primary)"><i class="fas fa-users"></i></div>
                             <div class="ab-tab-feat__name">إدارة العملاء</div>
                             <p class="ab-tab-feat__text">سجل عملاء مفصّل، كشف حساب لحظي، وإرسال الفواتير بالبريد الإلكتروني.</p>
                         </div>
                         <div class="ab-tab-feat">
-                            <div class="ab-tab-feat__icon" style="background:var(--indigo-50);color:var(--primary)"><i class="fas fa-store"></i></div>
-                            <div class="ab-tab-feat__name">متجر إلكتروني مدمج</div>
-                            <p class="ab-tab-feat__text">كل محل يحصل على رابط متجر عام جاهز للطلبات أونلاين فوراً.</p>
+                            <div class="ab-tab-feat__icon" style="background:#ecfeff;color:var(--primary)"><i class="fas fa-store"></i></div>
+                            <div class="ab-tab-feat__name">الطلب أونلاين</div>
+                            <p class="ab-tab-feat__text">كل نشاط يحصل على رابط متجر عام جاهز لاستقبال طلبات عملائه أونلاين فوراً.</p>
                         </div>
                     </div>
                 </div>
@@ -381,7 +416,7 @@
                             <p class="ab-tab-feat__text">سجّل مصروفاتك بالتصنيف والخزينة مع تقارير شهرية تفصيلية.</p>
                         </div>
                         <div class="ab-tab-feat">
-                            <div class="ab-tab-feat__icon" style="background:#f5f3ff;color:#7c3aed"><i class="fas fa-chart-bar"></i></div>
+                            <div class="ab-tab-feat__icon" style="background:#f5f3ff;color:var(--secondary)"><i class="fas fa-chart-bar"></i></div>
                             <div class="ab-tab-feat__name">36+ تقرير تحليلي</div>
                             <p class="ab-tab-feat__text">تقارير المبيعات، المشتريات، المخزون، الموردين، العملاء، والخزائن.</p>
                         </div>
@@ -396,7 +431,7 @@
                             <p class="ab-tab-feat__text">رصيد كل مورد، سجل مدفوعات، وكشف حساب شامل لأي فترة.</p>
                         </div>
                         <div class="ab-tab-feat">
-                            <div class="ab-tab-feat__icon" style="background:var(--indigo-50);color:var(--primary)"><i class="fas fa-file-signature"></i></div>
+                            <div class="ab-tab-feat__icon" style="background:#ecfeff;color:var(--primary)"><i class="fas fa-file-signature"></i></div>
                             <div class="ab-tab-feat__name">طلب عروض أسعار من الموردين</div>
                             <p class="ab-tab-feat__text">أرسل طلب عرض سعر (RFQ) لمورد أو أكثر، قارن العروض، وحوّل المقبول لأمر شراء مباشرة.</p>
                         </div>
@@ -407,7 +442,7 @@
                 <div class="ab-tab-panel" data-panel="management">
                     <div class="ab-tab-panel__grid">
                         <div class="ab-tab-feat">
-                            <div class="ab-tab-feat__icon" style="background:#f5f3ff;color:#7c3aed"><i class="fas fa-user-shield"></i></div>
+                            <div class="ab-tab-feat__icon" style="background:#f5f3ff;color:var(--secondary)"><i class="fas fa-user-shield"></i></div>
                             <div class="ab-tab-feat__name">145 صلاحية دقيقة</div>
                             <p class="ab-tab-feat__text">26 قسماً من الصلاحيات القابلة للتخصيص لكل دور ومستخدم في فريقك.</p>
                         </div>
@@ -442,7 +477,7 @@
                             <p class="ab-tab-feat__text">سجل الموظفين، كشوف الرواتب، السلف الفورية، والحوافز والخصومات — مع ربط تلقائي بالخزائن.</p>
                         </div>
                         <div class="ab-tab-feat">
-                            <div class="ab-tab-feat__icon" style="background:var(--indigo-50);color:var(--primary)"><i class="fas fa-id-badge"></i></div>
+                            <div class="ab-tab-feat__icon" style="background:#ecfeff;color:var(--primary)"><i class="fas fa-id-badge"></i></div>
                             <div class="ab-tab-feat__name">إدارة المناديب وبوابتهم <span style="background:var(--primary);color:#fff;font-size:.58rem;padding:1px 6px;border-radius:20px;font-weight:800;vertical-align:middle;">جديد</span></div>
                             <p class="ab-tab-feat__text">أنشئ حسابات لمناديبك واختر أساس عمولتهم — على الفاتورة، على التحصيل الفعلي، أو الاثنين معاً — وامنحهم بوابة مستقلة لمتابعة فواتيرهم وكشف حسابهم وطلب الفواتير مباشرة.</p>
                         </div>
@@ -465,7 +500,7 @@
         <div class="ab-tab-panel__grid ab-sr">
 
             <div class="ab-tab-feat">
-                <div class="ab-tab-feat__icon" style="background:var(--indigo-50);color:var(--primary)"><i class="fas fa-book-open"></i></div>
+                <div class="ab-tab-feat__icon" style="background:#ecfeff;color:var(--primary)"><i class="fas fa-book-open"></i></div>
                 <div class="ab-tab-feat__name">دليل المساعدة</div>
                 <p class="ab-tab-feat__text">دليل تدريبي تفاعلي مدمج داخل كل صفحة في النظام يشرح الوظائف والخطوات خطوة بخطوة — يظهر بجانب الواجهة دون مغادرة الصفحة.</p>
             </div>
@@ -473,13 +508,13 @@
             <div class="ab-tab-feat">
                 <div class="ab-tab-feat__icon" style="background:#f0fdfa;color:#0d9488"><i class="fas fa-headset"></i></div>
                 <div class="ab-tab-feat__name">مركز المساعدة</div>
-                <p class="ab-tab-feat__text">نظام تذاكر دعم فني متكامل داخل النظام. أرسل طلبك مباشرة لفريق بنان، تابع حالة تذكرتك، واستقبل الردود في مكان واحد.</p>
+                <p class="ab-tab-feat__text">نظام تذاكر دعم فني متكامل داخل النظام. أرسل طلبك مباشرة لفريق {{ app_name }}، تابع حالة تذكرتك، واستقبل الردود في مكان واحد.</p>
             </div>
 
             <div class="ab-tab-feat">
                 <div class="ab-tab-feat__icon" style="background:#f0fdf4;color:#16a34a"><i class="fab fa-whatsapp"></i></div>
                 <div class="ab-tab-feat__name">دعم واتساب الفوري</div>
-                <p class="ab-tab-feat__text">تواصل مع فريق بنان مباشرة عبر واتساب للحصول على إجابة سريعة. رابط مباشر ورسالة مُعدَّة مسبقاً من داخل النظام.</p>
+                <p class="ab-tab-feat__text">تواصل مع فريق {{ app_name }} مباشرة عبر واتساب للحصول على إجابة سريعة. رابط مباشر ورسالة مُعدَّة مسبقاً من داخل النظام.</p>
             </div>
 
             <div class="ab-tab-feat">
@@ -489,7 +524,7 @@
             </div>
 
             <div class="ab-tab-feat">
-                <div class="ab-tab-feat__icon" style="background:#fdf4ff;color:#a21caf"><i class="fas fa-ticket"></i></div>
+                <div class="ab-tab-feat__icon" style="background:#fdf4ff;color:var(--primary)"><i class="fas fa-ticket"></i></div>
                 <div class="ab-tab-feat__name">تتبع طلبات الدعم</div>
                 <p class="ab-tab-feat__text">كل تذكرة دعم تمر بمراحل واضحة: مفتوحة ← قيد المعالجة ← محلولة، مع تاريخ كل رد وإمكانية المتابعة من النظام مباشرة.</p>
             </div>
@@ -528,7 +563,7 @@
                         <div class="ab-ai-demo-msg ab-ai-demo-msg--user">ما هي أكثر المنتجات مبيعاً هذا الشهر؟</div>
                         <div class="ab-ai-demo-msg ab-ai-demo-msg--ai">
                             <i class="fas fa-robot"></i>
-                            أكثر المنتجات مبيعاً هذا الشهر: هونر ماجيك 8 Pro بـ 5 وحدات وإيراد 20,000 ج.س، يليه ساعة هواوي واتش 4 بـ 3 وحدات.
+                            أكثر المنتجات مبيعاً هذا الشهر: شاحن سريع Type-C بـ 120 قطعة وإيراد 3,840,000، تليه سماعات بلوتوث بـ 80 قطعة.
                         </div>
                     </div>
                     <ul class="ab-ai-card__tags">
@@ -541,7 +576,7 @@
                     <div class="ab-ai-card ab-sr ab-sr--r">
                         <div class="ab-ai-card__icon ab-ai-card__icon--sm"><i class="fas fa-chart-line"></i></div>
                         <h4 class="ab-ai-card__title">تقرير صحة الأعمال اليومي</h4>
-                        <p class="ab-ai-card__text">بنقرة واحدة يولّد AI تقريراً يومياً يتضمن أبرز إنجاز، أبرز تحذير، وتوصية عملية فورية مبنية على بياناتك الحقيقية.</p>
+                        <p class="ab-ai-card__text">بنقرة واحدة يولّد AI تقريراً يومياً يتضمن أبرز {{ app_name }}، أبرز تحذير، وتوصية عملية فورية مبنية على بياناتك الحقيقية.</p>
                         <div class="ab-ai-card__badge-row">
                             <span class="ab-ai-badge">تحليل فوري</span>
                             <span class="ab-ai-badge">توصيات عملية</span>
@@ -572,7 +607,7 @@
                     <span class="ab-store__new">جديد</span>
                 </span>
                 <h2 class="ab-store__title">متجرك الخاص أونلاين<br>في دقائق، لا أيام</h2>
-                <p class="ab-store__desc">كل محل في بنان يحصل على رابط متجر إلكتروني فوري. عملاؤك يتصفحون منتجاتك، يطلبون، وأنت تعتمد الفاتورة من لوحة التحكم.</p>
+                <p class="ab-store__desc">كل نشاط في {{ app_name }} يحصل على رابط متجر إلكتروني فوري. عملاؤك يتصفحون منتجاتك المتاحة، يطلبون، وأنت تعتمد الفاتورة من لوحة التحكم.</p>
                 <ul class="ab-store__list">
                     <li><i class="fas fa-check-circle"></i> رابط متجر فريد لكل محل تلقائياً</li>
                     <li><i class="fas fa-check-circle"></i> رمز QR جاهز للطباعة يفتح متجرك مباشرة</li>
@@ -593,17 +628,17 @@
                         <div class="ab-mockup-dot"></div>
                     </div>
                     <div class="ab-mockup-header">
-                        <div class="ab-mockup-brand">🛍️ متجر الأمل</div>
+                        <div class="ab-mockup-brand">📱 معرض النور للإلكترونيات</div>
                         <div class="ab-mockup-cart"><i class="fas fa-shopping-cart"></i> <span>3</span></div>
                     </div>
                     <div class="ab-mockup-status open">
                         <span class="ab-mockup-dot-green"></span> مفتوح الآن — حتى 10:00 م
                     </div>
                     <div class="ab-mockup-grid">
-                        <div class="ab-mockup-card"><div class="ab-mockup-img">📱</div><div class="ab-mockup-name">هاتف X15</div><div class="ab-mockup-price">850 ج.س</div><div class="ab-mockup-btn">+ أضف</div></div>
-                        <div class="ab-mockup-card"><div class="ab-mockup-img">🎧</div><div class="ab-mockup-name">سماعة Pro</div><div class="ab-mockup-price">220 ج.س</div><div class="ab-mockup-btn">+ أضف</div></div>
-                        <div class="ab-mockup-card"><div class="ab-mockup-img">⌚</div><div class="ab-mockup-name">ساعة ذكية</div><div class="ab-mockup-price">450 ج.س</div><div class="ab-mockup-btn">+ أضف</div></div>
-                        <div class="ab-mockup-card"><div class="ab-mockup-img">💻</div><div class="ab-mockup-name">لاب توب i7</div><div class="ab-mockup-price">2,100 ج.س</div><div class="ab-mockup-btn">+ أضف</div></div>
+                        <div class="ab-mockup-card"><div class="ab-mockup-img">🔌</div><div class="ab-mockup-name">شاحن سريع Type-C</div><div class="ab-mockup-price">32,000</div><div class="ab-mockup-btn">+ أضف</div></div>
+                        <div class="ab-mockup-card"><div class="ab-mockup-img">🎧</div><div class="ab-mockup-name">سماعات بلوتوث</div><div class="ab-mockup-price">130,000</div><div class="ab-mockup-btn">+ أضف</div></div>
+                        <div class="ab-mockup-card"><div class="ab-mockup-img">🔋</div><div class="ab-mockup-name">باور بانك 20000</div><div class="ab-mockup-price">75,000</div><div class="ab-mockup-btn">+ أضف</div></div>
+                        <div class="ab-mockup-card"><div class="ab-mockup-img">🖱️</div><div class="ab-mockup-name">ماوس لاسلكي</div><div class="ab-mockup-price">28,000</div><div class="ab-mockup-btn">+ أضف</div></div>
                     </div>
                     <div class="ab-mockup-notif"><i class="fas fa-bell"></i><span>طلب جديد ORD-00012 — أحمد محمد</span></div>
                 </div>
@@ -622,7 +657,7 @@
             <div class="ab-security__head ab-sr">
                 <span class="ab-security__kicker"><i class="fas fa-shield-alt"></i> الحماية والأمان</span>
                 <h2 class="ab-security__title">بياناتك في أيدٍ أمينة</h2>
-                <p class="ab-security__desc">نلتزم بأعلى معايير الحماية والخصوصية لبياناتك وبيانات عملائك.</p>
+                <p class="ab-security__desc">نلتزم بأعلى معايير الحماية والخصوصية لبياناتك وبيانات عملاء نشاطك.</p>
             </div>
             <div class="ab-security-grid">
                 <div class="ab-sec-card ab-sr"><div class="ab-sec-card__icon ab-sec-card__icon--green"><i class="fas fa-globe-europe"></i></div><h5 class="ab-sec-card__title">خوادم أوروبية موثوقة</h5><p class="ab-sec-card__text">أداء قوي ومستقر من بنية تحتية أوروبية لتدفق أعمال بدون توقف.</p></div>
@@ -646,11 +681,11 @@
         <div class="ab-faq ab-sr">
             <div class="ab-faq-item">
                 <button class="ab-faq-q">هل يمكن تجربة النظام مجاناً قبل الاشتراك؟<i class="fas fa-chevron-down"></i></button>
-                <div class="ab-faq-a">نعم، نقدم فترة تجريبية مجانية تتيح لك استكشاف جميع المميزات بالكامل دون الحاجة لبطاقة ائتمان.</div>
+                <div class="ab-faq-a">نعم، نقدم فترة تجريبية مجانية لمدة 14 يوماً تتيح لك استكشاف جميع المميزات بالكامل دون الحاجة لبطاقة ائتمان.</div>
             </div>
             <div class="ab-faq-item">
-                <button class="ab-faq-q">كيف أنقل بيانات نظامي القديم إلى بنان؟<i class="fas fa-chevron-down"></i></button>
-                <div class="ab-faq-a">يدعم بنان استيراد المنتجات والعملاء والموردين من ملفات Excel و CSV مباشرة. يمكن نقل أغلب البيانات في دقائق.</div>
+                <button class="ab-faq-q">كيف أنقل بيانات نظامي القديم إلى {{ app_name }}؟<i class="fas fa-chevron-down"></i></button>
+                <div class="ab-faq-a">يدعم {{ app_name }} استيراد المنتجات والعملاء والموردين من ملفات Excel و CSV مباشرة، مع مطابقة ذكية لأعمدة الملف بالذكاء الاصطناعي وكشف المنتجات المكررة. يمكن نقل أغلب البيانات في دقائق.</div>
             </div>
             <div class="ab-faq-item">
                 <button class="ab-faq-q">هل النظام يعمل على الجوال؟<i class="fas fa-chevron-down"></i></button>
@@ -674,13 +709,10 @@
         <div class="ab-support__box ab-sr">
             <div class="ab-support__icon"><i class="fas fa-headset"></i></div>
             <h3 class="ab-support__title">فريق الدعم جاهز لخدمتك</h3>
-            <p class="ab-support__text">تواصل معنا عبر واتساب أو البريد الإلكتروني للحصول على مساعدة سريعة ودعم فني موجّه.</p>
+            <p class="ab-support__text">تواصل معنا عبر واتساب للحصول على مساعدة سريعة ودعم فني موجّه.</p>
             <div class="ab-support__contacts">
-                <a href="https://wa.me/97433933700" class="ab-contact-btn ab-contact-btn--whatsapp">
+                <a href="https://wa.me/249110100110" class="ab-contact-btn ab-contact-btn--whatsapp">
                     <i class="fab fa-whatsapp"></i> تواصل عبر واتساب
-                </a>
-                <a href="mailto:info@banantechnology.com" class="ab-contact-btn ab-contact-btn--email">
-                    <i class="fas fa-envelope"></i> راسلنا بالبريد
                 </a>
             </div>
         </div>
@@ -694,9 +726,9 @@
     <div class="ab-container">
         <div class="ab-cta__inner ab-sr">
             <h2 class="ab-cta__title">هل أنت مستعد لتحويل إدارة عملك؟</h2>
-            <p class="ab-cta__text">سجّل الآن وابدأ تجربتك المجانية. لا بطاقة ائتمان مطلوبة.</p>
+            <p class="ab-cta__text">سجّل الآن وابدأ تجربتك المجانية لمدة 14 يوماً. لا بطاقة ائتمان مطلوبة.</p>
             <a href="{% url 'accounts:register_step1' %}" class="ab-btn ab-btn--white ab-btn--lg mt-3">
-                <i class="fas fa-rocket"></i> انطلق مع بنان مجاناً
+                <i class="fas fa-rocket"></i> انطلق مع {{ app_name }} مجاناً
             </a>
         </div>
     </div>
@@ -706,18 +738,12 @@
 <footer class="ab-footer">
     <div class="ab-container">
         <div class="ab-footer__inner">
-            <span class="ab-footer__copy">بنان &copy; 2026 — نظام إدارة المخزون والمبيعات</span>
+            <span class="ab-footer__copy">{{ app_name }} &copy; 2026 — نظام إدارة المخزون والمبيعات للتجار</span>
             <div class="ab-footer__links">
                 <a href="{% url 'accounts:login' %}">تسجيل الدخول</a>
                 <a href="{% url 'accounts:register_step1' %}">إنشاء حساب</a>
                 <a href="{% url 'core:pricing' %}">الأسعار</a>
             </div>
-        </div>
-        <div class="ab-footer__dev">
-            <a href="https://banantechnology.com" target="_blank" rel="noopener noreferrer">
-                <img src="{% static 'img/logo/logo-white.png' %}" alt="بنان لتقنية المعلومات" class="ab-footer__dev-logo">
-                <span>تطوير بنان لتقنية المعلومات</span>
-            </a>
         </div>
     </div>
 </footer>

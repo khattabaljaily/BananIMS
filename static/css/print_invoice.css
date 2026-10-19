@@ -20,7 +20,7 @@
   gap: 20px;
   padding-bottom: 20px;
   margin-bottom: 16px;
-  border-bottom: 2px solid #1a1a2e;
+  border-bottom: 2px solid #1f1712;
   position: relative;
 }
 
@@ -47,19 +47,29 @@
 .print-brand-name {
   font-size: 16px;
   font-weight: 700;
-  color: #1a1a2e;
+  color: #1f1712;
   letter-spacing: 0.2px;
 }
 
 .print-logo-mark {
-  display: none !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  width: 44px;
+  border-radius: 10px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 20px;
+  font-weight: 800;
+  flex-shrink: 0;
 }
 
 .print-title {
   margin: 0;
   font-size: 17px;
   font-weight: 600;
-  color: #1a1a2e;
+  color: #1f1712;
   letter-spacing: -0.3px;
   font-family: inherit;
 }
@@ -75,7 +85,7 @@
   margin: 0 auto 8px;
   font-size: 20px;
   font-weight: 700;
-  color: #1a1a2e;
+  color: #1f1712;
   letter-spacing: -0.2px;
   text-align: center;
   display: inline-block;
@@ -324,7 +334,7 @@
 .col-price { width: 70px; }
 .col-discount { width: 55px; }
 .col-tax { width: 55px; }
-.col-total { width: 75px; font-weight: 600; color: #1a1a2e; }
+.col-total { width: 75px; font-weight: 600; color: #1f1712; }
 
 /* ===== TOTALS SECTION — راقي جداً ===== */
 .print-summary {
@@ -369,7 +379,7 @@
 .print-total-row--grand span:last-child {
   font-weight: 800;
   font-size: 13px;
-  color: #1a1a2e;
+  color: #1f1712;
 }
 
 .discount-row span:last-child {

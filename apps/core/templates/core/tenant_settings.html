@@ -6,7 +6,7 @@
 {% block page_description %}تعديل بيانات النشاط التجاري والإعدادات الأساسية وحفظها مباشرة{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/tenant_settings.css' %}?v=6.0">
+<link rel="stylesheet" href="{% static 'css/tenant_settings.css' %}?v=5.1">
 {% endblock %}
 
 {% block breadcrumb_items %}
@@ -61,7 +61,7 @@
             <div class="ts-stat__icon ts-stat__icon--violet"><i class="fas fa-coins"></i></div>
             <div class="ts-stat__info">
                 <div class="ts-stat__label">العملة</div>
-                <div class="ts-stat__value">{{ current_tenant.currency|default:"SDG"|currency_ar }}</div>
+                <div class="ts-stat__value">{{ current_tenant.currency|currency_ar }}</div>
             </div>
         </div>
         <div class="ts-stat">
@@ -146,7 +146,8 @@
                         <label class="ts-label">البلد</label>
                         <div class="ts-field">
                             <span class="ts-field__icon"><i class="fas fa-globe"></i></span>
-                            <select id="tenantCountrySelect" class="form-select ts-input" name="country">
+                            <select id="tenantCountrySelect" class="form-select ts-input" name="country" required>
+                                <option value="" {% if not current_tenant.country %}selected{% endif %}>اختر الدولة</option>
                                 {% for value,label in country_choices %}
                                 <option value="{{ value }}" {% if current_tenant.country == value %}selected{% endif %}>{{ label }}</option>
                                 {% endfor %}
@@ -157,7 +158,7 @@
                         <label class="ts-label">المنطقة الزمنية</label>
                         <div class="ts-field">
                             <span class="ts-field__icon"><i class="fas fa-clock"></i></span>
-                            <input class="form-control ts-input" name="timezone" value="{{ current_tenant.timezone|default:'Africa/Khartoum' }}" readonly>
+                            <input class="form-control ts-input" name="timezone" value="{{ current_tenant.timezone }}" readonly>
                         </div>
                     </div>
                     <div class="col-md-6">
@@ -165,10 +166,10 @@
                         <div class="ts-field">
                             <span class="ts-field__icon"><i class="fas fa-coins"></i></span>
                             <input id="currencyDisplay" class="form-control ts-input" readonly
-                                   value="{{ current_tenant.currency|default:'SDG'|currency_ar }} — {{ current_tenant.currency|default:'SDG' }}"
+                                   value="{% if current_tenant.currency %}{{ current_tenant.currency|currency_ar }} — {{ current_tenant.currency }}{% endif %}"
                                    style="background:var(--surface-hover);cursor:default;">
                             <input type="hidden" name="currency" id="currencyCode"
-                                   value="{{ current_tenant.currency|default:'SDG' }}">
+                                   value="{{ current_tenant.currency }}">
                         </div>
                     </div>
                     <div class="col-12">
@@ -187,6 +188,7 @@
                 </form>
             </div>
         </div>
+
     </div>
 
     <!-- ══════════ TAB: إعدادات النظام ══════════ -->
@@ -393,24 +395,24 @@
             <div class="ts-card__body">
                 <form id="tenantColorForm" class="ts-color-form">
                     <div class="ts-color-picker-wrap">
-                        <div class="ts-color-swatch" id="colorSwatch" style="background:{{ tenant_settings.invoice_color|default:'var(--primary)' }}"></div>
+                        <div class="ts-color-swatch" id="colorSwatch" style="background:{{ tenant_settings.invoice_color|default:'#0e6b64' }}"></div>
                         <input type="color" id="invoiceColorPicker" name="invoice_color"
-                               value="{{ tenant_settings.invoice_color|default:'var(--primary)' }}"
+                               value="{{ tenant_settings.invoice_color|default:'#0e6b64' }}"
                                class="ts-color-native">
                         <input class="form-control ts-input ts-color-hex" id="invoiceColorHex"
                                name="invoice_color_hex" maxlength="7"
-                               value="{{ tenant_settings.invoice_color|default:'var(--primary)' }}"
-                               placeholder="var(--primary)">
+                               value="{{ tenant_settings.invoice_color|default:'#0e6b64' }}"
+                               placeholder="#0e6b64">
                     </div>
                     <div class="ts-color-presets">
-                        <button type="button" class="ts-color-preset" data-color="var(--primary)" style="background:var(--primary)" title="بنفسجي"></button>
+                        <button type="button" class="ts-color-preset" data-color="#0e6b64" style="background:#0e6b64" title="سماوي"></button>
                         <button type="button" class="ts-color-preset" data-color="#0ea5e9" style="background:#0ea5e9" title="أزرق"></button>
                         <button type="button" class="ts-color-preset" data-color="#10b981" style="background:#10b981" title="أخضر"></button>
                         <button type="button" class="ts-color-preset" data-color="#f59e0b" style="background:#f59e0b" title="ذهبي"></button>
                         <button type="button" class="ts-color-preset" data-color="#ef4444" style="background:#ef4444" title="أحمر"></button>
-                        <button type="button" class="ts-color-preset" data-color="var(--secondary)" style="background:var(--secondary)" title="بنفسجي غامق"></button>
+                        <button type="button" class="ts-color-preset" data-color="#14b8a6" style="background:#14b8a6" title="تركوازي"></button>
                         <button type="button" class="ts-color-preset" data-color="#ec4899" style="background:#ec4899" title="وردي"></button>
-                        <button type="button" class="ts-color-preset" data-color="#1a1a2e" style="background:#1a1a2e" title="أسود"></button>
+                        <button type="button" class="ts-color-preset" data-color="#1f1712" style="background:#1f1712" title="أسود"></button>
                     </div>
                     <div class="d-flex justify-content-end ts-actions mt-3">
                         <button type="button" class="ts-btn ts-btn--primary" onclick="saveTenantColor()">
@@ -505,12 +507,18 @@
                                 {% endif %}
                             </td>
                             <td data-label="">
+                                <div class="bk-row-actions">
                                 {% if b.status == 'completed' %}
                                 <a href="{% url 'core:tenant_backup_download' b.pk %}"
                                    class="ts-btn ts-btn--sm ts-btn--outline">
                                     <i class="fas fa-download"></i> تنزيل
                                 </a>
                                 {% endif %}
+                                <button type="button" class="ts-btn ts-btn--sm ts-btn--danger-soft bk-btn-delete"
+                                        data-id="{{ b.pk }}" data-filename="{{ b.filename }}">
+                                    <i class="fas fa-trash-alt"></i> حذف
+                                </button>
+                                </div>
                             </td>
                         </tr>
                         {% endfor %}
@@ -528,6 +536,31 @@
         </div>
     </div>
 
+</div>
+
+<!-- مودال تأكيد حذف نسخة احتياطية -->
+<div class="modal fade" id="deleteBackupModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered cx-confirm-dialog">
+        <div class="modal-content cx-confirm-modal">
+            <div class="cx-confirm-body">
+                <div class="cx-confirm-icon cx-confirm-icon--danger">
+                    <i class="fas fa-trash-alt"></i>
+                </div>
+                <h5 class="cx-confirm-title">حذف النسخة الاحتياطية؟</h5>
+                <p class="cx-confirm-desc">
+                    ستقوم بحذف الملف:
+                    <strong id="deleteBackupFilename" class="bk-delete-filename"></strong>
+                    <span class="text-danger" style="font-size:.82rem">لا يمكن التراجع عن هذا الإجراء.</span>
+                </p>
+            </div>
+            <div class="cx-confirm-footer">
+                <button type="button" class="cx-btn-ghost" data-bs-dismiss="modal">إلغاء</button>
+                <button type="button" class="cx-btn-danger" id="btnConfirmDeleteBackup">
+                    <i class="fas fa-trash"></i> نعم، احذف
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
@@ -605,16 +638,15 @@ var CURRENCY_AR          = {{ currency_ar_json|safe }};
 function updateTenantTimezone() {
     var sel = document.getElementById('tenantCountrySelect');
     var tz  = document.querySelector('input[name="timezone"]');
-    if (sel && tz) tz.value = COUNTRY_TIMEZONE_MAP[sel.value] || COUNTRY_TIMEZONE_MAP['قطر'];
+    if (sel && tz) tz.value = COUNTRY_TIMEZONE_MAP[sel.value] || tz.value;
 }
 function updateTenantCurrency() {
     var sel  = document.getElementById('tenantCountrySelect');
     var code = sel ? COUNTRY_CURRENCY_MAP[sel.value] : null;
-    if (!code) return;
     var display = document.getElementById('currencyDisplay');
     var hidden  = document.getElementById('currencyCode');
-    if (display) display.value = (CURRENCY_AR[code] || code) + ' — ' + code;
-    if (hidden)  hidden.value  = code;
+    if (display) display.value = code ? (CURRENCY_AR[code] || code) + ' — ' + code : '';
+    if (hidden)  hidden.value  = code || '';
 }
 var countryEl = document.getElementById('tenantCountrySelect');
 if (countryEl) {
@@ -795,7 +827,8 @@ function createBackup() {
                 + '<td data-label="النوع">يدوي</td>'
                 + '<td data-label="الحجم">' + b.size + '</td>'
                 + '<td data-label="الحالة"><span class="ts-badge ts-badge--green">مكتمل</span></td>'
-                + '<td data-label=""><a href="/settings/backup/download/' + b.id + '/" class="ts-btn ts-btn--sm ts-btn--outline"><i class="fas fa-download"></i> تنزيل</a></td>'
+                + '<td data-label=""><div class="bk-row-actions"><a href="/settings/backup/download/' + b.id + '/" class="ts-btn ts-btn--sm ts-btn--outline"><i class="fas fa-download"></i> تنزيل</a>'
+                + '<button type="button" class="ts-btn ts-btn--sm ts-btn--danger-soft bk-btn-delete" data-id="' + b.id + '" data-filename="' + b.filename + '"><i class="fas fa-trash-alt"></i> حذف</button></div></td>'
                 + '</tr>';
             tbody.insertAdjacentHTML('afterbegin', row);
         } else {
@@ -810,5 +843,61 @@ function createBackup() {
         msg.innerHTML = '<span style="color:#ef4444;"><i class="fas fa-exclamation-circle"></i> تعذّر الاتصال بالخادم</span>';
     });
 }
+
+// ── حذف نسخة احتياطية (مودال تأكيد) ──────────────────────────────
+(function () {
+    var modalEl   = document.getElementById('deleteBackupModal');
+    var modal     = new bootstrap.Modal(modalEl);
+    var confirmBtn = document.getElementById('btnConfirmDeleteBackup');
+    var pendingId = null;
+
+    function showMsg(ok, text) {
+        var msg = document.getElementById('backupMsg');
+        msg.style.display = 'block';
+        msg.innerHTML = '<span style="color:' + (ok ? '#10b981' : '#ef4444') + ';"><i class="fas fa-' +
+            (ok ? 'check-circle' : 'exclamation-circle') + '"></i> ' + text + '</span>';
+    }
+
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('.bk-btn-delete');
+        if (!btn) return;
+        pendingId = btn.dataset.id;
+        document.getElementById('deleteBackupFilename').textContent = btn.dataset.filename;
+        modal.show();
+    });
+
+    confirmBtn.addEventListener('click', function () {
+        if (!pendingId) return;
+        var id = pendingId;
+        var orig = confirmBtn.innerHTML;
+        confirmBtn.disabled = true;
+        confirmBtn.innerHTML = '<span class="bk-spinner"></span> جاري الحذف...';
+        fetch('/settings/backup/delete/' + id + '/', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '' },
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            modal.hide();
+            if (d.success) {
+                var row = document.getElementById('brow-' + id);
+                if (row) row.remove();
+                var tbody = document.getElementById('backupTbody');
+                if (tbody && !tbody.children.length) {
+                    document.getElementById('backupListWrap').innerHTML =
+                        '<div class="bk-empty" id="backupEmpty"><i class="fas fa-cloud-upload-alt"></i>' +
+                        '<p>لا توجد نسخ احتياطية بعد — أنشئ أول نسخة الآن</p></div>';
+                }
+            }
+            showMsg(d.success, d.message || (d.success ? 'تم الحذف' : 'حدث خطأ'));
+        })
+        .catch(function () { modal.hide(); showMsg(false, 'تعذّر الاتصال بالخادم'); })
+        .finally(function () {
+            confirmBtn.disabled = false;
+            confirmBtn.innerHTML = orig;
+            pendingId = null;
+        });
+    });
+})();
 </script>
 {% endblock %}

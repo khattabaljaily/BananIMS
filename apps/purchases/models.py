@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.db import models
 
 from apps.core.models import TenantMixin
+from apps.bank_accounts.models import BankAccount
 
 
 class PurchaseInvoice(TenantMixin):
@@ -14,6 +15,10 @@ class PurchaseInvoice(TenantMixin):
         ('cancelled', 'ملغاة'),
     )
 
+    # فواتير الشراء التي تمثّل شراءً فعلياً في التقارير — المرتجعة جزئياً أو
+    # كلياً تبقى، ومرتجعاتها تُعرض عبر PurchaseReturn.
+    EFFECTIVE_STATUSES = ('confirmed', 'partially_returned', 'returned')
+
     PAYMENT_CHOICES = (
         ('cash', 'نقداً'),
         ('bank', 'تحويل بنكي'),
@@ -22,6 +27,10 @@ class PurchaseInvoice(TenantMixin):
     )
 
     invoice_number = models.CharField('رقم أمر الشراء', max_length=20, blank=True)
+    # طلب الشراء من الفرع الذي أُنشئ هذا الأمر لتلبيته (النمط المركزي)؛ للتتبّع فقط.
+    requisition = models.ForeignKey(
+        'requisitions.PurchaseRequisition', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='purchase_invoices', verbose_name='طلب الشراء')
     supplier = models.ForeignKey(
         'suppliers.Supplier',
         on_delete=models.PROTECT,
@@ -36,6 +45,14 @@ class PurchaseInvoice(TenantMixin):
         related_name='purchase_invoices',
         verbose_name='المخزن',
     )
+    branch = models.ForeignKey(
+        'core.Branch',
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='purchase_invoices',
+        verbose_name='الفرع',
+        help_text='الفرع المرتبط مباشرة بأمر الشراء (enterprise فقط؛ يُملأ تلقائياً من المخزن إن لم يُحدد)',
+    )
 
     invoice_date = models.DateField('تاريخ الأمر')
     status = models.CharField('الحالة', max_length=20, choices=STATUS_CHOICES, default='draft')
@@ -43,6 +60,14 @@ class PurchaseInvoice(TenantMixin):
     cash_amount = models.DecimalField('المبلغ نقداً (مختلط)', max_digits=14, decimal_places=2, default=0)
     bank_amount = models.DecimalField('المبلغ بنكياً (مختلط)', max_digits=14, decimal_places=2, default=0)
     bank_reference = models.CharField('مرجع التحويل البنكي', max_length=100, blank=True)
+    bank_account = models.ForeignKey(
+        BankAccount,
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='purchase_invoices',
+        verbose_name='الحساب البنكي',
+        help_text='الحساب البنكي الصادر منه الجزء البنكي من أمر الشراء',
+    )
 
     subtotal = models.DecimalField('المجموع الفرعي', max_digits=14, decimal_places=2, default=0)
     tax_amount = models.DecimalField('الضريبة', max_digits=14, decimal_places=2, default=0)
@@ -82,6 +107,9 @@ class PurchaseInvoice(TenantMixin):
         return self.invoice_number or f'PUR-{self.pk}'
 
     def save(self, *args, **kwargs):
+        # الفرع يُشتق من المخزن (نسخة المؤسسات) حتى لا تبقى فواتير بلا فرع
+        if self.branch_id is None and self.stock_id:
+            self.branch_id = type(self).stock.field.related_model.objects.filter(pk=self.stock_id).values_list('branch_id', flat=True).first()
         if not self.invoice_number:
             self.invoice_number = self._generate_number()
         super().save(*args, **kwargs)
@@ -138,9 +166,7 @@ class PurchaseInvoiceLine(TenantMixin):
     line_subtotal = models.DecimalField('المجموع قبل الضريبة', max_digits=14, decimal_places=2, default=0)
     line_total = models.DecimalField('المجموع النهائي', max_digits=14, decimal_places=2, default=0)
     returned_quantity = models.DecimalField('الكمية المُرتجعة', max_digits=12, decimal_places=3, default=0)
-    batch_number = models.CharField('رقم الدفعة', max_length=100, blank=True)
     serial_number = models.CharField('الرقم التسلسلي', max_length=100, blank=True)
-    expiry_date = models.DateField('تاريخ انتهاء الصلاحية', null=True, blank=True)
 
     class Meta:
         db_table = 'purchase_invoice_lines'
@@ -250,6 +276,14 @@ class PurchaseReturn(TenantMixin):
         related_name='purchase_returns',
         verbose_name='أمر الشراء الأصلي',
     )
+    branch = models.ForeignKey(
+        'core.Branch',
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='purchase_returns',
+        verbose_name='الفرع',
+        help_text='الفرع المرتبط مباشرة بالمرتجع (enterprise فقط؛ يُملأ تلقائياً من أمر الشراء الأصلي إن لم يُحدد)',
+    )
     status = models.CharField('الحالة', max_length=20, choices=STATUS_CHOICES, default='draft')
     refund_method = models.CharField('طريقة التسوية', max_length=10, choices=REFUND_CHOICES, default='balance')
     total_returned = models.DecimalField('إجمالي المرتجع', max_digits=14, decimal_places=2, default=0)
@@ -276,6 +310,9 @@ class PurchaseReturn(TenantMixin):
         ]
 
     def save(self, *args, **kwargs):
+        # الفرع يُشتق من الفاتورة الأصلية (نسخة المؤسسات)
+        if self.branch_id is None and self.original_invoice_id:
+            self.branch_id = type(self).original_invoice.field.related_model.objects.filter(pk=self.original_invoice_id).values_list('branch_id', flat=True).first()
         if not self.return_number:
             last = (
                 PurchaseReturn.objects.filter(tenant=self.tenant)

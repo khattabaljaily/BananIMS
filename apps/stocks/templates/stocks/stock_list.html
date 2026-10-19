@@ -3,7 +3,7 @@
 {% load humanize %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/stocks.css' %}?v=2.0">
+<link rel="stylesheet" href="{% static 'css/stocks.css' %}?v=1.1">
 {% endblock %}
 
 {% block page_header %}{% endblock %}
@@ -106,7 +106,6 @@
                 <tr>
                     <th>المخزن</th>
                     <th>الرمز</th>
-                    <th>النوع</th>
                     <th>الموقع</th>
                     <th>الحالة</th>
                     <th></th>
@@ -149,14 +148,28 @@
                                 <label class="cx-label" for="id_name">{{ form.name.label }} <sup class="cx-required">*</sup></label>
                                 {{ form.name }}
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-6">
                                 <label class="cx-label" for="id_code">{{ form.code.label }}</label>
                                 {{ form.code }}
                             </div>
-                            <div class="col-md-3">
-                                <label class="cx-label" for="id_stock_type">{{ form.stock_type.label }}</label>
-                                {{ form.stock_type }}
+                            {% if current_tenant.version_type == 'multi_branch' and form.branch %}
+                            <div class="col-md-6" id="branchFieldWrap">
+                                <label class="cx-label" for="id_branch">{{ form.branch.label }}</label>
+                                {{ form.branch }}
                             </div>
+                            {% endif %}
+                            {% if form.is_central %}
+                            <div class="col-12" id="centralToggleWrap"{% if central_exists %} style="display:none"{% endif %}>
+                                <label class="cx-toggle-card" for="id_is_central">
+                                    <div class="cx-toggle-info">
+                                        <span class="cx-toggle-title">{{ form.is_central.label }}</span>
+                                        <span class="cx-toggle-desc">مخزن الإدارة المركزية: بلا فرع، للشراء المركزي والتوزيع على الفروع فقط (لا بيع منه). يمكن إنشاء مخزن مركزي واحد فقط. يمكنك لاحقًا إلغاء المركزية أو حذف المخزن ما دامت لا توجد عليه سجلات.</span>
+                                    </div>
+                                    {{ form.is_central }}
+                                    <div class="cx-toggle-switch"></div>
+                                </label>
+                            </div>
+                            {% endif %}
                             <div class="col-12">
                                 <label class="cx-label" for="id_address">{{ form.address.label }}</label>
                                 {{ form.address }}
@@ -239,13 +252,6 @@
                             </div>
                         </div>
                         <div class="cx-info-card">
-                            <div class="cx-info-card-icon cx-info-icon--city"><i class="fas fa-layer-group"></i></div>
-                            <div class="cx-info-card-content">
-                                <span class="cx-info-card-label">نوع المخزن</span>
-                                <span class="cx-info-card-value" id="viewStockType"></span>
-                            </div>
-                        </div>
-                        <div class="cx-info-card">
                             <div class="cx-info-card-icon cx-info-icon--status"><i class="fas fa-circle-check"></i></div>
                             <div class="cx-info-card-content">
                                 <span class="cx-info-card-label">الحالة</span>
@@ -304,6 +310,9 @@
 
 {% block extra_js %}
 <script>
+// النمط المركزي: المخزن الرئيسي نظامي (يُنشأ تلقائياً) فلا تعديل ولا حذف ولا تعيين كافتراضي.
+const CENTRAL_MODE_LOCK = {{ current_tenant.is_central_purchasing|yesno:'true,false' }};
+let CENTRAL_EXISTS = {{ central_exists|yesno:'true,false' }};
 (function () {
     'use strict';
     const hasPerm = window.hasPerm || (function(){ return false; });
@@ -342,11 +351,7 @@
         }
 
         const cardsHtml = rows.map(function (r) {
-            const icons = {
-                'main':'fa-warehouse','branch':'fa-store','cold':'fa-snowflake',
-                'hazardous':'fa-triangle-exclamation','transit':'fa-truck-fast'
-            };
-            const icon = icons[r.stock_type_raw] || 'fa-warehouse';
+            const icon = 'fa-warehouse';
             const address = r.address || '—';
             const status = r.is_active
                 ? '<span class="cx-status cx-status--on"><span class="cx-status-dot"></span>نشط</span>'
@@ -364,19 +369,15 @@
                 </div>
                 <div class="cx-stock-card-meta">
                     <div>
-                        <span class="cx-stock-card-meta-label">النوع</span>
-                        <strong class="cx-stock-card-meta-value">${r.stock_type || '—'}</strong>
-                    </div>
-                    <div>
                         <span class="cx-stock-card-meta-label">الموقع</span>
                         <strong class="cx-stock-card-meta-value">${address}</strong>
                     </div>
                 </div>
                 <div class="cx-stock-card-actions">
-                    ${!r.is_default ? `<button class="cxr-act js-set-default-stock" data-id="${r.id}" aria-label="تعيين كافتراضي" title="تعيين كافتراضي"><i class="fas fa-star"></i></button>` : `<button class="cxr-act" disabled aria-label="المخزن الافتراضي" title="المخزن الافتراضي"><i class="fas fa-star text-warning"></i></button>`}
+                    ${!r.is_default && !(r.is_central && CENTRAL_MODE_LOCK) ? `<button class="cxr-act js-set-default-stock" data-id="${r.id}" aria-label="تعيين كافتراضي" title="تعيين كافتراضي"><i class="fas fa-star"></i></button>` : `<button class="cxr-act" disabled aria-label="المخزن الافتراضي" title="المخزن الافتراضي"><i class="fas fa-star text-warning"></i></button>`}
                     <button class="cxr-act cxr-act--view js-view-stock" data-id="${r.id}" aria-label="عرض" title="عرض"><i class="fas fa-eye"></i></button>
-                    ${hasPerm('change_stocks') ? `<button class="cxr-act js-edit-stock" data-id="${r.id}" aria-label="تعديل" title="تعديل"><i class="fas fa-pen-to-square"></i></button>` : ''}
-                    ${hasPerm('delete_stocks') ? `<button class="cxr-act cxr-act--del js-delete-stock" data-id="${r.id}" data-name="${r.name}" aria-label="حذف" title="حذف"><i class="fas fa-trash"></i></button>` : ''}
+                    ${hasPerm('change_stocks') && !(r.is_central && CENTRAL_MODE_LOCK) ? `<button class="cxr-act js-edit-stock" data-id="${r.id}" aria-label="تعديل" title="تعديل"><i class="fas fa-pen-to-square"></i></button>` : ''}
+                    ${hasPerm('delete_stocks') && !(r.is_central && CENTRAL_MODE_LOCK) ? `<button class="cxr-act cxr-act--del js-delete-stock" data-id="${r.id}" data-name="${r.name}" data-central="${r.is_central}" aria-label="حذف" title="حذف"><i class="fas fa-trash"></i></button>` : ''}
                 </div>
             </article>`;
         }).join('');
@@ -411,23 +412,14 @@
                 render: function(_, __, r) {
                     const defaultBadge = r.is_default
                         ? `<span class="badge bg-primary ms-1" style="font-size:0.65rem">افتراضي</span>` : '';
-                    return `<span class="cxr-name">${r.name}</span>${defaultBadge}`;
+                    const centralBadge = r.is_central
+                        ? `<span class="badge bg-warning text-dark ms-1" style="font-size:0.65rem">مركزي</span>` : '';
+                    return `<span class="cxr-name">${r.name}</span>${defaultBadge}${centralBadge}`;
                 }
             },
             {
                 data: 'code',
                 render: c => `<code class="cxr-code">${c}</code>`
-            },
-            {
-                data: 'stock_type',
-                render: function(_, __, r) {
-                    const icons = {
-                        'main':'fa-warehouse','branch':'fa-store','cold':'fa-snowflake',
-                        'hazardous':'fa-triangle-exclamation','transit':'fa-truck-fast'
-                    };
-                    const icon = icons[r.stock_type_raw] || 'fa-warehouse';
-                    return `<span><i class="fas ${icon} me-1 text-muted"></i>${r.stock_type}</span>`;
-                }
             },
             {
                 data: 'address',
@@ -444,14 +436,15 @@
             {
                 data: null, orderable: false, searchable: false,
                 render: function(_, __, r) {
-                    const defBtn = !r.is_default
+                    const defBtn = r.is_central && CENTRAL_MODE_LOCK ? ''
+                        : !r.is_default
                         ? `<button class="cxr-act js-set-default-stock" data-id="${r.id}" title="تعيين كافتراضي"><i class="fas fa-star"></i></button>`
                         : `<button class="cxr-act" disabled title="المخزن الافتراضي"><i class="fas fa-star text-warning"></i></button>`;
                     return `<div class="cxr-actions">
                         ${defBtn}
                         <button class="cxr-act cxr-act--view js-view-stock" data-id="${r.id}" aria-label="عرض"><i class="fas fa-eye"></i></button>
-                        ${hasPerm('change_stocks') ? `<button class="cxr-act js-edit-stock" data-id="${r.id}" aria-label="تعديل"><i class="fas fa-pen-to-square"></i></button>` : ''}
-                        ${hasPerm('delete_stocks') ? `<button class="cxr-act cxr-act--del js-delete-stock" data-id="${r.id}" data-name="${r.name}" aria-label="حذف"><i class="fas fa-trash"></i></button>` : ''}
+                        ${hasPerm('change_stocks') && !(r.is_central && CENTRAL_MODE_LOCK) ? `<button class="cxr-act js-edit-stock" data-id="${r.id}" aria-label="تعديل"><i class="fas fa-pen-to-square"></i></button>` : ''}
+                        ${hasPerm('delete_stocks') && !(r.is_central && CENTRAL_MODE_LOCK) ? `<button class="cxr-act cxr-act--del js-delete-stock" data-id="${r.id}" data-name="${r.name}" data-central="${r.is_central}" aria-label="حذف"><i class="fas fa-trash"></i></button>` : ''}
                     </div>`;
                 }
             }
@@ -477,8 +470,17 @@
         $idInput.val('');
         $('#id_is_active').prop('checked', true);
         $('#id_is_default').prop('checked', false);
+        $('#id_is_central').prop('checked', false).trigger('change');
+        $('#centralToggleWrap').toggle(!CENTRAL_EXISTS);   /* إنشاء: يظهر فقط إن لم يوجد مركزي */
         BananIMS.clearFormErrors($form);
     }
+
+    /* المخزن المركزي بلا فرع: إخفاء حقل الفرع وإلغاء الافتراضي عند تفعيله */
+    $(document).on('change', '#id_is_central', function () {
+        const central = this.checked;
+        $('#branchFieldWrap').toggle(!central);
+        if (central) { $('#id_branch').val(''); $('#id_is_default').prop('checked', false); }
+    });
 
     /* ── Open create ───────────────────────────────────────── */
     $('#btnOpenCreateStock').on('click', function () {
@@ -499,11 +501,14 @@
                 $idInput.val(d.id);
                 $('#id_name').val(d.name || '');
                 $('#id_code').val(d.code || '');
-                $('#id_stock_type').val(d.stock_type || '');
+                $('#id_branch').val(d.branch || '');
                 $('#id_address').val(d.address || '');
                 $('#id_notes').val(d.notes || '');
                 $('#id_is_active').prop('checked', !!d.is_active);
                 $('#id_is_default').prop('checked', !!d.is_default);
+                /* تعديل: حقل المركزية يظهر للمخزن المركزي نفسه فقط، ليُلغى تحديده */
+                $('#id_is_central').prop('checked', !!d.is_central).trigger('change');
+                $('#centralToggleWrap').toggle(!!d.is_central);
                 $('#stockModalTitle').text('تعديل المخزن');
                 $submitBtn.html('<i class="fas fa-check me-1"></i> حفظ التعديلات');
                 stockModal.show();
@@ -525,6 +530,9 @@
             success: function(resp) {
                 BananIMS.hideLoading($submitBtn, orig);
                 if (resp.success) {
+                    if ($('#id_is_central').length && $('#centralToggleWrap').is(':visible')) {
+                        CENTRAL_EXISTS = $('#id_is_central').prop('checked');
+                    }
                     stockModal.hide();
                     dt.ajax.reload(null, false);
                     BananIMS.toast(resp.message, 'success');
@@ -542,7 +550,9 @@
     });
 
     /* ── Delete ────────────────────────────────────────────── */
+    let deletingCentral = false;
     $('#stocksTable').on('click', '.js-delete-stock', function () {
+        deletingCentral = String($(this).data('central')) === 'true';
         $('#deleteStockId').val($(this).data('id'));
         $('#deleteStockName').text($(this).data('name'));
         deleteModal.show();
@@ -554,7 +564,7 @@
             url: apiUrl(urlDelete, id), method: 'POST',
             success: function(resp) {
                 deleteModal.hide();
-                if (resp.success) { dt.ajax.reload(null, false); BananIMS.toast(resp.message, 'success'); }
+                if (resp.success) { if (deletingCentral) CENTRAL_EXISTS = false; dt.ajax.reload(null, false); BananIMS.toast(resp.message, 'success'); }
                 else BananIMS.toast(resp.message, 'error');
             },
             error: function(xhr) { BananIMS.toast(_xhrMsg(xhr, 'تعذر الحذف'), 'error'); }
@@ -572,7 +582,6 @@
                 $('#viewStockCode').html(`<code class="cxr-code">${d.code}</code>`);
                 $('#viewStockNameVal').text(d.name || '—');
                 $('#viewStockCodeVal').html(`<code class="cxr-code">${d.code}</code>`);
-                $('#viewStockType').text(d.stock_type || '—');
                 $('#viewStockAddress').text(d.address || '—');
                 $('#viewStockNotes').text(d.notes || '—');
                 const statusHtml = d.is_active
@@ -614,6 +623,7 @@
     $('#stocksCardsMobile').on('click', '.js-view-stock', function () { openView($(this).data('id')); });
     $('#stocksCardsMobile').on('click', '.js-edit-stock', function () { openEdit($(this).data('id')); });
     $('#stocksCardsMobile').on('click', '.js-delete-stock', function () {
+        deletingCentral = String($(this).data('central')) === 'true';
         $('#deleteStockId').val($(this).data('id'));
         $('#deleteStockName').text($(this).data('name'));
         deleteModal.show();

@@ -11,19 +11,21 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse, HttpResponseNotAllowed, HttpResponse, FileResponse
 from django.shortcuts import get_object_or_404
 from django.core.paginator import Paginator
-from apps.accounts.decorators import require_permission
+from apps.accounts.decorators import require_permission, deny_branch_scoped, branch_scope_exempt
 from apps.accounts.activity_service import log_activity
-from django.db.models import Sum, Count, Q, F, Case, When, Value, CharField, DecimalField
+from django.db.models import ProtectedError, Sum, Count, Q, F, Case, When, Value, CharField, DecimalField
 from django.views.decorators.http import require_POST
+from django.views.decorators.cache import never_cache
 from datetime import datetime, timedelta, date as date_type
 from django.utils import timezone as dj_timezone
 
-from .models import Settings, Tenant, BusinessType, SupportTicket, SupportMessage, TenantBackup, SocialMediaPost
+from .models import Settings, Tenant, BusinessType, SupportTicket, SupportMessage, TenantBackup, SocialMediaPost, Branch
 from apps.notifications.models import Notification
-from .forms import TenantForm
-from .constants import COUNTRY_CHOICES, COUNTRY_TIMEZONE_MAP, COUNTRY_CURRENCY_MAP, TIMEZONE_CURRENCY_MAP, CURRENCY_AR, DEFAULT_COUNTRY, get_timezone_for_country, CURRENCY_CHOICES
-from apps.treasury.models import TreasuryMovement
+from .forms import TenantForm, BranchForm
+from .constants import COUNTRY_CHOICES, COUNTRY_TIMEZONE_MAP, COUNTRY_CURRENCY_MAP, CURRENCY_AR, get_timezone_for_country
+from apps.treasury.models import Treasury, TreasuryMovement
 from apps.expenses.models import Expense
+from .utils import filter_by_branch_via, filter_by_branch_strict, resolve_report_scope, short_text
 
 
 def about(request):
@@ -49,79 +51,92 @@ def dashboard(request):
         'today_sales': 0,
         'this_month_sales': 0,
         'low_stock_items': 0,
-        'expired_items': 0,
     }
     
+    is_central_admin = False
+    branches_for_filter = Branch.objects.none()
+
     if tenant:
+        branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
+
         # Users
         from apps.accounts.models import User
-        stats['total_users'] = User.objects.filter(tenant=tenant).count()
-        
+        stats['total_users'] = User.objects.filter(tenant=tenant).for_branch(branch, strict=True).count()
+
         # Customers
         from apps.customers.models import Customer
-        stats['total_customers'] = Customer.objects.filter(tenant=tenant).count()
-        
+        stats['total_customers'] = Customer.objects.for_tenant(tenant).for_branch(branch, strict=True).count()
+
         # Products
         from apps.items.models import Item
-        stats['total_products'] = Item.objects.filter(tenant=tenant).count()
-        
+        if branch is None:
+            stats['total_products'] = Item.objects.filter(tenant=tenant).count()
+        else:
+            from apps.stocks.models import StockQuantity as _SQ
+            # منتجات الكتالوج المتاحة لمخازن الفرع (لا الموجودة كميتها فقط، وإلا ظهر 0 لفرع بلا أرصدة)
+            stats['total_products'] = _SQ.objects.filter(
+                tenant=tenant, stock__branch=branch, item__is_active=True,
+            ).values('item').distinct().count()
+
         # Suppliers
         from apps.suppliers.models import Supplier
-        stats['total_suppliers'] = Supplier.objects.filter(tenant=tenant).count()
-        
+        stats['total_suppliers'] = Supplier.objects.for_tenant(tenant).for_branch(branch, strict=True).count()
+
         # Low stock items
         from apps.stocks.models import StockQuantity
-        low_stock_count = StockQuantity.objects.filter(
-            tenant=tenant,
-            quantity__lte=F('item__min_quantity'),
-            item__min_quantity__gt=0
+        low_stock_count = filter_by_branch_strict(
+            StockQuantity.objects.filter(
+                tenant=tenant,
+                quantity__lte=F('item__min_quantity'),
+                item__min_quantity__gt=0
+            ), branch, field='stock__branch'
         ).values('item').distinct().count()
         stats['low_stock_items'] = low_stock_count
-        
+
         # Sales today
         from apps.sales.models import SaleInvoice
         today = dj_timezone.localdate()
-        today_sales = SaleInvoice.objects.filter(
+        today_sales = filter_by_branch_strict(SaleInvoice.objects.filter(
             tenant=tenant,
             invoice_date=today,
-            status='confirmed'
-        ).aggregate(total=Sum('grand_total'))['total'] or 0
+            status__in=SaleInvoice.REVENUE_STATUSES
+        ), branch).aggregate(total=Sum('grand_total'))['total'] or 0
         stats['today_sales'] = float(today_sales)
-        
+
         # Sales this month
         first_day = today.replace(day=1)
-        month_sales = SaleInvoice.objects.filter(
+        month_sales = filter_by_branch_strict(SaleInvoice.objects.filter(
             tenant=tenant,
             invoice_date__gte=first_day,
-            status='confirmed'
-        ).aggregate(total=Sum('grand_total'))['total'] or 0
+            status__in=SaleInvoice.REVENUE_STATUSES
+        ), branch).aggregate(total=Sum('grand_total'))['total'] or 0
         stats['this_month_sales'] = float(month_sales)
-        
+
         # Additional stats
         # Number of invoices today
-        stats['today_invoices'] = SaleInvoice.objects.filter(
+        stats['today_invoices'] = filter_by_branch_strict(SaleInvoice.objects.filter(
             tenant=tenant,
             invoice_date=today,
-            status='confirmed'
-        ).count()
-        
+            status__in=SaleInvoice.REVENUE_STATUSES
+        ), branch).count()
+
         # Number of pending invoices (credit)
-        stats['pending_invoices'] = SaleInvoice.objects.filter(
+        stats['pending_invoices'] = filter_by_branch_strict(SaleInvoice.objects.filter(
             tenant=tenant,
-            status='confirmed',
+            status__in=SaleInvoice.REVENUE_STATUSES,
             payment_method='credit'
-        ).exclude(paid_amount__gte=F('grand_total')).count()
-        
+        ), branch).exclude(paid_amount__gte=F('grand_total')).count()
+
         # Payment percentage
-        total_invoices = SaleInvoice.objects.filter(
+        total_invoices = filter_by_branch_strict(SaleInvoice.objects.filter(
             tenant=tenant,
-            status='confirmed'
-        ).count()
-        paid_invoices = SaleInvoice.objects.filter(
+            status__in=SaleInvoice.REVENUE_STATUSES
+        ), branch).count()
+        paid_invoices = filter_by_branch_strict(SaleInvoice.objects.filter(
             tenant=tenant,
-            status='confirmed',
+            status__in=SaleInvoice.REVENUE_STATUSES,
             paid_amount__gte=F('grand_total')
-        ).count()
+        ), branch).count()
         stats['payment_percentage'] = int((paid_invoices / total_invoices) * 100) if total_invoices > 0 else 0
         
         # Top categories by sales (products only, not services)
@@ -129,12 +144,12 @@ def dashboard(request):
         from apps.sales.models import SaleInvoiceLine
         
         # Get ALL categories (not just top 4) to calculate total for percentage
-        all_categories = SaleInvoiceLine.objects.filter(
+        all_categories = filter_by_branch_strict(SaleInvoiceLine.objects.filter(
             tenant=tenant,
-            invoice__status='confirmed',
+            invoice__status__in=SaleInvoice.REVENUE_STATUSES,
             invoice__invoice_date__gte=first_day,
             item__item_type='product'  # Only products, not services
-        ).annotate(
+        ), branch, field='invoice__stock__branch').annotate(
             category_name=Case(
                 When(item__category__name__isnull=True, then=Value('غير مصنف')),
                 default='item__category__name',
@@ -164,35 +179,34 @@ def dashboard(request):
             day = week_ago + timedelta(days=i)
             
             # Sales for the day
-            day_sales = SaleInvoice.objects.filter(
+            day_sales = filter_by_branch_strict(SaleInvoice.objects.filter(
                 tenant=tenant,
                 invoice_date=day,
-                status='confirmed'
-            ).aggregate(total=Sum('grand_total'))['total'] or 0
-            
+                status__in=SaleInvoice.REVENUE_STATUSES
+            ), branch).aggregate(total=Sum('grand_total'))['total'] or 0
+
             # Customer payments (receipts) for the day
-            day_receipts = TreasuryMovement.objects.filter(
+            day_receipts = filter_by_branch_strict(TreasuryMovement.objects.filter(
                 tenant=tenant,
                 movement_date=day,
                 movement_type='receipt'
-            ).aggregate(total=Sum('amount'))['total'] or 0
-            
+            ), branch, field='treasury__branch').aggregate(total=Sum('amount'))['total'] or 0
+
             # Total revenues = sales + customer payments
             day_revenues = float(day_sales) + float(day_receipts)
-            
+
             # Expenses for the day
-            day_expenses = Expense.objects.filter(
-                tenant=tenant,
+            day_expenses = Expense.objects.for_tenant(tenant).for_branch(branch, strict=True).filter(
                 expense_date=day,
                 status='confirmed'
             ).aggregate(total=Sum('amount'))['total'] or 0
-            
+
             # Supplier payments (disbursements) for the day
-            day_disbursements = TreasuryMovement.objects.filter(
+            day_disbursements = filter_by_branch_strict(TreasuryMovement.objects.filter(
                 tenant=tenant,
                 movement_date=day,
                 movement_type='disbursement'
-            ).aggregate(total=Sum('amount'))['total'] or 0
+            ), branch, field='treasury__branch').aggregate(total=Sum('amount'))['total'] or 0
             
             # Total expenses = regular expenses + supplier payments
             day_expenses_total = float(day_expenses) + float(day_disbursements)
@@ -226,11 +240,11 @@ def dashboard(request):
         stats['top_categories'] = top_categories_list
         
         # Top selling products
-        top_products = SaleInvoiceLine.objects.filter(
+        top_products = filter_by_branch_strict(SaleInvoiceLine.objects.filter(
             tenant=tenant,
-            invoice__status='confirmed',
+            invoice__status__in=SaleInvoice.REVENUE_STATUSES,
             invoice__invoice_date__gte=first_day
-        ).values('item__name').annotate(
+        ), branch, field='invoice__stock__branch').values('item__name').annotate(
             total_qty=Sum('quantity'),
             total_revenue=Sum('line_total')
         ).order_by('-total_revenue')[:5]
@@ -246,11 +260,11 @@ def dashboard(request):
         
         # Low stock items (available but low quantity)
         from apps.stocks.models import StockQuantity
-        low_stock_items = StockQuantity.objects.filter(
+        low_stock_items = filter_by_branch_strict(StockQuantity.objects.filter(
             tenant=tenant,
             quantity__gt=0,  # Available items only
             item__item_type='product'  # Only products, not services
-        ).annotate(
+        ), branch, field='stock__branch').annotate(
             effective_min_quantity=Case(
                 When(min_quantity__gt=0, then='min_quantity'),
                 default='item__min_quantity',
@@ -269,14 +283,14 @@ def dashboard(request):
                 'min_quantity': float(stock_item.effective_min_quantity)
             })
         stats['low_stock_items_json'] = json.dumps(low_stock_list)
-        
+
         # Stock status summary for pie chart
         # Get all available products (quantity > 0 and item_type='product')
-        available_items = StockQuantity.objects.filter(
+        available_items = filter_by_branch_strict(StockQuantity.objects.filter(
             tenant=tenant,
             quantity__gt=0,
             item__item_type='product'  # Only products, not services
-        ).annotate(
+        ), branch, field='stock__branch').annotate(
             effective_min_quantity=Case(
                 When(min_quantity__gt=0, then='min_quantity'),
                 default='item__min_quantity',
@@ -310,6 +324,9 @@ def dashboard(request):
         'stats': stats,
         'tenant': tenant,
         'store': store,
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch if tenant else None,
     }
 
     return render(request, 'core/dashboard.html', context)
@@ -325,7 +342,7 @@ def admin_dashboard(request):
     total_clients = Tenant.objects.count()
     active_clients = Tenant.objects.filter(is_active=True).count()
     expired_clients = Tenant.objects.filter(is_active=True, subscription_expires__lt=today).count()
-    trial_clients = Tenant.objects.filter(subscription_plan='trial').count()
+    trial_clients = Tenant.objects.filter(is_demo=True).count()
     basic_clients = Tenant.objects.filter(subscription_plan='basic').count()
     pro_clients = Tenant.objects.filter(subscription_plan='pro').count()
     enterprise_clients = Tenant.objects.filter(subscription_plan='enterprise').count()
@@ -359,11 +376,8 @@ def admin_dashboard(request):
         created_at__date__lte=today - timedelta(days=3)
     ).select_related('tenant').order_by('created_at')[:8]
 
-    PLAN_PRICES = {'trial': 0, 'basic': 50, 'pro': 120, 'enterprise': 300}
-    mrr = sum(
-        PLAN_PRICES.get(p, 0) * Tenant.objects.filter(is_active=True, subscription_plan=p).count()
-        for p in PLAN_PRICES
-    )
+    from apps.core.pricing import tenant_monthly_fee
+    mrr = sum(tenant_monthly_fee(t) for t in Tenant.objects.filter(is_active=True))
 
     stats = {
         'total_clients': total_clients,
@@ -857,6 +871,7 @@ def admin_report_subscriptions(request):
 
 
 @login_required
+@branch_scope_exempt('لوحة إدارة المنصة (platform admin) — تقرير إيرادات عبر كل المشتركين، لا مفهوم فرع هنا أصلاً')
 def admin_report_revenue(request):
     if not request.user.has_platform_perm('view_reports'):
         return redirect('core:no_permission')
@@ -871,16 +886,21 @@ def admin_report_revenue(request):
         d = today.replace(day=1) - timedelta(days=i * 30)
         months.append(d.replace(day=1))
 
-    PLAN_PRICES = {'trial': 0, 'basic': 50, 'pro': 120, 'enterprise': 300}
+    from apps.core.pricing import PLAN_MONTHLY, tenant_monthly_fee
 
     # Per-tenant usage stats
     tenants = Tenant.objects.filter(is_active=True).order_by('-created_at')
     tenant_stats = []
+    plan_revenue = {key: {'count': 0, 'monthly': 0, 'price': price} for key, price in PLAN_MONTHLY.items()}
     for t in tenants:
-        sales_count = SaleInvoice.objects.filter(tenant=t, status='confirmed').count()
-        purchases_count = PurchaseInvoice.objects.filter(tenant=t, status='confirmed').count()
+        fee = tenant_monthly_fee(t)
+        if t.subscription_plan in plan_revenue:
+            plan_revenue[t.subscription_plan]['count'] += 1
+            plan_revenue[t.subscription_plan]['monthly'] += fee
+        sales_count = SaleInvoice.objects.filter(tenant=t, status__in=SaleInvoice.REVENUE_STATUSES).count()
+        purchases_count = PurchaseInvoice.objects.filter(tenant=t, status__in=PurchaseInvoice.EFFECTIVE_STATUSES).count()
         sales_total = SaleInvoice.objects.filter(
-            tenant=t, status='confirmed'
+            tenant=t, status__in=SaleInvoice.REVENUE_STATUSES
         ).aggregate(s=Sum('grand_total'))['s'] or 0
 
         tenant_stats.append({
@@ -891,16 +911,10 @@ def admin_report_revenue(request):
             'sales_count': sales_count,
             'purchases_count': purchases_count,
             'sales_total': float(sales_total),
-            'monthly_fee': PLAN_PRICES.get(t.subscription_plan, 0),
+            'monthly_fee': fee,
         })
 
     tenant_stats.sort(key=lambda x: x['sales_count'], reverse=True)
-
-    # Subscription revenue estimate per plan
-    plan_revenue = {}
-    for plan_key, price in PLAN_PRICES.items():
-        count = Tenant.objects.filter(is_active=True, subscription_plan=plan_key).count()
-        plan_revenue[plan_key] = {'count': count, 'monthly': count * price, 'price': price}
 
     total_mrr = sum(v['monthly'] for v in plan_revenue.values())
 
@@ -921,7 +935,7 @@ def admin_report_revenue(request):
         'monthly_new': monthly_new,
         'monthly_new_json': json.dumps([m['count'] for m in monthly_new], ensure_ascii=False),
         'monthly_labels_json': json.dumps([m['month'] for m in monthly_new], ensure_ascii=False),
-        'PLAN_PRICES': PLAN_PRICES,
+        'PLAN_PRICES': PLAN_MONTHLY,
     })
 
 
@@ -1164,7 +1178,7 @@ def admin_notifications_api(request):
         {
             'id':      n.pk,
             'title':   n.title,
-            'message': n.message[:80],
+            'message': short_text(n.message),
             'is_read': n.is_read,
             'link':    n.link,
             'priority': n.priority,
@@ -1181,15 +1195,8 @@ def admin_settings(request):
     if not request.user.is_superuser:
         return redirect('core:no_permission')
     from .models import PlatformSettings
-    from .constants import COUNTRY_TIMEZONE_MAP
     ps = PlatformSettings.get()
-    timezones = sorted(set(COUNTRY_TIMEZONE_MAP.values()))
-    return render(request, 'core/admin_settings.html', {
-        'ps': ps,
-        'currency_choices': CURRENCY_CHOICES,
-        'timezones': timezones,
-        'timezone_currency_map_json': json.dumps(TIMEZONE_CURRENCY_MAP, ensure_ascii=False),
-    })
+    return render(request, 'core/admin_settings.html', {'ps': ps})
 
 
 @login_required
@@ -1233,12 +1240,6 @@ def admin_settings_update_api(request):
         ps.self_registration_enabled = request.POST.get('self_registration_enabled') == 'true'
 
     elif section == 'defaults':
-        currency = request.POST.get('default_currency', '').strip()
-        if currency:
-            ps.default_currency = currency
-        tz = request.POST.get('default_timezone', '').strip()
-        if tz:
-            ps.default_timezone = tz
         ps.default_tax_enabled    = request.POST.get('default_tax_enabled') == 'true'
         try:
             ps.default_tax_value  = float(request.POST.get('default_tax_value') or 0)
@@ -1380,13 +1381,9 @@ def admin_backup_download(request, backup_id):
     file_path = Path(backup.file_path)
     if not file_path.exists():
         raise Http404("الملف غير موجود")
-    response = FileResponse(
-        open(file_path, 'rb'),
-        as_attachment=True,
-        filename=backup.filename,
-        content_type='application/sql',
-    )
-    return response
+    from .backup_service import build_backup_download
+    fileobj, filename, content_type = build_backup_download(backup)
+    return FileResponse(fileobj, as_attachment=True, filename=filename, content_type=content_type)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1420,6 +1417,21 @@ def tenant_backup_create_api(request):
 
 
 @login_required
+@require_POST
+def tenant_backup_delete_api(request, backup_id):
+    """حذف نسخة احتياطية — للمشترك نفسه فقط"""
+    tenant = getattr(request, 'tenant', None)
+    if not tenant:
+        return JsonResponse({'success': False, 'message': 'لا يوجد نشاط مرتبط بالمستخدم'}, status=400)
+    if not TenantBackup.objects.filter(pk=backup_id, tenant=tenant).exists():
+        return JsonResponse({'success': False, 'message': 'النسخة غير موجودة'}, status=404)
+
+    from .backup_service import delete_backup
+    success, message = delete_backup(backup_id)
+    return JsonResponse({'success': success, 'message': message})
+
+
+@login_required
 def tenant_backup_download(request, backup_id):
     """تنزيل نسخة احتياطية — للمشترك نفسه فقط"""
     from django.http import FileResponse, Http404
@@ -1431,12 +1443,9 @@ def tenant_backup_download(request, backup_id):
     file_path = Path(backup.file_path)
     if not file_path.exists():
         raise Http404("الملف غير موجود")
-    return FileResponse(
-        open(file_path, 'rb'),
-        as_attachment=True,
-        filename=backup.filename,
-        content_type='application/sql',
-    )
+    from .backup_service import build_backup_download
+    fileobj, filename, content_type = build_backup_download(backup)
+    return FileResponse(fileobj, as_attachment=True, filename=filename, content_type=content_type)
 
 
 @login_required
@@ -1493,7 +1502,15 @@ def no_permission(request):
     return render(request, 'core/no_permission.html', status=403)
 
 
+def pending_approval(request):
+    """صفحة انتظار اعتماد الحساب بعد التسجيل الذاتي"""
+    return render(request, 'core/pending_approval.html', {
+        'tenant': getattr(request, 'tenant', None),
+    })
+
+
 @login_required
+@deny_branch_scoped
 @require_permission('view_tenant_settings')
 def tenant_settings(request):
     """إعدادات النشاط التجاري"""
@@ -1507,13 +1524,12 @@ def tenant_settings(request):
         'country_timezone_map_json': json.dumps(COUNTRY_TIMEZONE_MAP, ensure_ascii=False),
         'country_currency_map_json': json.dumps(COUNTRY_CURRENCY_MAP, ensure_ascii=False),
         'currency_ar_json': json.dumps(CURRENCY_AR, ensure_ascii=False),
-        'default_country': DEFAULT_COUNTRY,
-        'currency_choices': CURRENCY_CHOICES,
         'backups': backups,
     })
 
 
 @login_required
+@deny_branch_scoped
 @require_permission('change_tenant_settings')
 @require_POST
 def tenant_settings_update_api(request):
@@ -1537,13 +1553,14 @@ def tenant_settings_update_api(request):
         tenant.email = str(data.get('email', tenant.email)).strip()
         tenant.phone = str(data.get('phone', tenant.phone)).strip()
         tenant.city = str(data.get('city', tenant.city)).strip()
-        tenant.country = str(data.get('country', tenant.country)).strip() or tenant.country
+        country = str(data.get('country', tenant.country)).strip()
+        if country not in COUNTRY_CURRENCY_MAP:
+            return JsonResponse({'success': False, 'message': 'اختر الدولة'}, status=400)
+        tenant.country = country
         tenant.address = str(data.get('address', tenant.address)).strip()
-        timezone_value = str(data.get('timezone', tenant.timezone)).strip()
-        if not timezone_value:
-            timezone_value = get_timezone_for_country(tenant.country)
-        tenant.timezone = timezone_value
-        tenant.currency = str(data.get('currency', tenant.currency)).strip() or tenant.currency
+        # المنطقة الزمنية والعملة تُشتقّان من الدولة المختارة
+        tenant.timezone = get_timezone_for_country(country)
+        tenant.currency = COUNTRY_CURRENCY_MAP[country]
         tenant.save(update_fields=['name', 'email', 'phone', 'city', 'country', 'address', 'timezone', 'currency', 'updated_at'])
         return JsonResponse({'success': True, 'message': 'تم تحديث بيانات المتجر بنجاح'})
 
@@ -1589,8 +1606,6 @@ def tenant_settings_update_api(request):
     return JsonResponse({'success': True, 'message': 'تم تحديث إعدادات النظام بنجاح'})
 
 
-
-
 @login_required
 @require_permission('change_tenant_settings')
 @require_POST
@@ -1628,6 +1643,7 @@ def tenant_logo_upload_api(request):
 
 
 @login_required
+@deny_branch_scoped
 def subscription_info(request):
     """معلومات الاشتراك"""
     from .models import Tenant
@@ -1692,6 +1708,7 @@ def _superuser_required(request, perm=None):
 
 
 @login_required
+@never_cache
 def tenant_list(request):
     """قائمة المشتركين (المشتركين) - للمشرف فقط"""
     if not request.user.has_platform_perm('manage_tenants'):
@@ -1700,15 +1717,17 @@ def tenant_list(request):
     total = Tenant.objects.count()
     active = Tenant.objects.filter(is_active=True).count()
     suspended = total - active
+    pending = Tenant.objects.filter(is_approved=False).count()
     today = dj_timezone.localdate()
     expired = Tenant.objects.filter(is_active=True, subscription_expires__lt=today).count()
     context = {
         'form': TenantForm(),
         'business_types': business_types,
-        'stats': {'total': total, 'active': active, 'suspended': suspended, 'expired': expired},
+        'stats': {'total': total, 'active': active, 'suspended': suspended, 'expired': expired, 'pending': pending},
         'country_timezone_map': COUNTRY_TIMEZONE_MAP,
         'country_currency_map': COUNTRY_CURRENCY_MAP,
         'currency_ar': CURRENCY_AR,
+        'plan_limits_json': json.dumps(Tenant.PLAN_LIMITS, ensure_ascii=False),
     }
     return render(request, 'core/tenant_list.html', context)
 
@@ -1740,6 +1759,8 @@ def tenant_table_api(request):
         qs = qs.filter(is_active=False)
     elif status_filter == 'expired':
         qs = qs.filter(is_active=True, subscription_expires__lt=today)
+    elif status_filter == 'pending':
+        qs = qs.filter(is_approved=False)
 
     if plan_filter:
         qs = qs.filter(subscription_plan=plan_filter)
@@ -1797,6 +1818,7 @@ def tenant_table_api(request):
                 'version_type': t.get_version_type_display(),
                 'version_type_key': t.version_type,
                 'is_active': t.is_active,
+                'is_approved': t.is_approved,
                 'is_demo': getattr(t, 'is_demo', False),
                 'subscription_expires': t.subscription_expires.strftime('%Y-%m-%d') if t.subscription_expires else None,
                 'exp_label': exp_label,
@@ -1887,60 +1909,42 @@ def tenant_create_api(request):
         logging.getLogger(__name__).error('tenant_create_api error: %s', e, exc_info=True)
         return JsonResponse({'success': False, 'message': f'حدث خطأ: {e}'}, status=500)
 
-    # Send admin notification email (non-blocking)
-    try:
-        from django.core.mail import EmailMessage
-        from django.template.loader import render_to_string
-        from django.utils import timezone
-
-        dashboard_url = request.build_absolute_uri('/tenants/')
-        html_body = render_to_string('core/email/new_tenant_notification.html', {
-            'tenant': tenant,
-            'admin_full_name': full_name,
-            'admin_username': username,
-            'admin_email': email,
-            'created_at': timezone.now(),
-            'dashboard_url': dashboard_url,
-        })
-        msg = EmailMessage(
-            subject=f'New Tenant Registered: {tenant.name}',
-            body=html_body,
-            from_email='BananIMS <{}>'.format(settings.EMAIL_HOST_USER),
-            to=['khattabaljaily@gmail.com'],
-        )
-        msg.content_subtype = 'html'
-        msg.send(fail_silently=False)
-    except Exception as _email_err:
-        import logging
-        logging.getLogger(__name__).error('tenant notification email failed: %s', _email_err, exc_info=True)
-
-    # Send welcome email to the new tenant admin
-    if email:
+    # Send admin notification email in a background thread so a slow/unreachable
+    # SMTP server can never block this request (it previously could hang forever).
+    def _send_tenant_notification_email(dashboard_url):
         try:
             from django.core.mail import EmailMessage
             from django.template.loader import render_to_string
-            from django.urls import reverse
             from django.utils import timezone
 
-            welcome_html = render_to_string('accounts/email/welcome_tenant_email.html', {
+            from apps.core.branding import get_brand_name
+            html_body = render_to_string('core/email/new_tenant_notification.html', {
                 'tenant': tenant,
-                'admin_full_name': full_name or username,
+                'admin_full_name': full_name,
                 'admin_username': username,
                 'admin_email': email,
                 'created_at': timezone.now(),
-                'login_url': request.build_absolute_uri(reverse('accounts:login')),
+                'dashboard_url': dashboard_url,
+                'app_name': get_brand_name(),
             })
-            welcome_msg = EmailMessage(
-                subject='🎉 مرحباً بك في Banan',
-                body=welcome_html,
-                from_email='BananIMS <{}>'.format(settings.EMAIL_HOST_USER),
-                to=[email],
+            msg = EmailMessage(
+                subject=f'New Tenant Registered: {tenant.name}',
+                body=html_body,
+                from_email='{} <{}>'.format(get_brand_name(), settings.EMAIL_HOST_USER),
+                to=['khattabaljaily@gmail.com'],
             )
-            welcome_msg.content_subtype = 'html'
-            welcome_msg.send(fail_silently=False)
-        except Exception as _welcome_err:
+            msg.content_subtype = 'html'
+            msg.send(fail_silently=False)
+        except Exception as _email_err:
             import logging
-            logging.getLogger(__name__).error('welcome email failed: %s', _welcome_err, exc_info=True)
+            logging.getLogger(__name__).error('tenant notification email failed: %s', _email_err, exc_info=True)
+
+    import threading
+    threading.Thread(
+        target=_send_tenant_notification_email,
+        args=(request.build_absolute_uri('/tenants/'),),
+        daemon=True,
+    ).start()
 
     return JsonResponse({
         'success': True,
@@ -1950,6 +1954,7 @@ def tenant_create_api(request):
 
 
 @login_required
+@branch_scope_exempt('لوحة إدارة المنصة (platform admin) — عدّاد فروع/مخازن المشترك إجمالاً عبر كل فروعه، لا مفهوم فرع طالب هنا أصلاً')
 def tenant_detail_api(request, pk):
     """API: تفاصيل مشترك"""
     err = _superuser_required(request, 'manage_tenants')
@@ -1961,8 +1966,11 @@ def tenant_detail_api(request, pk):
     is_valid = tenant.is_subscription_valid()
 
     from apps.accounts.models import User
+    from apps.stocks.models import Stock
     admin_user = User.objects.filter(tenant=tenant, is_tenant_admin=True).order_by('id').first()
     user_count = User.objects.filter(tenant=tenant).count()
+    branch_count = Branch.objects.filter(tenant=tenant, is_active=True).count()
+    stock_count = Stock.objects.filter(tenant=tenant, is_active=True).count()
 
     settings_obj = tenant.settings if hasattr(tenant, 'settings') else None
     try:
@@ -2000,6 +2008,8 @@ def tenant_detail_api(request, pk):
             'days_until_expiry': days,
             'is_subscription_valid': is_valid,
             'user_count': user_count,
+            'branch_count': branch_count,
+            'stock_count': stock_count,
             'created_at': tenant.created_at.strftime('%Y-%m-%d'),
             'admin_username': admin_user.username if admin_user else '',
             'admin_email': admin_user.email if admin_user else '',
@@ -2114,33 +2124,40 @@ def _delete_tenant_data(tenant):
             PurchasePayment, SupplierLedger,
         )
         from apps.expenses.models import Expense
-        from apps.treasury.models import TreasuryMovement
+        from apps.treasury.models import TreasuryMovement, TreasuryTransfer
+        from apps.bank_accounts.models import BankAccountMovement, BankAccountTransfer
+        from apps.bank_accounts.models import TreasuryBankTransfer
         from apps.stocks.models import (
             StocktakeLine, Stocktake,
             StockTransferLine, StockTransfer,
-            ManufacturingOrder,
+            StockDestructionLine, StockDestruction,
         )
         from apps.purchases.models import PurchaseRFQLine, PurchaseRFQ
-        from apps.items.models import BOMRecipe
         from apps.store.models import OnlineOrderLine, OnlineOrder
         from apps.agents.models import AgentInvoiceRequestLine, AgentInvoiceRequest, AgentLedger
 
+        # --- treasury/bank transfers (TreasuryTransfer.from_treasury/to_treasury,
+        #     BankAccountTransfer.from_bank_account/to_bank_account,
+        #     TreasuryBankTransfer.treasury/bank_account — all PROTECT) must be
+        #     deleted before Treasury/BankAccount rows cascade from tenant.delete() ---
+        TreasuryBankTransfer.objects.filter(**t).delete()
+        TreasuryTransfer.objects.filter(**t).delete()
+        BankAccountTransfer.objects.filter(**t).delete()
         # --- agent sub-documents (AgentLedger.agent / AgentInvoiceRequest.agent PROTECT Agent,
         #     AgentInvoiceRequestLine.item PROTECT Item) ---
         AgentInvoiceRequestLine.objects.filter(**t).delete()
         AgentInvoiceRequest.objects.filter(**t).delete()
         AgentLedger.objects.filter(**t).delete()
         # --- stock sub-documents (all PROTECT Stock or Item) ---
+        StockDestructionLine.objects.filter(**t).delete()
+        StockDestruction.objects.filter(**t).delete()
         StocktakeLine.objects.filter(**t).delete()
         Stocktake.objects.filter(**t).delete()
         StockTransferLine.objects.filter(**t).delete()
         StockTransfer.objects.filter(**t).delete()
-        ManufacturingOrder.objects.filter(**t).delete()
         # --- purchase RFQ (PROTECT Stock / Item) ---
         PurchaseRFQLine.objects.filter(**t).delete()
         PurchaseRFQ.objects.filter(**t).delete()
-        # --- BOM (BOMRecipe cascades to BOMLine which PROTECT Item) ---
-        BOMRecipe.objects.filter(**t).delete()
         # --- online store orders (OnlineOrderLine.item PROTECT Item) ---
         OnlineOrderLine.objects.filter(**t).delete()
         OnlineOrder.objects.filter(**t).delete()
@@ -2161,6 +2178,7 @@ def _delete_tenant_data(tenant):
         SupplierLedger.objects.filter(**t).delete()
         Expense.objects.filter(**t).delete()
         TreasuryMovement.objects.filter(**t).delete()
+        BankAccountMovement.objects.filter(**t).delete()
         # After the above, tenant.delete() cascades safely through remaining relations.
     finally:
         tenant_deletion_in_progress.reset(token)
@@ -2180,6 +2198,88 @@ def tenant_suspend_api(request, pk):
     tenant.save(update_fields=['is_active', 'updated_at'])
     action = 'تم تفعيل' if tenant.is_active else 'تم تعليق'
     return JsonResponse({'success': True, 'message': f'{action} المشترك "{tenant.name}" بنجاح', 'is_active': tenant.is_active})
+
+
+@login_required
+def tenant_approve_api(request, pk):
+    """API: اعتماد مشترك جديد (تفعيل حساب معلّق بعد التسجيل الذاتي)"""
+    err = _superuser_required(request, 'manage_tenants')
+    if err:
+        return err
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(['POST'])
+
+    tenant = get_object_or_404(Tenant, pk=pk)
+    if tenant.is_approved:
+        return JsonResponse({'success': True, 'message': 'المشترك معتمد بالفعل', 'is_approved': True})
+
+    try:
+        payload = json.loads(request.body or '{}')
+    except (json.JSONDecodeError, ValueError):
+        payload = {}
+
+    update_fields = ['is_approved', 'approved_at', 'updated_at']
+
+    tenant.is_approved = True
+    tenant.approved_at = dj_timezone.now()
+
+    # المشرف يقرر هنا إن كان الحساب يبقى تجريبياً أم يتحول لحساب حقيقي
+    if 'is_demo' in payload:
+        tenant.is_demo = bool(payload.get('is_demo'))
+        update_fields.append('is_demo')
+
+    # ومدة الاشتراك (بالأيام) من تاريخ اليوم أو من نهاية الفترة التجريبية الحالية أيهما أبعد
+    days = payload.get('days')
+    if days:
+        try:
+            days = int(days)
+        except (TypeError, ValueError):
+            days = None
+        if days and 0 < days <= 3650:
+            today = dj_timezone.localdate()
+            base_date = tenant.subscription_expires if (tenant.subscription_expires and tenant.subscription_expires >= today) else today
+            tenant.subscription_expires = base_date + timedelta(days=days)
+            update_fields.append('subscription_expires')
+
+    tenant.save(update_fields=update_fields)
+
+    from apps.accounts.models import User
+    admin_user = User.objects.filter(tenant=tenant, is_tenant_admin=True).order_by('id').first()
+
+    def _send_approved_email(admin_email, admin_full_name, login_url):
+        try:
+            from django.core.mail import EmailMessage
+            from django.template.loader import render_to_string
+            from apps.core.branding import get_brand_name
+            html_body = render_to_string('core/email/tenant_approved_email.html', {
+                'tenant': tenant,
+                'admin_full_name': admin_full_name,
+                'login_url': login_url,
+                'app_name': get_brand_name(),
+            })
+            msg = EmailMessage(
+                subject=f'تم تفعيل حسابك - {tenant.name}',
+                body=html_body,
+                from_email='{} <{}>'.format(get_brand_name(), settings.EMAIL_HOST_USER),
+                to=[admin_email],
+            )
+            msg.content_subtype = 'html'
+            if admin_email:
+                msg.send(fail_silently=False)
+        except Exception as _e:
+            import logging
+            logging.getLogger(__name__).error('tenant approved email failed: %s', _e, exc_info=True)
+
+    if admin_user and admin_user.email:
+        from django.urls import reverse
+        import threading
+        threading.Thread(
+            target=_send_approved_email,
+            args=(admin_user.email, admin_user.get_full_name() or tenant.name, request.build_absolute_uri(reverse('accounts:login'))),
+            daemon=True,
+        ).start()
+
+    return JsonResponse({'success': True, 'message': f'تم اعتماد المشترك "{tenant.name}" بنجاح', 'is_approved': True})
 
 
 @login_required
@@ -2230,24 +2330,31 @@ def tenant_renew_api(request, pk):
 
 def pricing(request):
     """صفحة خطط التسعير"""
-    trial_days = 30
+    from apps.core.models import PlatformSettings
+    from apps.core.pricing import (
+        ENTERPRISE_PER_BRANCH_MONTHLY, ENTERPRISE_PER_BRANCH_PERPETUAL, PERPETUAL_PRICE, PLAN_MONTHLY,
+        annual, price_label,
+    )
+    trial_days = PlatformSettings.get().default_trial_days or 14
+
+    def prices(key):
+        m = PLAN_MONTHLY[key]
+        return {'monthly': price_label(m), 'annual': price_label(annual(m)), 'perpetual': price_label(PERPETUAL_PRICE[key])}
+
+    per_branch = ENTERPRISE_PER_BRANCH_MONTHLY
     plans = [
         {
             'key': 'basic',
             'name': 'Basic',
             'title_ar': 'أساسي',
             'description': 'محل واحد مع مخزن واحد',
-            'monthly': '$35',
-            'annual': '$378',
-            'perpetual': '$3,400',
+            **prices('basic'),
             'highlight': False,
             'features': [
                 {'text': '1 مخزن',                          'ok': True},
-                {'text': 'حتى 5 مستخدمين',                  'ok': True},
-                {'text': f'تجربة مجانية {trial_days} أيام', 'ok': True},
-                {'text': 'فواتير مبيعات وشراء',              'ok': True},
-                {'text': 'تقارير تفصيلية',                   'ok': True},
+                {'text': 'بدون فروع',                        'ok': False},
                 {'text': 'نسخ احتياطي يدوي',                 'ok': True},
+                {'text': 'تتبع الأرقام التسلسلية',            'ok': True},
                 {'text': 'متجر إلكتروني مدمج',               'ok': False},
                 {'text': 'مساعد ذكاء اصطناعي',              'ok': False},
                 {'text': 'نصائح ذكية',                       'ok': False},
@@ -2260,17 +2367,13 @@ def pricing(request):
             'name': 'Pro',
             'title_ar': 'احترافي',
             'description': 'محل واحد مع ما يصل إلى 5 مخازن',
-            'monthly': '$55',
-            'annual': '$594',
-            'perpetual': '$5,340',
+            **prices('pro'),
             'highlight': True,
             'features': [
                 {'text': 'حتى 5 مخازن',                      'ok': True},
-                {'text': 'حتى 15 مستخدمًا',                  'ok': True},
-                {'text': f'تجربة مجانية {trial_days} أيام', 'ok': True},
-                {'text': 'فواتير مبيعات وشراء',              'ok': True},
-                {'text': 'تقارير تفصيلية',                   'ok': True},
+                {'text': 'بدون فروع',                        'ok': False},
                 {'text': 'نسخ احتياطي يدوي',                 'ok': True},
+                {'text': 'تتبع الأرقام التسلسلية',            'ok': True},
                 {'text': 'متجر إلكتروني مدمج',               'ok': True},
                 {'text': 'مساعد ذكاء اصطناعي',              'ok': True},
                 {'text': 'نصائح ذكية',                       'ok': True},
@@ -2282,18 +2385,16 @@ def pricing(request):
             'key': 'enterprise',
             'name': 'Enterprise',
             'title_ar': 'مؤسسات',
-            'description': 'فروع ومخازن متعددة مع تحكم كامل',
-            'monthly': '$149',
-            'annual': '$1,610',
-            'perpetual': '$14,490',
+            'description': 'سلاسل المتاجر وشركات التوزيع: إدارة مركزية وفروع متعددة',
+            **prices('enterprise'),
+            'per_branch': {'monthly': price_label(per_branch), 'annual': price_label(annual(per_branch)),
+                           'perpetual': price_label(ENTERPRISE_PER_BRANCH_PERPETUAL)},
             'highlight': False,
             'features': [
                 {'text': 'حتى 20 مخزن',                      'ok': True},
-                {'text': 'حتى 40 مستخدمًا',                  'ok': True},
-                {'text': f'تجربة مجانية {trial_days} أيام', 'ok': True},
-                {'text': 'فواتير مبيعات وشراء',              'ok': True},
-                {'text': 'تقارير تفصيلية',                   'ok': True},
+                {'text': 'فروع متعددة حسب اشتراكك',             'ok': True},
                 {'text': 'نسخ احتياطي يدوي',                 'ok': True},
+                {'text': 'تتبع الأرقام التسلسلية',            'ok': True},
                 {'text': 'متجر إلكتروني مدمج',               'ok': True},
                 {'text': 'مساعد ذكاء اصطناعي',              'ok': True},
                 {'text': 'نصائح ذكية',                       'ok': True},
@@ -2311,6 +2412,14 @@ def pricing(request):
     return render(request, 'core/pricing.html', {
         'plans': plans,
         'trial_days': trial_days,
+        'enterprise_pricing': {
+            'base': int(PLAN_MONTHLY['enterprise']), 'per_branch': int(per_branch),
+            'annual_months': int(annual(1)),
+            'perpetual_base': int(PERPETUAL_PRICE['enterprise']),
+            'perpetual_per_branch': int(ENTERPRISE_PER_BRANCH_PERPETUAL),
+            'perpetual_base_label': price_label(PERPETUAL_PRICE['enterprise']),
+            'perpetual_per_branch_label': price_label(ENTERPRISE_PER_BRANCH_PERPETUAL),
+        },
         'current_subscription_plan_display': tenant.get_subscription_plan_display() if tenant else None,
     })
 
@@ -2339,10 +2448,25 @@ def service_worker(request):
 
 
 def pwa_manifest(request):
-    """Serve the PWA manifest from /manifest.json"""
+    """
+    Serve the PWA manifest from /manifest.json — name/short_name are injected
+    from branding/brand.txt at request time so a white-label copy needs no
+    edit here (see apps/core/branding.py, branding/README.md).
+    """
+    import json
     import os
+
+    from apps.core.branding import get_brand_name
+
     manifest_path = os.path.join(settings.BASE_DIR, 'static', 'manifest.json')
-    return FileResponse(open(manifest_path, 'rb'), content_type='application/manifest+json')
+    with open(manifest_path, encoding='utf-8') as f:
+        manifest = json.load(f)
+
+    brand_name = get_brand_name()
+    manifest['name'] = brand_name
+    manifest['short_name'] = brand_name
+
+    return JsonResponse(manifest, content_type='application/manifest+json', json_dumps_params={'ensure_ascii': False})
 
 
 @login_required
@@ -2364,18 +2488,35 @@ def analytics(request):
     from apps.purchases.models import PurchaseInvoice
     from apps.customers.models import Customer
     from apps.suppliers.models import Supplier
+    from django.db.models import F, ExpressionWrapper, DecimalField
+
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
 
     def sales_total(qs_filter):
-        return float(SaleInvoice.objects.filter(tenant=tenant, status='confirmed', **qs_filter)
-                     .aggregate(t=Sum('grand_total'))['t'] or 0)
+        return float(filter_by_branch_strict(SaleInvoice.objects.filter(
+            tenant=tenant, status__in=SaleInvoice.REVENUE_STATUSES, **qs_filter
+        ), branch).aggregate(t=Sum('grand_total'))['t'] or 0)
+
+    # النمط المركزي: الفرع لا يشتري، فتكلفته = تكلفة البضاعة المباعة (لا فواتير شراء الإدارة).
+    use_cogs = tenant.is_central_purchasing() and branch is not None
 
     def purchase_total(qs_filter):
-        return float(PurchaseInvoice.objects.filter(tenant=tenant, status='confirmed', **qs_filter)
-                     .aggregate(t=Sum('grand_total'))['t'] or 0)
+        if use_cogs:
+            return float(filter_by_branch_strict(SaleInvoiceLine.objects.filter(
+                tenant=tenant, invoice__status__in=SaleInvoice.REVENUE_STATUSES,
+                **{f'invoice__{k}': v for k, v in qs_filter.items()}
+            ), branch, field='invoice__stock__branch').aggregate(
+                t=Sum(ExpressionWrapper(
+                    (F('quantity') - F('returned_quantity')) * F('cost_price_snapshot'),
+                    output_field=DecimalField())))['t'] or 0)
+        return float(filter_by_branch_strict(PurchaseInvoice.objects.filter(
+            tenant=tenant, status__in=PurchaseInvoice.EFFECTIVE_STATUSES, **qs_filter
+        ), branch).aggregate(t=Sum('grand_total'))['t'] or 0)
 
     def expense_total(qs_filter):
-        return float(Expense.objects.filter(tenant=tenant, status='confirmed', **qs_filter)
-                     .aggregate(t=Sum('amount'))['t'] or 0)
+        return float(Expense.objects.for_tenant(tenant).for_branch(branch, strict=True).filter(
+            status='confirmed', **qs_filter
+        ).aggregate(t=Sum('amount'))['t'] or 0)
 
     # ── Period comparison KPIs ──────────────────────────────────────
     this_sales    = sales_total({'invoice_date__gte': first_this_month, 'invoice_date__lte': today})
@@ -2428,23 +2569,38 @@ def analytics(request):
         monthly_profit.append(round(s - p - e, 2))
 
     # ── Top 10 customers by revenue (this month) ────────────────────
-    top_customers = (
+    top_customers = filter_by_branch_strict(
         SaleInvoiceLine.objects
-        .filter(tenant=tenant, invoice__status='confirmed', invoice__invoice_date__gte=first_this_month)
-        .values('invoice__customer__name')
-        .annotate(total=Sum('line_total'))
-        .order_by('-total')[:10]
-    )
+        .filter(tenant=tenant, invoice__status__in=SaleInvoice.REVENUE_STATUSES, invoice__invoice_date__gte=first_this_month),
+        branch, field='invoice__stock__branch'
+    ).values('invoice__customer__name').annotate(total=Sum('line_total')).order_by('-total')[:10]
     top_customers_list = [
         {'name': r['invoice__customer__name'] or 'عميل نقدي', 'total': float(r['total'])}
         for r in top_customers
     ]
     max_customer_total = max((c['total'] for c in top_customers_list), default=1)
 
+    # ── مدير النشاط (مستخدم مركزي): أفضل الفروع إيراداً بدل أفضل العملاء ──
+    top_branches_list = []
+    if is_central_admin:
+        from apps.core.models import Branch
+        revenue_by_branch = {
+            r['stock__branch']: float(r['total'] or 0)
+            for r in SaleInvoice.objects.filter(
+                tenant=tenant, status__in=SaleInvoice.REVENUE_STATUSES,
+                invoice_date__gte=first_this_month, invoice_date__lte=today,
+            ).values('stock__branch').annotate(total=Sum('grand_total'))
+        }
+        top_branches_list = sorted(
+            ({'id': b.id, 'name': b.name, 'total': revenue_by_branch.get(b.id, 0.0)}
+             for b in Branch.objects.filter(tenant=tenant, is_active=True)),
+            key=lambda r: r['total'], reverse=True)[:10]
+    max_branch_total = max((b['total'] for b in top_branches_list), default=0) or 1
+
     # ── Treasury balances ───────────────────────────────────────────
     from apps.treasury.models import Treasury
-    treasuries = Treasury.objects.filter(tenant=tenant, is_active=True).values('name', 'current_balance')
-    treasury_total = float(Treasury.objects.filter(tenant=tenant, is_active=True)
+    treasuries = Treasury.objects.filter(tenant=tenant, is_active=True).for_branch(branch, strict=True).values('name', 'current_balance')
+    treasury_total = float(Treasury.objects.filter(tenant=tenant, is_active=True).for_branch(branch, strict=True)
                            .aggregate(t=Sum('current_balance'))['t'] or 0)
 
     # ── Outstanding balances ────────────────────────────────────────
@@ -2452,17 +2608,17 @@ def analytics(request):
     from apps.sales.models import SaleInvoice
     from django.db.models import F
     customer_debt = float(
-        SaleInvoice.objects.filter(
+        filter_by_branch_strict(SaleInvoice.objects.filter(
             tenant=tenant,
             status__in=('confirmed', 'partially_returned'),
             payment_method__in=('credit', 'mixed'),
-        ).aggregate(t=Sum(F('grand_total') - F('paid_amount')))['t'] or 0
+        ), branch).aggregate(t=Sum(F('grand_total') - F('paid_amount')))['t'] or 0
     )
-    # supplier debt — per-supplier running balance from ledger + opening balance
+    # supplier debt — per-supplier ledger balance
     from apps.purchases.models import SupplierLedger
     from apps.suppliers.models import Supplier as SupplierModel
     supplier_debt = Decimal('0')
-    for _sup in SupplierModel.objects.filter(tenant=tenant):
+    for _sup in SupplierModel.objects.for_tenant(tenant).for_branch(branch, strict=True):
         _local_bal = (
             SupplierLedger.objects.filter(tenant=tenant, supplier=_sup)
             .aggregate(s=Sum('amount'))['s'] or Decimal('0')
@@ -2482,10 +2638,17 @@ def analytics(request):
         'monthly_profit_json': json.dumps(monthly_profit),
         'top_customers': top_customers_list,
         'max_customer_total': max_customer_total,
+        'top_branches': top_branches_list,
+        'max_branch_total': max_branch_total,
         'treasuries': list(treasuries),
         'treasury_total': treasury_total,
         'customer_debt': customer_debt,
         'supplier_debt': supplier_debt,
+        # النمط المركزي (فرع): التكلفة = تكلفة البضاعة المباعة، ولا مستحقات موردين في الفرع.
+        'cost_is_cogs': use_cogs,
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     }
     return render(request, 'core/analytics.html', context)
 
@@ -2699,3 +2862,286 @@ def admin_marketing_post_generate(request):
         'similar_warning': bool(similar),
         'similar_content': similar['content'] if similar else None,
     })
+
+
+# ════════════════════════════════════════════════════════════
+# Branches (الفروع)
+# ════════════════════════════════════════════════════════════
+
+def _branch_json_error(message, status=400):
+    return JsonResponse({'success': False, 'message': message}, status=status, json_dumps_params={'ensure_ascii': False})
+
+
+def _branch_json_ok(data=None, msg='تمت العملية بنجاح'):
+    payload = {'success': True, 'message': msg}
+    if data is not None:
+        payload['data'] = data
+    return JsonResponse(payload, json_dumps_params={'ensure_ascii': False})
+
+
+def _branch_serialize_errors(form):
+    return {field: [str(e) for e in errors] for field, errors in form.errors.items()}
+
+
+_MANAGER_FIELDS = ('username', 'first_name', 'last_name', 'email', 'password', 'password_confirm')
+
+
+def _wants_branch_manager(request):
+    return bool((request.POST.get('manager_username') or '').strip())
+
+
+def _create_branch_manager(request, tenant, branch):
+    """
+    ينشئ مدير الفرع (مستخدم مشرف مربوط بالفرع) من نموذج الفرع نفسه. مدير النشاط
+    لا يدير مستخدمي الفروع بعد اليوم — كل مدير فرع يضيف موظفي فرعه بنفسه — لكنه
+    هو من يعيّن مدير كل فرع. يُرجع (user, error_response).
+    """
+    from apps.accounts.forms import UserManagementForm
+    from apps.accounts.models import User
+
+    if User.objects.filter(tenant=tenant, is_active=True).count() >= tenant.max_users:
+        return None, _branch_json_error(
+            f'لقد وصلت للحد الأقصى المسموح به من المستخدمين ({tenant.max_users}). يرجى ترقية الباقة لزيادة الحد.',
+            status=403,
+        )
+
+    data = {f: (request.POST.get(f'manager_{f}') or '').strip() for f in _MANAGER_FIELDS}
+    data.update({'is_active': 'on', 'is_branch_supervisor': 'on', 'branch': branch.pk})
+    form = UserManagementForm(data, tenant=tenant)
+    if not form.is_valid():
+        errors = {f'manager_{k}': v for k, v in _branch_serialize_errors(form).items()}
+        return None, JsonResponse(
+            {'success': False, 'message': 'يرجى التحقق من بيانات مدير الفرع', 'errors': errors},
+            status=400, json_dumps_params={'ensure_ascii': False},
+        )
+    user = form.save()
+    Branch.assign_manager(branch, user)
+    log_activity(request, 'إضافة مدير فرع', f'{branch.name} ← {user.get_full_name() or user.username}', 'create')
+    return user, None
+
+
+@login_required
+@require_permission('view_branches')
+def branch_list(request):
+    tenant = request.tenant
+    if not tenant:
+        return redirect('core:no_tenant')
+    if tenant.version_type != 'multi_branch':
+        return render(request, 'agents/plan_upgrade.html', {
+            'feature': 'الفروع',
+            'required_plan': 'مؤسسات',
+        })
+    return render(request, 'core/branch_list.html', {
+        'form': BranchForm(),
+        'section': 'branches',
+    })
+
+
+@login_required
+@require_permission('view_branches')
+def branch_table_api(request):
+    tenant = request.tenant
+    if not tenant:
+        return _branch_json_error('لا يوجد نشاط تجاري')
+
+    search = request.GET.get('search[value]', '').strip()
+    qs = Branch.objects.filter(tenant=tenant)
+    if search:
+        qs = qs.filter(Q(name__icontains=search) | Q(code__icontains=search))
+    qs = qs.order_by('-is_default', 'name')
+
+    from apps.accounts.models import User
+    supervisors = {
+        u.branch_id: u.get_full_name()
+        for u in User.objects.filter(tenant=tenant, is_branch_supervisor=True, branch__in=qs)
+    }
+    data = [
+        {
+            'id': b.id, 'name': b.name, 'code': b.code,
+            'phone': b.phone or '-', 'is_active': b.is_active, 'is_default': b.is_default,
+            'stocks_count': b.stocks.count(),
+            'supervisor_name': supervisors.get(b.id, ''),
+        }
+        for b in qs
+    ]
+    return JsonResponse({'draw': int(request.GET.get('draw', 1)), 'recordsTotal': qs.count(),
+                          'recordsFiltered': qs.count(), 'data': data})
+
+
+@login_required
+@require_permission('add_branches')
+def branch_create_api(request):
+    tenant = request.tenant
+    if not tenant:
+        return _branch_json_error('لا يوجد نشاط تجاري')
+    if request.method != 'POST':
+        return _branch_json_error('طريقة غير مسموحة', status=405)
+
+    if not Branch.can_add_branch(tenant):
+        if tenant.version_type != 'multi_branch':
+            message = 'الفروع متاحة فقط لنسخة "فروع متعددة". يرجى ترقية الباقة لتفعيل هذه الميزة.'
+        else:
+            message = f'لقد وصلت للحد الأقصى المسموح به من الفروع ({tenant.max_branches}). يرجى ترقية الباقة لزيادة الحد.'
+        return _branch_json_error(message)
+
+    form = BranchForm(request.POST)
+    if form.is_valid():
+        from django.db import transaction
+        with transaction.atomic():
+            branch = form.save(commit=False)
+            branch.tenant = tenant
+            branch.save()
+            if _wants_branch_manager(request):
+                _, error = _create_branch_manager(request, tenant, branch)
+                if error:
+                    transaction.set_rollback(True)
+                    return error
+        log_activity(request, 'إضافة فرع', branch.name, 'create')
+        return _branch_json_ok({'id': branch.id}, 'تم إضافة الفرع بنجاح')
+    return JsonResponse({'success': False, 'message': 'يرجى التحقق من الحقول', 'errors': _branch_serialize_errors(form)},
+                         status=400, json_dumps_params={'ensure_ascii': False})
+
+
+@login_required
+@require_permission('view_branches')
+def branch_detail_api(request, pk):
+    tenant = request.tenant
+    if not tenant:
+        return _branch_json_error('لا يوجد نشاط تجاري')
+    try:
+        b = Branch.objects.get(tenant=tenant, pk=pk)
+    except Branch.DoesNotExist:
+        return _branch_json_error('الفرع غير موجود', status=404)
+    return _branch_json_ok({
+        'id': b.id, 'name': b.name, 'code': b.code, 'address': b.address,
+        'phone': b.phone, 'is_active': b.is_active, 'is_default': b.is_default,
+        'manager_name': (b.manager.get_full_name() or b.manager.username) if b.manager else '',
+        'manager_username': b.manager.username if b.manager else '',
+    })
+
+
+@login_required
+@require_permission('change_branches')
+def branch_update_api(request, pk):
+    tenant = request.tenant
+    if not tenant:
+        return _branch_json_error('لا يوجد نشاط تجاري')
+    if request.method != 'POST':
+        return _branch_json_error('طريقة غير مسموحة', status=405)
+    try:
+        b = Branch.objects.get(tenant=tenant, pk=pk)
+    except Branch.DoesNotExist:
+        return _branch_json_error('الفرع غير موجود', status=404)
+
+    was_active = b.is_active
+    form = BranchForm(request.POST, instance=b)
+    if form.is_valid():
+        if form.cleaned_data.get('is_active') and not was_active and not Branch.can_add_branch(tenant):
+            return _branch_json_error(
+                f'لقد وصلت للحد الأقصى المسموح به من الفروع ({tenant.max_branches}). يرجى ترقية الباقة لزيادة الحد.')
+        from django.db import transaction
+        with transaction.atomic():
+            updated = form.save()
+            if b.manager_id is None and _wants_branch_manager(request):
+                _, error = _create_branch_manager(request, tenant, updated)
+                if error:
+                    transaction.set_rollback(True)
+                    return error
+            elif b.manager_id is not None:
+                new_password = request.POST.get('manager_password') or ''
+                if new_password:
+                    if new_password != (request.POST.get('manager_password_confirm') or ''):
+                        transaction.set_rollback(True)
+                        return JsonResponse(
+                            {'success': False, 'message': 'كلمتا مرور مدير الفرع غير متطابقتين',
+                             'errors': {'manager_password_confirm': ['كلمات المرور غير متطابقة']}},
+                            status=400, json_dumps_params={'ensure_ascii': False})
+                    b.manager.set_password(new_password)
+                    b.manager.save(update_fields=['password'])
+                    log_activity(request, 'إعادة تعيين كلمة مرور مدير فرع', updated.name, 'update')
+        log_activity(request, 'تعديل فرع', updated.name, 'update')
+        return _branch_json_ok(msg='تم تحديث الفرع بنجاح')
+    return JsonResponse({'success': False, 'message': 'يرجى التحقق من الحقول', 'errors': _branch_serialize_errors(form)},
+                         status=400, json_dumps_params={'ensure_ascii': False})
+
+
+def _branch_has_records(branch):
+    """هل يرتبط بالفرع أي سجل (مستخدم، خزينة، فاتورة...)؟ الإشعارات وحدها لا تمنع الحذف."""
+    for rel in Branch._meta.related_objects:
+        if rel.related_model is Notification or not rel.one_to_many:
+            continue
+        qs = rel.related_model._base_manager.filter(**{rel.field.name: branch})
+        if rel.related_model is Treasury:
+            qs = qs.exclude(pk__in=_untouched_branch_treasuries(branch).values('pk'))
+        if qs.exists():
+            return True
+    return False
+
+
+def _untouched_branch_treasuries(branch):
+    """خزائن الفرع المُنشأة تلقائياً مع الفرع ولم تُستخدم (رصيد صفر وبلا حركات)."""
+    return Treasury.objects.filter(branch=branch, current_balance=0).exclude(
+        pk__in=TreasuryMovement.objects.values('treasury_id'))
+
+
+@login_required
+@require_permission('delete_branches')
+def branch_delete_api(request, pk):
+    tenant = request.tenant
+    if not tenant:
+        return _branch_json_error('لا يوجد نشاط تجاري')
+    if request.method != 'POST':
+        return _branch_json_error('طريقة غير مسموحة', status=405)
+    try:
+        b = Branch.objects.get(tenant=tenant, pk=pk)
+    except Branch.DoesNotExist:
+        return _branch_json_error('الفرع غير موجود', status=404)
+    if b.stocks.exists():
+        return _branch_json_error('لا يمكن حذف فرع مرتبط بمخازن — أزل الربط من المخازن أولاً.')
+    if _branch_has_records(b):
+        return _branch_json_error('لا يمكن حذف فرع له مستخدمون أو خزائن أو حسابات بنكية أو عمليات — عطّله بدل حذفه.')
+    name = b.name
+    from django.db import transaction
+    try:
+        with transaction.atomic():
+            _untouched_branch_treasuries(b).delete()
+            b.delete()
+    except ProtectedError:
+        return _branch_json_error('لا يمكن حذف فرع له عمليات — عطّله بدل حذفه.')
+    log_activity(request, 'حذف فرع', name, 'delete')
+    return _branch_json_ok(msg=f'تم حذف "{name}" بنجاح')
+
+
+@login_required
+@require_permission('change_branches')
+def branch_assign_manager_api(request, pk):
+    """
+    تعيين/تغيير/إزالة مدير فرع (خطة تنفيذ Enterprise، القسم 7.1) — يزامن
+    Branch.manager مع User.branch/is_branch_supervisor عبر Branch.assign_manager.
+    POST بدون user_id (أو user_id فارغ) يزيل المدير الحالي للفرع بلا تعيين بديل.
+    """
+    tenant = request.tenant
+    if not tenant:
+        return _branch_json_error('لا يوجد نشاط تجاري')
+    if request.method != 'POST':
+        return _branch_json_error('طريقة غير مسموحة', status=405)
+    try:
+        b = Branch.objects.get(tenant=tenant, pk=pk)
+    except Branch.DoesNotExist:
+        return _branch_json_error('الفرع غير موجود', status=404)
+
+    from apps.accounts.models import User
+    user_id = request.POST.get('user_id') or ''
+    user = None
+    if user_id:
+        try:
+            user = User.objects.get(tenant=tenant, pk=user_id, is_superuser=False, is_tenant_admin=False)
+        except User.DoesNotExist:
+            return _branch_json_error('المستخدم غير موجود')
+
+    Branch.assign_manager(b, user)
+    if user:
+        log_activity(request, 'تعيين مدير فرع', f'{b.name} ← {user.get_full_name() or user.username}', 'update')
+        return _branch_json_ok(msg=f'تم تعيين {user.get_full_name() or user.username} مديراً لفرع {b.name}')
+    log_activity(request, 'إزالة مدير فرع', b.name, 'update')
+    return _branch_json_ok(msg=f'تم إزالة مدير فرع {b.name}')

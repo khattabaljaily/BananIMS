@@ -4,8 +4,8 @@
 {% load capabilities_tags %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/sales.css' %}?v=4.1">
-<link rel="stylesheet" href="{% static 'css/sales_invoice_form.css' %}?v=2.1">
+<link rel="stylesheet" href="{% static 'css/sales.css' %}?v=3.2">
+<link rel="stylesheet" href="{% static 'css/sales_invoice_form.css' %}?v=1.2">
 <style>
 .cx-searchable-select { position: relative; }
 .cx-searchable-select-dropdown {
@@ -23,8 +23,6 @@
 }
 .cx-searchable-option:hover { background: var(--surface-alt, #f3f4f6); }
 .cx-searchable-no-results { padding: .75rem 1rem; font-size: .8rem; color: var(--text-muted, #9ca3af); }
-.cx-hc-hint { display:block; font-size:.68rem; font-weight:700; color:#e05c2a; margin-top:2px; }
-.cx-hc-hint-inline { font-size:.72rem; font-weight:700; color:#e05c2a; margin-right:.35rem; }
 </style>
 {% endblock %}
 
@@ -67,12 +65,19 @@
                             </div>
                         </div>
                         <div class="col-12 col-md-3">
+                            {% if current_tenant.is_central_purchasing and stocks|length == 1 %}
+                            {# النمط المركزي: مخزن الإدارة الوحيد يُحدَّد تلقائياً بلا اختيار #}
+                            <label class="cx-label">المخزن</label>
+                            <input type="hidden" id="stockId" value="{{ stocks.0.id }}">
+                            <input type="text" class="cx-input" value="{{ stocks.0.name }}" disabled>
+                            {% else %}
                             <label class="cx-label">المخزن <span class="text-danger">*</span></label>
                             <select id="stockId" class="cx-input" required>
                                 {% for s in stocks %}
                                 <option value="{{ s.id }}" {% if invoice and invoice.stock_id == s.id %}selected{% endif %}>{{ s.name }}</option>
                                 {% endfor %}
                             </select>
+                            {% endif %}
                         </div>
                         <div class="col-12 col-md-3">
                             <label class="cx-label">التاريخ <span class="text-danger">*</span></label>
@@ -156,6 +161,15 @@
                             <label class="cx-label">مرجع التحويل البنكي</label>
                             <input type="text" id="bankReference" class="cx-input" value="{{ invoice.bank_reference|default:'' }}">
                         </div>
+                        <div class="col-12 sales-field-hidden" id="bankAccountWrap">
+                            <label class="cx-label">الحساب البنكي</label>
+                            <select id="bankAccountId" class="cx-input">
+                                <option value="">— اختر الحساب البنكي —</option>
+                                {% for b in bank_accounts %}
+                                <option value="{{ b.id }}" {% if invoice and invoice.bank_account_id == b.id %}selected{% endif %}>{{ b.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
                     </div>
 
                     <div class="d-grid gap-2 mt-3">
@@ -198,8 +212,6 @@ const SUPPLIERS_DATA = [
     {% for s in suppliers %}{ id: '{{ s.id }}', name: '{{ s.name|escapejs }}' },{% endfor %}
 ];
 const CAP = {
-    hasExpiryDates:  {{ tenant_capabilities.has_expiry_dates|yesno:"true,false" }},
-    hasBatchNumbers: {{ tenant_capabilities.has_batch_numbers|yesno:"true,false" }},
     hasSerialNumbers:{{ tenant_capabilities.has_serial_numbers|yesno:"true,false" }},
 };
 let lineCounter = 0;
@@ -264,6 +276,7 @@ function handlePaymentMethodChange() {
     const pm = document.getElementById('paymentMethod').value;
     toggleHidden('mixedPaymentWrap', pm !== 'mixed');
     toggleHidden('bankRefWrap', !(pm === 'bank' || pm === 'mixed'));
+    toggleHidden('bankAccountWrap', !(pm === 'bank' || pm === 'mixed'));
     updatePaymentMethodBadge(pm);
     recalc();
 }
@@ -304,9 +317,7 @@ function searchItems() {
                          data-units='${JSON.stringify(item.units || [])}'
                          data-unit-id="${item.unit_id || ''}"
                          data-unit-factor="${item.unit_factor || '1'}"
-                         data-track-batch="${item.track_batch ? '1' : ''}"
-                         data-track-serial="${item.track_serial ? '1' : ''}"
-                         data-track-expiry="${item.track_expiry ? '1' : ''}">
+                         data-track-serial="${item.track_serial ? '1' : ''}">
                         <div>
                             <div class="sale-item-result__name">${item.name}</div>
                             <div class="sale-item-result__sku">${item.sku || '—'}</div>
@@ -342,13 +353,9 @@ function addLine(itemId, itemName, itemSku, suggestedCost, opts = {}) {
     }
 
     // Per-item tracking (uses item flags when available, falls back to tenant CAP)
-    const trkBatch  = opts.track_batch  || CAP.hasBatchNumbers;
     const trkSerial = opts.track_serial || CAP.hasSerialNumbers;
-    const trkExpiry = opts.track_expiry || CAP.hasExpiryDates;
     const trackingHtml = [
-        trkBatch  ? `<div class="mt-1"><input type="text" class="cx-input cx-input--xs" id="batch-${id}" value="${(opts.batch_number || '').replace(/"/g, '&quot;')}" placeholder="رقم الدفعة"></div>` : '',
         trkSerial ? `<div class="mt-1"><input type="text" class="cx-input cx-input--xs" id="serial-${id}" value="${(opts.serial_number || '').replace(/"/g, '&quot;')}" placeholder="الرقم التسلسلي"></div>` : '',
-        trkExpiry ? `<div class="mt-1"><input type="date" class="cx-input cx-input--xs" id="expiry-${id}" value="${opts.expiry_date || ''}"></div>` : '',
     ].join('');
 
     const row = document.createElement('tr');
@@ -356,9 +363,7 @@ function addLine(itemId, itemName, itemSku, suggestedCost, opts = {}) {
     row.dataset.itemId = itemId;
     row.dataset.unitFactor = defaultFactor;
     row.dataset.unitId = defaultUnitId;
-    row.dataset.trackBatch  = trkBatch  ? '1' : '';
     row.dataset.trackSerial = trkSerial ? '1' : '';
-    row.dataset.trackExpiry = trkExpiry ? '1' : '';
 
     row.innerHTML = `
         <td><div class="sales-line-item-name">${itemName}</div><div class="sales-line-item-sku">${itemSku || ''}</div>${trackingHtml}</td>
@@ -451,9 +456,7 @@ function collectLines() {
             tax_rate: document.getElementById(`tax-${id}`).value,
             unit_id: row.dataset.unitId || null,
             unit_factor: parseFloat(row.dataset.unitFactor || 1),
-            batch_number: row.dataset.trackBatch  ? (document.getElementById(`batch-${id}`)?.value || '') : '',
             serial_number: row.dataset.trackSerial ? (document.getElementById(`serial-${id}`)?.value || '') : '',
-            expiry_date:  row.dataset.trackExpiry  ? (document.getElementById(`expiry-${id}`)?.value || null) : null,
         });
     });
     return lines;
@@ -467,6 +470,7 @@ function submitOrder(action) {
     }
 
     const header = {
+        requisition_id: {% if requisition %}{{ requisition.pk }}{% else %}null{% endif %},
         supplier_id: document.getElementById('supplierId').value || null,
         stock_id: document.getElementById('stockId').value,
         invoice_date: document.getElementById('invoiceDate').value,
@@ -474,6 +478,7 @@ function submitOrder(action) {
         cash_amount: document.getElementById('cashAmount')?.value || '0',
         bank_amount: document.getElementById('bankAmount')?.value || '0',
         bank_reference: document.getElementById('bankReference')?.value || '',
+        bank_account_id: document.getElementById('bankAccountId')?.value || null,
         notes: document.getElementById('notes').value,
     };
 
@@ -506,6 +511,11 @@ function submitOrder(action) {
 
     if ((pm === 'bank' || pm === 'mixed') && bankAmount > 0 && !header.bank_reference.trim() && action === 'confirm') {
         BananIMS.toast('يرجى إدخال مرجع التحويل البنكي', 'warning');
+        return;
+    }
+
+    if ((pm === 'bank' || pm === 'mixed') && bankAmount > 0 && !header.bank_account_id && action === 'confirm') {
+        BananIMS.toast('يرجى اختيار الحساب البنكي', 'warning');
         return;
     }
 
@@ -554,9 +564,7 @@ function submitOrder(action) {
                 units,
                 unit_id: card.dataset.unitId || '',
                 unit_factor: parseFloat(card.dataset.unitFactor || 1),
-                track_batch:  card.dataset.trackBatch  === '1',
                 track_serial: card.dataset.trackSerial === '1',
-                track_expiry: card.dataset.trackExpiry === '1',
             }
         );
     });
@@ -574,9 +582,7 @@ function submitOrder(action) {
                     units: line.units || [],
                     unit_id: line.unit_id || '',
                     unit_factor: line.unit_factor || '1',
-                    batch_number: line.batch_number || '',
                     serial_number: line.serial_number || '',
-                    expiry_date: line.expiry_date || '',
                 }
             );
         });
@@ -584,7 +590,6 @@ function submitOrder(action) {
     }
 })();
 </script>
-
 
 <script>
 // Portal the supplier dropdown to <body> so it's never clipped by ancestor stacking contexts

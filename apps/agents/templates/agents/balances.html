@@ -2,7 +2,7 @@
 {% load static number_format %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=5.0">
+<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=4.1">
 {% endblock %}
 
 {% block page_header %}{% endblock %}
@@ -10,7 +10,7 @@
 {% block content %}
 <div class="cx-scene printable-scene">
 
-    <div class="rpt-hero" style="background:linear-gradient(135deg,var(--primary),#4a6e8c);">
+    <div class="rpt-hero" style="background:linear-gradient(135deg,var(--primary),var(--primary));">
         <div class="rpt-hero-inner">
             <div class="rpt-hero-left">
                 <div class="rpt-hero-icon"><i class="fas fa-id-badge"></i></div>
@@ -26,6 +26,19 @@
         </div>
     </div>
 
+    {% if is_central_admin %}
+    <div class="rpt-filters">
+        <form method="get" class="row g-3">
+            {% include 'components/report_branch_filter.html' %}
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="rpt-filter-btn" style="background:linear-gradient(135deg,var(--primary),var(--secondary));color:#fff;border:none;border-radius:8px;padding:.5rem 1.2rem;font-weight:600;width:100%;cursor:pointer;">
+                    <i class="fas fa-search me-1"></i>بحث
+                </button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+
     <div class="rpt-kpi-grid" style="grid-template-columns: repeat(2, 1fr);">
         <div class="rpt-kpi-card rpt-kpi--blue">
             <div class="rpt-kpi-icon"><i class="fas fa-users"></i></div>
@@ -40,7 +53,7 @@
     </div>
 
     <div class="rpt-panel">
-        <div class="rpt-panel-header" style="background:linear-gradient(135deg,rgba(19,37,57,.06),rgba(129,140,248,.04));">
+        <div class="rpt-panel-header" style="background:linear-gradient(135deg,rgba(var(--primary-rgb),.06),rgba(129,140,248,.04));">
             <h3 class="rpt-panel-title">
                 <i class="fas fa-table me-2" style="color:var(--primary);"></i>تفاصيل المستحقات
             </h3>
@@ -84,7 +97,7 @@
                                 {{ row.balance|money }}
                             </td>
                             <td class="text-end">
-                                <a href="{% url 'agents:statement' %}?agent_id={{ row.agent.id }}" class="btn btn-sm" style="background:rgba(19,37,57,.08);color:var(--primary);border:none;font-size:.75rem;">
+                                <a href="{% url 'agents:statement' %}?agent_id={{ row.agent.id }}" class="btn btn-sm" style="background:rgba(var(--primary-rgb),.08);color:var(--primary);border:none;font-size:.75rem;">
                                     <i class="fas fa-file-invoice-dollar me-1"></i>كشف
                                 </a>
                             </td>

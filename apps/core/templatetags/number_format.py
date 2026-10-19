@@ -8,7 +8,7 @@ register = template.Library()
 
 @register.filter(name='currency_ar')
 def currency_ar(code):
-    """Convert currency code to Arabic symbol. SDG → ج.س"""
+    """Convert currency code to Arabic symbol. e.g. EGP → ج.م"""
     return CURRENCY_AR.get(str(code).strip().upper(), code)
 
 

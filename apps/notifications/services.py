@@ -51,6 +51,7 @@ def generate_low_stock_notifications(tenant):
 
         Notification.objects.create(
             tenant=tenant,
+            branch=sq.stock.branch,
             notification_type='low_stock',
             priority='high',
             title=f'مخزون منخفض: {sq.item.name}',
@@ -85,6 +86,7 @@ def generate_overdue_invoice_notifications(tenant):
 
         Notification.objects.create(
             tenant=tenant,
+            branch=inv.stock.branch if inv.stock_id else None,
             notification_type='overdue_invoice',
             priority='high',
             title=f'فاتورة متأخرة: {inv.invoice_number}',
@@ -101,7 +103,7 @@ def generate_overdue_invoice_notifications(tenant):
 
 
 def generate_rfq_expiry_notifications(tenant):
-    """Notify about RFQs expiring within 3 days."""
+    """Notify about RFQs whose validity ends within 3 days."""
     from apps.purchases.models import PurchaseRFQ
 
     tenant_tz = pytz.timezone(tenant.timezone)
@@ -114,7 +116,7 @@ def generate_rfq_expiry_notifications(tenant):
         status__in=('draft', 'sent', 'received'),
         expiry_date__lte=soon,
         expiry_date__gte=today,
-    )
+    ).select_related('stock')
 
     count = 0
     for rfq in expiring:
@@ -124,6 +126,7 @@ def generate_rfq_expiry_notifications(tenant):
         days_left = (rfq.expiry_date - today).days
         Notification.objects.create(
             tenant=tenant,
+            branch=rfq.stock.branch if rfq.stock_id else None,
             notification_type='rfq_expiry',
             priority='medium',
             title=f'طلب سعر قارب على الانتهاء: {rfq.rfq_number}',

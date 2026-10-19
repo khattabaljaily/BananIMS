@@ -8,13 +8,25 @@ from .models import Treasury, TreasuryMovement
 
 @transaction.atomic
 def get_or_create_default_treasury(tenant, user=None):
-    treasury = Treasury.objects.for_tenant(tenant).filter(is_default=True).first()
+    """
+    الخزينة التي تُسجَّل عليها الحركة النقدية حين لا تُحدَّد خزينة صراحة.
+    مستخدم مربوط بفرع: خزينة فرعه (الافتراضية ثم الأقدم) — لا الخزينة
+    الافتراضية للمشترك كله، وإلا ذهبت مبيعات/مشتريات الفرع النقدية إلى خزينة
+    فرع آخر أو إلى خزينة الإدارة المركزية. خزائن الإدارة المركزية لا تُختار
+    هنا أبداً.
+    """
+    branch = getattr(user, 'branch', None) if user is not None else None
+    qs = Treasury.objects.for_tenant(tenant).filter(is_head_office=False)
+    if branch is not None:
+        qs = qs.filter(branch=branch)
+
+    treasury = qs.filter(is_default=True).first()
     if treasury:
         return treasury
 
-    treasury = Treasury.objects.for_tenant(tenant).order_by('id').first()
+    treasury = qs.filter(is_active=True).order_by('id').first() or qs.order_by('id').first()
     if treasury:
-        if not treasury.is_default:
+        if not treasury.is_default and branch is None:
             treasury.is_default = True
             treasury.updated_by = user
             treasury.save(update_fields=['is_default', 'updated_by', 'updated_at'])
@@ -22,9 +34,10 @@ def get_or_create_default_treasury(tenant, user=None):
 
     return Treasury.objects.create(
         tenant=tenant,
-        name='الخزينة الرئيسية',
+        branch=branch,
+        name=f'خزينة {branch.name}' if branch is not None else 'الخزينة الرئيسية',
         code='MAIN',
-        is_default=True,
+        is_default=branch is None,
         is_active=True,
         created_by=user,
         updated_by=user,
@@ -177,9 +190,7 @@ def post_treasury_transfer(
     tenant,
     from_treasury,
     to_treasury,
-    from_amount,
-    to_amount,
-    exchange_rate,
+    amount,
     transfer_date,
     notes='',
     user=None,
@@ -187,22 +198,20 @@ def post_treasury_transfer(
     """يُنشئ تحويلاً بين خزينتين: خصم من المصدر وإيداع في الوجهة."""
     from .models import TreasuryTransfer
 
-    from_amount = Decimal(str(from_amount))
-    to_amount = Decimal(str(to_amount))
-    exchange_rate = Decimal(str(exchange_rate))
+    amount = Decimal(str(amount))
 
-    desc_out = f'تحويل إلى {to_treasury.name} ({to_amount} {tenant.currency})'
-    desc_in = f'تحويل من {from_treasury.name} ({from_amount} {tenant.currency})'
+    desc_out = f'تحويل إلى {to_treasury.name} ({amount})'
+    desc_in = f'تحويل من {from_treasury.name} ({amount})'
 
     mv_out = post_treasury_movement(
         tenant=tenant, movement_type='disbursement',
-        amount=from_amount, date=transfer_date,
+        amount=amount, date=transfer_date,
         description=desc_out, reference_type='transfer',
         user=user, treasury=from_treasury,
     )
     mv_in = post_treasury_movement(
         tenant=tenant, movement_type='receipt',
-        amount=to_amount, date=transfer_date,
+        amount=amount, date=transfer_date,
         description=desc_in, reference_type='transfer',
         user=user, treasury=to_treasury,
     )
@@ -211,9 +220,7 @@ def post_treasury_transfer(
         tenant=tenant,
         from_treasury=from_treasury,
         to_treasury=to_treasury,
-        from_amount=from_amount,
-        to_amount=to_amount,
-        exchange_rate=exchange_rate,
+        amount=amount,
         transfer_date=transfer_date,
         notes=notes,
         from_movement=mv_out,
@@ -221,4 +228,40 @@ def post_treasury_transfer(
         created_by=user,
         updated_by=user,
     )
+    return transfer
+
+
+@transaction.atomic
+def cancel_treasury_transfer(transfer, user=None):
+    """
+    إلغاء موثّق لتحويل قائم — نفس نمط cancel_expense/cancel_sale_invoice:
+    لا حذف ولا تعديل للحركتين الأصليتين (تبقيان للأرشيف/التدقيق)، بدلاً من
+    ذلك تُسجَّل حركتان عكسيتان جديدتان بمرجع مميّز 'transfer_cancel'.
+    الإيداع العكسي في from_treasury لا سقف له، لكن الصرف العكسي من
+    to_treasury يمر عبر post_treasury_movement فيرث حمايتها من السحب على
+    المكشوف تلقائياً — لو صُرف المبلغ فعلاً في مكان آخر، الإلغاء يُرفض
+    بنفس رسالة الخطأ الحالية بدل عطل غير متوقع.
+    """
+    if transfer.is_cancelled:
+        raise ValueError('هذا التحويل ملغى بالفعل.')
+
+    today = dj_tz.localdate()
+    post_treasury_movement(
+        tenant=transfer.tenant, movement_type='receipt', amount=transfer.amount,
+        date=today, reference_type='transfer_cancel', reference_id=transfer.id,
+        description=f'إلغاء تحويل رقم {transfer.id} — إلى {transfer.from_treasury.name}',
+        user=user, treasury=transfer.from_treasury,
+    )
+    post_treasury_movement(
+        tenant=transfer.tenant, movement_type='disbursement', amount=transfer.amount,
+        date=today, reference_type='transfer_cancel', reference_id=transfer.id,
+        description=f'إلغاء تحويل رقم {transfer.id} — من {transfer.to_treasury.name}',
+        user=user, treasury=transfer.to_treasury,
+    )
+
+    transfer.is_cancelled = True
+    transfer.cancelled_at = dj_tz.now()
+    transfer.cancelled_by = user
+    transfer.updated_by = user
+    transfer.save(update_fields=['is_cancelled', 'cancelled_at', 'cancelled_by', 'updated_by', 'updated_at'])
     return transfer

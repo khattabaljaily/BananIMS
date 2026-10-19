@@ -1,5 +1,5 @@
 """
-URL configuration for BananIMS project.
+URL configuration for BANAN project.
 """
 from django.contrib import admin
 from django.urls import path, include
@@ -13,7 +13,7 @@ urlpatterns = [
     path('manifest.json', pwa_manifest, name='pwa_manifest'),
 
     # Admin
-    path('admin/', admin.site.urls),
+    path('DDQR9KHA/', admin.site.urls),
     
     # Apps
     path('', include('apps.core.urls')),
@@ -23,10 +23,14 @@ urlpatterns = [
     path('agents/', include('apps.agents.urls')),
     path('stocks/', include('apps.stocks.urls')),
     path('items/', include('apps.items.urls')),
+    path('data-import/', include('apps.data_import.urls')),
     path('purchases/', include('apps.purchases.urls')),
+    path('requisitions/', include('apps.requisitions.urls')),
+    path('branch-transfers/', include('apps.branch_transfers.urls')),
     path('sales/', include('apps.sales.urls')),
     path('reports/', include('apps.sales.reports_urls')),
     path('treasury/', include('apps.treasury.urls')),
+    path('bank-accounts/', include('apps.bank_accounts.urls')),
     path('expenses/', include('apps.expenses.urls')),
     path('notifications/', include('apps.notifications.urls')),
     path('portal/', include('apps.portal.urls')),
@@ -35,6 +39,7 @@ urlpatterns = [
     path('employees/', include('apps.employees.urls')),
 ]
 
-# Serve media files in development (static files are handled by WhiteNoiseMiddleware)
+# Serve media files in development
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATICFILES_DIRS[0] if settings.STATICFILES_DIRS else settings.STATIC_ROOT)

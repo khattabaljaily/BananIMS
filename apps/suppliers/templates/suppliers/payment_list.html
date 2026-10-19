@@ -1,12 +1,16 @@
 {% extends "layouts/dashboard.html" %}
 {% load static %}
+{% load number_format %}
 {% load humanize %}
 
 {% block page_title %}مدفوعات الموردين{% endblock %}
 {% block page_description %}سجل دفعات الموردين وخصم المديونية مباشرة من قسم الموردين.{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/expenses.css' %}?v=2.0">
+<link rel="stylesheet" href="{% static 'css/expenses.css' %}?v=1.1">
+<style>
+#paymentSupplierDrop > div:hover { background: var(--surface-alt, #f3f4f6); }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -104,7 +108,7 @@
                                             <div style="position:relative;">
                                                 <input type="text" id="paymentSupplierSearch" class="cx-input" placeholder="— ابحث عن مورد —" autocomplete="off" spellcheck="false">
                                                 <input type="hidden" id="paymentModalSupplier" value="">
-                                                <div id="paymentSupplierDrop" style="display:none;position:absolute;top:100%;right:0;left:0;z-index:1060;background:#fff;border:1px solid #dee2e6;border-radius:8px;max-height:200px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.15);"></div>
+                                                <div id="paymentSupplierDrop" style="display:none;position:absolute;top:100%;right:0;left:0;z-index:1060;background:var(--surface,#fff);color:var(--text-primary,#111827);border:1px solid var(--border-light,#dee2e6);border-radius:8px;max-height:200px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.15);"></div>
                                             </div>
                                         </div>
                                         <div class="col-md-6">
@@ -132,6 +136,15 @@
                                                 {% endfor %}
                                             </select>
                                         </div>
+                                        <div class="col-md-6" id="paymentModalBankAccountRow" style="display:none">
+                                            <label class="cx-label">الحساب البنكي <span class="text-danger">*</span></label>
+                                            <select id="paymentModalBankAccount" class="cx-input">
+                                                <option value="">— اختر الحساب البنكي —</option>
+                                                {% for bank_account in bank_accounts %}
+                                                <option value="{{ bank_account.id }}">{{ bank_account.name }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
                                         <div class="col-12" id="paymentModalReferenceRow" style="display:none">
                                             <label class="cx-label">رقم المرجع / التحويل</label>
                                             <input type="text" id="paymentModalReference" class="cx-input" placeholder="رقم المرجع أو التحويل...">
@@ -149,12 +162,12 @@
                                         <h3 class="cx-panel-title"><i class="fas fa-user me-2"></i>تفاصيل المورد</h3>
                                     </div>
                                     <div style="display:flex;flex-direction:column;gap:10px;">
-                                        <div style="background:#f8f9fa;border-radius:8px;padding:10px 14px;">
-                                            <div style="font-size:0.68rem;color:#6c757d;margin-bottom:3px;">اسم المورد</div>
+                                        <div style="background:var(--surface-alt,#f8f9fa);color:var(--text-primary,#111827);border-radius:8px;padding:10px 14px;">
+                                            <div style="font-size:0.68rem;color:var(--text-muted,#6c757d);margin-bottom:3px;">اسم المورد</div>
                                             <div style="font-size:0.88rem;font-weight:600;overflow-wrap:break-word;" id="paymentModalSupplierName">—</div>
                                         </div>
-                                        <div style="background:#f8f9fa;border-radius:8px;padding:10px 14px;">
-                                            <div style="font-size:0.68rem;color:#6c757d;margin-bottom:3px;" id="paymentModalBalanceLabel">المديونية</div>
+                                        <div style="background:var(--surface-alt,#f8f9fa);color:var(--text-primary,#111827);border-radius:8px;padding:10px 14px;">
+                                            <div style="font-size:0.68rem;color:var(--text-muted,#6c757d);margin-bottom:3px;" id="paymentModalBalanceLabel">المديونية</div>
                                             <div style="font-size:0.88rem;font-weight:600;" id="paymentModalSupplierBalance">—</div>
                                         </div>
                                     </div>
@@ -213,7 +226,7 @@
                         </div>
                         <div class="cx-info-grid">
                             <div class="cx-info-item">
-                                <span class="cx-info-label">رقم الدفعة</span>
+                                <span class="cx-info-label">رقم السداد</span>
                                 <span class="cx-info-value" id="paymentDetailsId">—</span>
                             </div>
                             <div class="cx-info-item">
@@ -231,6 +244,10 @@
                             <div class="cx-info-item">
                                 <span class="cx-info-label">الخزينة</span>
                                 <span class="cx-info-value" id="paymentDetailsTreasury">—</span>
+                            </div>
+                            <div class="cx-info-item">
+                                <span class="cx-info-label">الحساب البنكي</span>
+                                <span class="cx-info-value" id="paymentDetailsBankAccount">—</span>
                             </div>
                             <div class="cx-info-item">
                                 <span class="cx-info-label">الحالة</span>
@@ -376,6 +393,8 @@
     const paymentModalPmButtons = Array.from(document.querySelectorAll('.payment-modal-pm'));
     const paymentModalTreasuryRow = document.getElementById('paymentModalTreasuryRow');
     const paymentModalTreasury = document.getElementById('paymentModalTreasury');
+    const paymentModalBankAccountRow = document.getElementById('paymentModalBankAccountRow');
+    const paymentModalBankAccount = document.getElementById('paymentModalBankAccount');
     const paymentModalSupplierName = document.getElementById('paymentModalSupplierName');
     const paymentModalSupplierBalance = document.getElementById('paymentModalSupplierBalance');
     const paymentModalSaveBtn = document.getElementById('paymentModalSaveBtn');
@@ -412,7 +431,7 @@
         function renderSupDrop(list) {
             paymentSupplierDrop.innerHTML = list.length
                 ? list.map(s => `<div class="pay-sup-opt" data-id="${s.id}" data-name="${s.name.replace(/"/g,'&quot;')}" data-balance="${s.balance}" style="padding:8px 12px;cursor:pointer;">${s.name}</div>`).join('')
-                : '<div style="padding:8px 12px;color:#6c757d;">لا توجد نتائج</div>';
+                : '<div style="padding:8px 12px;color:var(--text-muted,#6c757d);">لا توجد نتائج</div>';
             paymentSupplierDrop.querySelectorAll('.pay-sup-opt').forEach(el => {
                 el.addEventListener('mousedown', function(e) {
                     e.preventDefault();
@@ -446,6 +465,7 @@
         amount: document.getElementById('paymentDetailsAmount'),
         method: document.getElementById('paymentDetailsMethod'),
         treasury: document.getElementById('paymentDetailsTreasury'),
+        bankAccount: document.getElementById('paymentDetailsBankAccount'),
         notes: document.getElementById('paymentDetailsNotes'),
         status: document.getElementById('paymentDetailsStatus'),
         canceledAt: document.getElementById('paymentDetailsCanceledAt'),
@@ -457,8 +477,10 @@
         paymentModalPmButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.method === method));
         paymentModalReferenceRow.style.display = method === 'bank' ? '' : 'none';
         paymentModalTreasuryRow.style.display = method === 'cash' ? '' : 'none';
+        paymentModalBankAccountRow.style.display = method === 'bank' ? '' : 'none';
         if (method !== 'bank') {
             paymentModalReference.value = '';
+            paymentModalBankAccount.value = '';
         }
         if (method !== 'cash') {
             paymentModalTreasury.value = '';
@@ -472,6 +494,7 @@
         paymentModalDate.value = '{{ today }}';
         paymentModalAmount.value = '';
         paymentModalReference.value = '';
+        paymentModalBankAccount.value = '';
         paymentModalNotes.value = '';
         paymentModalSupplierName.textContent = '—';
         paymentModalSupplierBalance.textContent = '—';
@@ -517,6 +540,7 @@
         const paymentDate = paymentModalDate.value;
         const method = paymentModalMethodInput.value;
         const treasuryId = paymentModalTreasury.value;
+        const bankAccountId = paymentModalBankAccount.value;
         const reference = paymentModalReference.value.trim();
         const notes = paymentModalNotes.value.trim();
 
@@ -545,6 +569,7 @@
                 payment_date: paymentDate,
                 method,
                 treasury_id: method === 'cash' ? parseInt(treasuryId, 10) : null,
+                bank_account_id: method === 'bank' ? parseInt(bankAccountId, 10) : null,
                 reference,
                 notes,
             }),
@@ -592,6 +617,7 @@
                 paymentDetailsFields.amount.textContent = BananIMS.formatMoney(Math.abs(parseFloat(payment.amount) || 0));
                 paymentDetailsFields.method.textContent = payment.payment_method;
                 paymentDetailsFields.treasury.textContent = payment.cash_treasury || '—';
+                paymentDetailsFields.bankAccount.textContent = payment.bank_account || '—';
                 paymentDetailsFields.notes.textContent = payment.notes;
                 paymentDetailsFields.status.textContent = payment.is_canceled ? 'ملغاة' : 'مفعلة';
                 paymentDetailsFields.canceledAt.textContent = payment.cancellation_date || '—';

@@ -4,8 +4,8 @@
 {% load capabilities_tags %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/sales.css' %}?v=4.0">
-<link rel="stylesheet" href="{% static 'css/sales_invoice_form.css' %}?v=2.0">
+<link rel="stylesheet" href="{% static 'css/sales.css' %}?v=3.1">
+<link rel="stylesheet" href="{% static 'css/sales_invoice_form.css' %}?v=1.1">
 <style>
 .cx-searchable-select { position: relative; }
 .cx-searchable-select-dropdown {
@@ -118,7 +118,7 @@
                             <option value="{{ s.id }}"
                                 {% if invoice and invoice.stock_id == s.id %}selected
                                 {% elif default_stock and default_stock.id == s.id %}selected{% endif %}>
-                                {{ s.name }}
+                                {{ s.name }}{% if s.branch %} — {{ s.branch.name }}{% endif %}
                             </option>
                             {% endfor %}
                         </select>
@@ -273,6 +273,17 @@
                         <input type="text" id="bankReference" name="bank_reference" class="cx-input"
                                value="{{ invoice.bank_reference|default:'' }}">
                     </div>
+                    <div class="col-12 sales-field-hidden" id="bankAccountWrap">
+                        <label class="cx-label">الحساب البنكي <span class="text-danger">*</span></label>
+                        <select id="bankAccountId" name="bank_account_id" class="cx-input" onchange="updateBankAccountBalanceHint()">
+                            <option value="">— اختر الحساب البنكي —</option>
+                            {% for b in bank_accounts %}
+                            <option value="{{ b.id }}" data-balance="{{ b.current_balance }}"
+                                {% if invoice and invoice.bank_account_id == b.id %}selected{% endif %}>{{ b.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted d-block mt-1 sales-field-hidden" id="bankAccountBalanceHint"></small>
+                    </div>
                 </div>
 
                 <!-- أزرار الحفظ -->
@@ -358,8 +369,6 @@ const AGENTS_DATA = [
 ];
 const INVOICE_ID = "{{ invoice.id|default:'' }}";
 const CAP = {
-    hasExpiryDates:  {{ tenant_capabilities.has_expiry_dates|yesno:"true,false" }},
-    hasBatchNumbers: {{ tenant_capabilities.has_batch_numbers|yesno:"true,false" }},
     hasSerialNumbers:{{ tenant_capabilities.has_serial_numbers|yesno:"true,false" }},
 };
 
@@ -488,9 +497,25 @@ function handlePaymentMethodChange() {
     toggleHidden('dueDateWrap', !(pm === 'credit' || pm === 'mixed'));
     toggleHidden('mixedPaymentWrap', pm !== 'mixed');
     toggleHidden('bankRefWrap', !(pm === 'bank' || pm === 'mixed'));
+    toggleHidden('bankAccountWrap', !(pm === 'bank' || pm === 'mixed'));
     toggleHidden('creditRow', pm !== 'mixed');
     updatePaymentMethodBadge(pm);
+    updateBankAccountBalanceHint();
     recalcTotals();
+}
+
+function updateBankAccountBalanceHint() {
+    const sel = document.getElementById('bankAccountId');
+    const hint = document.getElementById('bankAccountBalanceHint');
+    if (!sel || !hint) return;
+    const opt = sel.options[sel.selectedIndex];
+    const balance = opt ? opt.dataset.balance : undefined;
+    if (sel.value && balance !== undefined && balance !== '') {
+        hint.textContent = 'الرصيد الحالي: ' + BananIMS.formatMoney(balance);
+        hint.classList.remove('sales-field-hidden');
+    } else {
+        hint.classList.add('sales-field-hidden');
+    }
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -571,9 +596,7 @@ function selectItem(itemId) {
             discount_percent: '0',
             tax_rate: item.tax_rate,
             cost_price_snapshot: item.cost_price,
-            batch_number: '',
             serial_number: '',
-            expiry_date: '',
             item_type: item.item_type,
             is_service: !!item.is_service,
             available_qty: item.available_qty,
@@ -581,9 +604,7 @@ function selectItem(itemId) {
             unit_name: item.unit_name || '',
             unit_factor: item.unit_factor || '1',
             units: item.units || [],
-            track_batch: !!item.track_batch,
             track_serial: !!item.track_serial,
-            track_expiry: !!item.track_expiry,
         });
         closeItemSearch();
     });
@@ -602,14 +623,10 @@ function addLineToTable(lineData) {
     row.dataset.itemId = lineData.item_id;
     row.dataset.variantId = lineData.variant_id || '';
     row.dataset.costPrice = lineData.cost_price_snapshot || 0;
-    row.dataset.batchNumber = lineData.batch_number || '';
     row.dataset.serialNumber = lineData.serial_number || '';
-    row.dataset.expiryDate = lineData.expiry_date || '';
     row.dataset.unitId = lineData.unit_id || '';
     row.dataset.unitFactor = lineData.unit_factor || '1';
-    row.dataset.trackBatch = lineData.track_batch ? '1' : '0';
     row.dataset.trackSerial = lineData.track_serial ? '1' : '0';
-    row.dataset.trackExpiry = lineData.track_expiry ? '1' : '0';
 
     const qty = BananIMS.parseNumber(lineData.quantity) || 1;
     const price = BananIMS.parseNumber(lineData.unit_price) || 0;
@@ -617,14 +634,10 @@ function addLineToTable(lineData) {
     const tax = BananIMS.parseNumber(lineData.tax_rate) || 0;
     const lineTotal = calcLineTotal(qty, price, disc, tax);
 
-    const showBatch  = CAP.hasBatchNumbers  && (lineData.track_batch  ?? true);
     const showSerial = CAP.hasSerialNumbers && (lineData.track_serial ?? true);
-    const showExpiry = CAP.hasExpiryDates   && (lineData.track_expiry ?? true);
 
     const trackingHtml = [
-        showBatch  ? `<div class="mt-1"><input type="text" class="cx-input cx-input--xs" id="batch-${id}" value="${(lineData.batch_number || '').replace(/"/g, '&quot;')}" placeholder="رقم الدفعة"></div>` : '',
         showSerial ? `<div class="mt-1"><input type="text" class="cx-input cx-input--xs" id="serial-${id}" value="${(lineData.serial_number || '').replace(/"/g, '&quot;')}" placeholder="الرقم التسلسلي"></div>` : '',
-        showExpiry ? `<div class="mt-1"><input type="date" class="cx-input cx-input--xs" id="expiry-${id}" value="${lineData.expiry_date || ''}"></div>` : '',
     ].join('');
 
     const units = lineData.units || [];
@@ -801,9 +814,7 @@ function collectLines() {
     const lines = [];
     document.querySelectorAll('#linesBody tr').forEach(row => {
         const id = row.id.replace('line-', '');
-        const showBatch  = CAP.hasBatchNumbers  && row.dataset.trackBatch  !== '0';
         const showSerial = CAP.hasSerialNumbers && row.dataset.trackSerial !== '0';
-        const showExpiry = CAP.hasExpiryDates   && row.dataset.trackExpiry !== '0';
         lines.push({
             item_id: row.dataset.itemId,
             variant_id: row.dataset.variantId || null,
@@ -812,9 +823,7 @@ function collectLines() {
             discount_percent: BananIMS.parseNumber(document.getElementById(`disc-${id}`).value || 0).toFixed(2),
             tax_rate: BananIMS.parseNumber(document.getElementById(`tax-${id}`).value || 0).toFixed(2),
             cost_price_snapshot: row.dataset.costPrice || '0',
-            batch_number: showBatch  ? (document.getElementById(`batch-${id}`)?.value || '') : '',
             serial_number: showSerial ? (document.getElementById(`serial-${id}`)?.value || '') : '',
-            expiry_date: showExpiry ? (document.getElementById(`expiry-${id}`)?.value || null) : null,
             unit_id: row.dataset.unitId || null,
             unit_factor: row.dataset.unitFactor || '1',
         });
@@ -826,6 +835,14 @@ function submitForm(action) {
     const lines = collectLines();
     if (!lines.length) { showAlert('أضف منتجاً واحداً على الأقل', 'warning'); return; }
     if (!document.getElementById('stockId').value) { showAlert('الرجاء اختيار المخزن', 'warning'); return; }
+
+    const pm = document.getElementById('paymentMethod').value;
+    const bankAccountId = document.getElementById('bankAccountId')?.value || null;
+    const bankAmountVal = BananIMS.parseNumber(document.getElementById('bankAmount')?.value || 0);
+    if ((pm === 'bank' || (pm === 'mixed' && bankAmountVal > 0)) && !bankAccountId) {
+        showAlert('اختر الحساب البنكي', 'warning');
+        return;
+    }
 
     const submitButtons = Array.from(document.querySelectorAll('button[onclick^="submitForm("]'));
     const originalLabels = submitButtons.map(btn => btn.innerHTML);
@@ -847,6 +864,7 @@ function submitForm(action) {
         cash_amount: BananIMS.parseNumber(document.getElementById('cashAmount')?.value || 0).toFixed(2),
         bank_amount: BananIMS.parseNumber(document.getElementById('bankAmount')?.value || 0).toFixed(2),
         bank_reference: document.getElementById('bankReference')?.value || '',
+        bank_account_id: bankAccountId,
         notes: document.getElementById('notes').value,
     };
 

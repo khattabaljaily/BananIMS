@@ -5,18 +5,21 @@ Public  (no login):  storefront, cart ops, checkout, order_confirm
 Manage  (login req): settings, orders list, order detail/approve/reject
 """
 import json
+from decimal import Decimal, InvalidOperation
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 from django.contrib import messages
-from django.db.models import Q
+from django.db.models import F, Q
 
-from .models import OnlineOrder, StoreSettings
-from apps.accounts.decorators import require_permission
+from .models import BranchStoreSettings, OnlineOrder, StoreSettings
+from apps.accounts.decorators import require_permission, branch_scope_exempt
+from apps.core.utils import enforce_branch_ownership
 from .services import (
-    approve_order, cart_add, cart_clear, cart_remove,
-    cart_update, get_cart, get_cart_items, place_order, reject_order,
+    approve_order, available_quantities, cart_add, cart_clear, cart_remove, cart_shortages,
+    cart_update, get_cart, get_cart_items, place_order, reject_order, shortage_message,
+    store_stock,
 )
 
 
@@ -24,10 +27,15 @@ from .services import (
 # PUBLIC — helpers
 # ══════════════════════════════════════════════════════════════
 
+def _is_multi_branch(store):
+    return getattr(store.tenant, 'version_type', '') == 'multi_branch'
+
+
 def _get_store(slug: str, require_enabled: bool = True):
     """Return store or render 'store unavailable' response."""
     store = get_object_or_404(StoreSettings, slug=slug)
-    if require_enabled and not store.is_enabled:
+    # نسخة المؤسسات: التفعيل لكل فرع (يُفحص بعد اختيار الفرع، راجع _store_branches)
+    if require_enabled and not store.is_enabled and not _is_multi_branch(store):
         from django.template.loader import render_to_string
         from django.http import HttpResponse
         # Return a sentinel so callers can short-circuit
@@ -35,8 +43,12 @@ def _get_store(slug: str, require_enabled: bool = True):
     return store
 
 
-def _store_closed_response(store, status):
+def _store_closed_response(store, status, other_branches=(), branch=None):
     from django.http import HttpResponse
+    if branch is not None:      # نسخة المؤسسات: صفحة بنفس تصميم اختيار الفرع مع الفروع البديلة
+        from django.template.loader import render_to_string
+        return HttpResponse(render_to_string('store/branch_closed.html', {
+            'store': store, 'branch': branch, 'status': status, 'other_cards': other_branches}))
     # Only show next-open chip in auto mode (schedule-based), not when manually forced closed
     next_open_html = ''
     if status.get('next_open') and not status.get('override'):
@@ -130,7 +142,76 @@ h2{{font-size:1.55rem;font-weight:900;margin-bottom:.6rem;letter-spacing:-.01em;
     return HttpResponse(html, status=503)
 
 
-def _get_products(store: StoreSettings):
+def _store_branches(store):
+    """
+    فروع المتجر التي يختار منها الزائر (نسخة المؤسسات فقط): الفروع النشطة التي
+    متجرها متاح. الفرع بلا تخصيص محفوظ يتبع تفعيل النشاط.
+    """
+    from apps.core.models import Branch
+    if not _is_multi_branch(store):
+        return []
+    own = {o.branch_id: o for o in BranchStoreSettings.objects.filter(tenant=store.tenant)}
+
+    def enabled(branch):
+        o = own.get(branch.id)
+        return store.is_enabled if o is None or o.is_enabled is None else o.is_enabled
+
+    return [b for b in Branch.objects.filter(tenant=store.tenant, is_active=True).order_by('name')
+            if enabled(b)]
+
+
+def _resolve_store_branch(request, store, from_session=False):
+    """
+    يحسم فرع الزائر. يُرجع (الفرع, قائمة الفروع)؛ الفرع None حتى يختاره الزائر صراحةً
+    (لا فرع افتراضي — الطلب يذهب للفرع الذي اختاره).
+    (None, []) خارج نسخة المؤسسات فلا يتغير سلوك المتجر هناك.
+    """
+    branches = _store_branches(store)
+    if not branches:
+        return None, []
+    key = f'store_branch_{store.slug}'
+    # الواجهة (المتجر/قائمة الأسعار): الفرع من ?branch= فقط ولا يُحفظ اختياره — الرابط العام يعرض الفروع
+    # دائماً. السلة والدفع: من الجلسة (يُسجَّل عند فتح فرع من الواجهة) ولا يُغيَّر من هناك.
+    chosen = request.session.get(key) if from_session else request.GET.get('branch')
+    branch = next((b for b in branches if str(b.id) == str(chosen)), None)
+    if branch is not None:
+        request.session[key] = branch.id
+    return branch, branches
+
+
+def _branch_cards(store, store_branches):
+    """فروع المتجر بحالتها الآن (مفتوح/مغلق وموعد الفتح) لعرضها في صفحة الاختيار."""
+    cards = []
+    for b in store_branches:
+        st = store.for_branch(b).get_status()
+        cards.append({'branch': b, 'is_open': st['is_open'], 'next_open': st.get('next_open') or ''})
+    return cards
+
+
+def _other_branch_cards(store, branch, store_branches):
+    """بقية الفروع (لتحويل زائر وصل لفرع مغلق)."""
+    if branch is None:
+        return []
+    return [c for c in _branch_cards(store, store_branches) if c['branch'].id != branch.id]
+
+
+def _branch_required(request, store, branch, store_branches, redirect_slug=None):
+    """
+    نسخة المؤسسات بلا أي فرع متاح: المتجر غير متاح. وإلا صفحة اختيار الفرع لو لم يختر
+    الزائر بعد؛ وإلا None.
+    """
+    if _is_multi_branch(store) and not store_branches:
+        return _store_disabled_response(store)
+    if store_branches and branch is None:
+        if redirect_slug:      # السلة/الدفع: الاختيار من واجهة المتجر فقط
+            return redirect('store:storefront', slug=redirect_slug)
+        return render(request, 'store/choose_branch.html', {
+            'store': store, 'store_branches': store_branches,
+            'branch_cards': _branch_cards(store, store_branches)})
+    return None
+
+
+def _get_products(store: StoreSettings, branch=None):
     from apps.stocks.models import StockQuantity
     from apps.items.models import Item
 
@@ -138,16 +219,14 @@ def _get_products(store: StoreSettings):
         tenant=store.tenant,
         is_active=True,
         is_sellable=True,
-        item_type__in=['product', 'semi_finished'],
+        item_type='product',
     ).select_related('category', 'unit')
 
     if not store.show_out_of_stock:
-        # keep items with at least one positive StockQuantity
-        in_stock_ids = (
-            StockQuantity.objects
-            .filter(tenant=store.tenant, quantity__gt=0)
-            .values_list('item_id', flat=True)
-        )
+        # المتوفر فعلاً في مخزن المتجر للفرع المختار (نفس المخزن الذي تُصدر منه الفاتورة)
+        stock = store_stock(store.tenant, branch)
+        in_stock_ids = StockQuantity.objects.filter(
+            stock=stock, quantity__gt=F('reserved_quantity')).values_list('item_id', flat=True)
         qs = qs.filter(id__in=in_stock_ids)
 
     return qs
@@ -157,14 +236,20 @@ def _get_products(store: StoreSettings):
 # PUBLIC — Storefront
 # ══════════════════════════════════════════════════════════════
 
+@branch_scope_exempt('متجر إلكتروني عام لعملاء مجهولين (بلا تسجيل دخول) — يعرض كامل كتالوج المشترك؛ لا مفهوم مستخدم بفرع هنا (request.branch دائماً None لزائر غير مسجّل)')
 def storefront(request, slug):
     store = _get_store(slug)
     if getattr(store, '_disabled', False):
         return _store_disabled_response(store)
+    branch, store_branches = _resolve_store_branch(request, store)
+    choose = _branch_required(request, store, branch, store_branches)
+    if choose:
+        return choose
+    store = store.for_branch(branch)
     status = store.get_status()
     if not status['is_open']:
-        return _store_closed_response(store, status)
-    products = _get_products(store)
+        return _store_closed_response(store, status, _other_branch_cards(store, branch, store_branches), branch)
+    products = _get_products(store, branch)
 
     search = request.GET.get('q', '').strip()
     if search:
@@ -187,15 +272,8 @@ def storefront(request, slug):
     # Build stock-quantity map if the store shows quantities
     stock_qty_map = {}
     if store.show_stock_quantity:
-        from apps.stocks.models import StockQuantity
-        from django.db.models import Sum
-        qs = (
-            StockQuantity.objects
-            .filter(tenant=store.tenant, item__in=products)
-            .values('item_id')
-            .annotate(total=Sum('quantity'))
-        )
-        stock_qty_map = {r['item_id']: r['total'] for r in qs}
+        stock_qty_map = {k: max(v, 0) for k, v in available_quantities(
+            store_stock(store.tenant, branch), products.values_list('id', flat=True)).items()}
 
     return render(request, 'store/storefront.html', {
         'store':         store,
@@ -206,6 +284,9 @@ def storefront(request, slug):
         'category_id':   category_id,
         'status':        store.get_status(),
         'stock_qty_map': stock_qty_map,
+        'branch':        branch,
+        'store_branches': store_branches,
+        'branch_cards':  _branch_cards(store, store_branches),
     })
 
 
@@ -215,30 +296,67 @@ def storefront(request, slug):
 
 def price_list(request, slug):
     store = get_object_or_404(StoreSettings, slug=slug)
+    branch, store_branches = _resolve_store_branch(request, store)
+    choose = _branch_required(request, store, branch, store_branches)
+    if choose:
+        return choose
+    store = store.for_branch(branch)
     if not store.show_price_list:
         return _price_list_disabled_response(store)
-
-    products = _get_products(store).order_by('name')
+    products = list(
+        _get_products(store, branch)
+        .prefetch_related('item_units')
+        .order_by('manufacturer', 'name')
+    )
 
     from apps.items.models import Category
     from django.db.models import Count
+    from django.utils import timezone
+
     categories = Category.objects.filter(
         tenant=store.tenant, is_active=True
     ).order_by('display_order', 'name')
 
     cat_counts = dict(
-        products.values_list('category_id').annotate(c=Count('id')).order_by()
+        _get_products(store, branch).values_list('category_id').annotate(c=Count('id')).order_by()
     )
     categories = [
         {'id': cat.id, 'name': cat.name, 'count': cat_counts.get(cat.id, 0)}
         for cat in categories
     ]
 
+    for item in products:
+        # وحدة السعر المعروض: أصغر وحدة من وحدات الصنف (حيث تُحفظ وحدات الأصناف الحالية)،
+        # وإلا حقل «وحدة البيع» القديم. قراءة item.unit وحده كانت تترك العمود فارغاً.
+        units = sorted(item.item_units.all(), key=lambda u: u.factor)
+        item.unit_label = units[0].name if units else (item.unit.name if item.unit_id else '')
+
+    # Group by manufacturer — items with no manufacturer set fall into a
+    # single "أخرى" group at the end.
+    groups = {}
+    order = []
+    for item in products:
+        key = (item.manufacturer or '').strip() or 'أخرى'
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(item)
+    if 'أخرى' in groups:
+        order.remove('أخرى')
+        order.append('أخرى')
+    manufacturer_groups = [{'name': name, 'items': groups[name]} for name in order]
+
     return render(request, 'store/price_list.html', {
         'store':         store,
         'products':      products,
+        'manufacturer_groups': manufacturer_groups,
         'total_count':   len(products),
         'categories':    categories,
+        'print_date':    timezone.localdate(),
+        'cols':          {k: True for k in store.price_list_visible_columns()},
+        'branch':        branch,
+        'store_branches': store_branches,
+        'branch_cards':  _branch_cards(store, store_branches),
     })
 
 
@@ -246,22 +364,55 @@ def price_list(request, slug):
 # PUBLIC — Cart (AJAX + page)
 # ══════════════════════════════════════════════════════════════
 
+def _parse_qty(raw, default):
+    """يحوّل الكمية المُدخلة يدوياً إلى رقم؛ القيمة غير الصالحة ترجع default."""
+    try:
+        qty = float(str(raw).strip())
+    except (TypeError, ValueError):
+        return default
+    if qty != qty or qty in (float('inf'), float('-inf')):
+        return default
+    return qty
+
+
 @require_POST
 def cart_add_view(request, slug):
     store = _get_store(slug)
     if getattr(store, '_disabled', False):
         return _store_disabled_response(store)
+    branch, store_branches = _resolve_store_branch(request, store, from_session=True)
+    if _is_multi_branch(store) and not store_branches:
+        return _store_disabled_response(store)
+    store = store.for_branch(branch)
     status = store.get_status()
     if not status['is_open']:
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return JsonResponse({'error': 'المتجر مغلق حالياً'}, status=403)
-        return _store_closed_response(store, status)
+        return _store_closed_response(store, status, _other_branch_cards(store, branch, store_branches), branch)
     item_id = request.POST.get('item_id')
-    qty     = float(request.POST.get('qty', 1))
+    qty     = _parse_qty(request.POST.get('qty'), default=1)
+    if qty <= 0:
+        qty = 1
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+    if store_branches and branch is None:
+        if is_ajax:
+            return JsonResponse({'error': 'اختر الفرع أولاً'}, status=400)
+        return redirect('store:storefront', slug=slug)
+    # لا نضيف للسلة أكثر من المتاح في مخزن الفرع (بلا حجز: يُعاد التحقق عند الطلب والقبول)
+    from decimal import Decimal
+    in_cart = Decimal(str(get_cart(request, slug).get(str(item_id), 0)))
+    have = max(available_quantities(store_stock(store.tenant, branch), [int(item_id)]).get(int(item_id), 0), 0)
+    if in_cart + Decimal(str(qty)) > have:
+        from apps.core.templatetags.number_format import qty as fmt_qty
+        msg = f'المتاح من هذا الصنف {fmt_qty(have)} فقط' + (f' (في سلتك {fmt_qty(in_cart)})' if in_cart else '')
+        if is_ajax:
+            return JsonResponse({'error': msg}, status=400)
+        messages.error(request, msg)
+        return redirect('store:cart', slug=slug)
     cart_add(request, slug, int(item_id), qty)
     cart        = get_cart(request, slug)
     cart_count  = int(sum(cart.values()))
-    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+    if is_ajax:
         return JsonResponse({'cart_count': cart_count})
     return redirect('store:cart', slug=slug)
 
@@ -276,8 +427,9 @@ def cart_remove_view(request, slug):
 @require_POST
 def cart_update_view(request, slug):
     item_id = int(request.POST.get('item_id'))
-    qty     = float(request.POST.get('qty', 0))
-    cart_update(request, slug, item_id, qty)
+    qty     = _parse_qty(request.POST.get('qty'), default=None)
+    if qty is not None:
+        cart_update(request, slug, item_id, qty)
     return redirect('store:cart', slug=slug)
 
 
@@ -288,7 +440,20 @@ def cart_view(request, slug):
     cart       = get_cart(request, slug)
     cart_items = get_cart_items(slug, cart)
     subtotal   = sum(r['line_total'] for r in cart_items)
+    branch, store_branches = _resolve_store_branch(request, store, from_session=True)
+    choose = _branch_required(request, store, branch, store_branches, redirect_slug=slug)
+    if choose:
+        return choose
+    store = store.for_branch(branch)
+    status = store.get_status()
+    if not status['is_open']:
+        return _store_closed_response(store, status, _other_branch_cards(store, branch, store_branches), branch)
+    shortages = cart_shortages(store_stock(store.tenant, branch), cart_items)
     return render(request, 'store/cart.html', {
+        'shortages':  shortages,
+        'shortage_ids': [s['item'].id for s in shortages],
+        'branch':     branch,
+        'store_branches': store_branches,
         'store':      store,
         'cart_items': cart_items,
         'subtotal':   subtotal,
@@ -303,9 +468,6 @@ def checkout_view(request, slug):
     store = _get_store(slug)
     if getattr(store, '_disabled', False):
         return _store_disabled_response(store)
-    status = store.get_status()
-    if not status['is_open']:
-        return _store_closed_response(store, status)
     cart       = get_cart(request, slug)
     cart_items = get_cart_items(slug, cart)
 
@@ -313,6 +475,20 @@ def checkout_view(request, slug):
         return redirect('store:storefront', slug=slug)
 
     subtotal = sum(r['line_total'] for r in cart_items)
+    branch, store_branches = _resolve_store_branch(request, store, from_session=True)
+    choose = _branch_required(request, store, branch, store_branches, redirect_slug=slug)
+    if choose:
+        return choose
+    store = store.for_branch(branch)
+    status = store.get_status()
+    if not status['is_open']:
+        return _store_closed_response(store, status, _other_branch_cards(store, branch, store_branches), branch)
+    # كميات السلة يجب أن تتوفر في مخزن الفرع قبل إتمام الطلب
+    shortages = cart_shortages(store_stock(store.tenant, branch), cart_items)
+    if shortages:
+        messages.error(request, shortage_message(shortages))
+        return redirect('store:cart', slug=slug)
+    branch_ctx = {'branch': branch, 'store_branches': store_branches}
 
     if request.method == 'POST':
         name   = request.POST.get('name', '').strip()
@@ -332,7 +508,8 @@ def checkout_view(request, slug):
             errors['min_order'] = f'الحد الأدنى للطلب {store.min_order_amount:,.0f}'
 
         if not errors:
-            order = place_order(
+            try:
+                order = place_order(
                 store=store,
                 cart_items=cart_items,
                 customer_data={
@@ -342,7 +519,11 @@ def checkout_view(request, slug):
                     'notes':          notes,
                     'payment_method': pm,
                 },
-            )
+                branch=branch,
+                )
+            except ValueError as exc:   # الكمية نفدت بين عرض الصفحة والإرسال
+                messages.error(request, str(exc))
+                return redirect('store:cart', slug=slug)
             cart_clear(request, slug)
             return redirect('store:order_confirm', slug=slug, token=order.token)
 
@@ -352,12 +533,14 @@ def checkout_view(request, slug):
             'subtotal':   subtotal,
             'errors':     errors,
             'post':       request.POST,
+            **branch_ctx,
         })
 
     return render(request, 'store/checkout.html', {
         'store':      store,
         'cart_items': cart_items,
         'subtotal':   subtotal,
+        **branch_ctx,
     })
 
 
@@ -369,7 +552,7 @@ def order_confirm_view(request, slug, token):
     store = _get_store(slug, require_enabled=False)  # allow even if disabled after order placed
     order = get_object_or_404(OnlineOrder, token=token, store=store)
     return render(request, 'store/order_confirm.html', {
-        'store': store,
+        'store': store.for_branch(order.branch),
         'order': order,
     })
 
@@ -395,16 +578,33 @@ def manage_settings(request):
         defaults={'display_name': tenant.name},
     )
 
+    multi_branch = _is_multi_branch(store)
+
+    if request.method == 'POST' and multi_branch:
+        # نسخة المؤسسات: مدير النشاط يضبط هوية المتجر الواحد فقط؛ الباقي (تفعيل، دوام، دفع،
+        # عرض...) لكل فرع في صفحته — فلا نمسّ أي حقل آخر
+        store.display_name = request.POST.get('display_name', '').strip() or tenant.name
+        store.description  = request.POST.get('description', '').strip()
+        new_slug = request.POST.get('slug', '').strip()
+        if new_slug and new_slug != store.slug:
+            if not StoreSettings.objects.filter(slug=new_slug).exclude(pk=store.pk).exists():
+                store.slug = new_slug
+        store.save()
+        messages.success(request, 'تم حفظ إعدادات المتجر بنجاح.')
+        return redirect('store:manage_settings')
+
     if request.method == 'POST':
         store.is_enabled        = request.POST.get('is_enabled') == 'on'
         store.display_name      = request.POST.get('display_name', '').strip() or tenant.name
         store.description       = request.POST.get('description', '').strip()
-        store.accent_color      = request.POST.get('accent_color', '#132539').strip()
+        store.accent_color      = request.POST.get('accent_color', '#0e6b64').strip()
         store.whatsapp          = request.POST.get('whatsapp', '').strip()
         store.show_out_of_stock   = request.POST.get('show_out_of_stock') == 'on'
         store.show_prices         = request.POST.get('show_prices') == 'on'
         store.show_stock_quantity = request.POST.get('show_stock_quantity') == 'on'
         store.show_price_list     = request.POST.get('show_price_list') == 'on'
+        valid_cols = {k for k, _ in StoreSettings.PRICE_LIST_COLUMNS}
+        store.price_list_columns = [c for c in request.POST.getlist('price_list_columns') if c in valid_cols]
         store.min_order_amount    = request.POST.get('min_order_amount') or 0
         store.bank_details      = request.POST.get('bank_details', '').strip()
         store.delivery_message  = request.POST.get('delivery_message', '').strip()
@@ -437,21 +637,107 @@ def manage_settings(request):
         messages.success(request, 'تم حفظ إعدادات المتجر بنجاح.')
         return redirect('store:manage_settings')
 
-    pending_count = OnlineOrder.objects.filter(tenant=tenant, status='pending').count()
+    pending_count = (OnlineOrder.objects.filter(tenant=tenant, status='pending').count()
+                     if request.user.has_perm_key('view_store_orders') else 0)
     hours = store.working_hours or DEFAULT_HOURS
 
     return render(request, 'store/manage_settings.html', {
+        'multi_branch':  multi_branch,
         'store':         store,
         'pending_count': pending_count,
         'status':        store.get_status(),
         'hours':         hours,
         'days':          [(d, DAYS_AR[d]) for d in DAYS_ORDER],
+        'price_list_columns': [
+            (k, label, k in store.price_list_visible_columns())
+            for k, label in StoreSettings.PRICE_LIST_COLUMNS
+        ],
+    })
+
+
+# ══════════════════════════════════════════════════════════════
+# MANAGE — Branch store settings (نسخة المؤسسات: الفرع يعدّل بياناته بنفسه)
+# ══════════════════════════════════════════════════════════════
+
+@login_required
+@require_permission('manage_branch_store_settings')
+def manage_branch_settings(request):
+    from .models import DAYS_AR, DAYS_ORDER, DEFAULT_HOURS
+    tenant = request.tenant
+    branch = getattr(request, 'branch', None)
+    if not tenant or branch is None:
+        return redirect('/')
+    if not tenant.plan_allows('store'):
+        messages.error(request, 'المتجر الإلكتروني متاح للباقة الاحترافية فما فوق.')
+        return redirect('core:subscription')
+    store = StoreSettings.objects.filter(tenant=tenant).first()
+    if store is None:
+        messages.error(request, 'لم يُنشئ مدير النشاط المتجر الإلكتروني بعد.')
+        return redirect('core:dashboard')
+
+    own, _ = BranchStoreSettings.objects.get_or_create(tenant=tenant, branch=branch)
+
+    if request.method == 'POST':
+        post = request.POST
+        own.is_enabled        = post.get('is_enabled') == 'on'
+        own.whatsapp          = post.get('whatsapp', '').strip()
+        own.bank_details      = post.get('bank_details', '').strip()
+        own.delivery_message  = post.get('delivery_message', '').strip()
+        for f in BranchStoreSettings.TRISTATE_FIELDS:
+            setattr(own, f, post.get(f) == 'on')
+        valid_cols = {k for k, _ in StoreSettings.PRICE_LIST_COLUMNS}
+        own.price_list_columns = [c for c in post.getlist('price_list_columns') if c in valid_cols]
+        try:
+            own.min_order_amount = max(Decimal(post.get('min_order_amount') or 0), Decimal(0))
+        except InvalidOperation:
+            own.min_order_amount = Decimal(0)
+        status = post.get('status_override', 'auto')
+        own.status_override = status if status in dict(StoreSettings.OVERRIDE_CHOICES) else 'auto'
+        own.open_message    = post.get('open_message', '').strip()
+        own.closed_message  = post.get('closed_message', '').strip()
+        own.working_hours = {
+            day: {
+                'enabled': post.get(f'day_{day}_enabled') == 'on',
+                'open':    post.get(f'day_{day}_open', '08:00'),
+                'close':   post.get(f'day_{day}_close', '22:00'),
+            } for day in DAYS_ORDER
+        }
+        own.save()
+        messages.success(request, 'تم حفظ إعدادات متجر الفرع.')
+        return redirect('store:manage_branch_settings')
+
+    effective = store.for_branch(branch)
+    all_cols = [k for k, _ in StoreSettings.PRICE_LIST_COLUMNS]
+    chosen_cols = set(effective.price_list_columns or all_cols)
+    pending_count = OnlineOrder.objects.filter(tenant=tenant, branch=branch, status='pending').count()
+    return render(request, 'store/manage_branch_settings.html', {
+        'store':         effective,
+        'branch':        branch,
+        'status':        effective.get_status(),
+        'pending_count': pending_count,
+        'hours':         effective.working_hours or DEFAULT_HOURS,
+        'days':          [(d, DAYS_AR[d]) for d in DAYS_ORDER],
+        'price_list_columns': [
+            (k, label, k in chosen_cols) for k, label in StoreSettings.PRICE_LIST_COLUMNS
+        ],
     })
 
 
 # ══════════════════════════════════════════════════════════════
 # MANAGE — Orders List
 # ══════════════════════════════════════════════════════════════
+
+def _scoped_orders(request, tenant):
+    """
+    طلبات نطاق الطلب: الفرع يرى طلباته فقط (هو من يقبلها ويُصدر فاتورتها)؛
+    بلا فرع (النسخ بلا فروع): كل طلبات المشترك.
+    """
+    orders = OnlineOrder.objects.filter(tenant=tenant)
+    branch = getattr(request, 'branch', None)
+    if branch is not None:
+        orders = orders.filter(branch=branch)
+    return orders
+
 
 @login_required
 @require_permission('view_store_orders')
@@ -465,21 +751,22 @@ def manage_orders(request):
         return redirect('core:subscription')
 
     status_filter = request.GET.get('status', 'pending')
-    orders = OnlineOrder.objects.filter(tenant=tenant).select_related('store', 'sale_invoice')
+    scoped = _scoped_orders(request, tenant)
+    orders = scoped.select_related('store', 'sale_invoice', 'branch')
 
     if status_filter in ('pending', 'approved', 'rejected'):
         orders = orders.filter(status=status_filter)
 
-    counts = {
-        'pending':  OnlineOrder.objects.filter(tenant=tenant, status='pending').count(),
-        'approved': OnlineOrder.objects.filter(tenant=tenant, status='approved').count(),
-        'rejected': OnlineOrder.objects.filter(tenant=tenant, status='rejected').count(),
-    }
+    counts = {key: scoped.filter(status=key).count() for key in ('pending', 'approved', 'rejected')}
 
     return render(request, 'store/manage_orders.html', {
         'orders':        orders,
         'status_filter': status_filter,
         'counts':        counts,
+        'can_manage':    request.user.has_perm_key('manage_store_orders'),
+        # رابط المتجر ورمز QR الخاص بفرع المستخدم (يفتح المتجر على فرعه مباشرة)
+        'store':         StoreSettings.objects.filter(tenant=tenant).first(),
+        'show_branch':   tenant.is_enterprise() and getattr(request, 'branch', None) is None,
     })
 
 
@@ -491,11 +778,20 @@ def manage_orders(request):
 @require_permission('view_store_orders')
 def manage_order_detail(request, pk):
     tenant = request.tenant
-    order  = get_object_or_404(OnlineOrder, pk=pk, tenant=tenant)
-    lines  = order.lines.select_related('item').all()
+    order  = get_object_or_404(_scoped_orders(request, tenant), pk=pk)
+    enforce_branch_ownership(request, order)
+    lines  = list(order.lines.select_related('item'))
+    can_manage = request.user.has_perm_key('manage_store_orders')
+    # بلا حجز: نُظهر للفرع قبل القبول ما لم يعد متوفراً في مخزنه
+    shortages = []
+    if can_manage and order.status == 'pending':
+        shortages = cart_shortages(store_stock(tenant, order.branch),
+                                   [{'item': ln.item, 'qty': ln.quantity} for ln in lines])
     return render(request, 'store/manage_order_detail.html', {
         'order': order,
         'lines': lines,
+        'can_manage': can_manage,
+        'shortages': shortages,
     })
 
 
@@ -508,9 +804,10 @@ def manage_order_detail(request, pk):
 @require_POST
 def manage_order_approve(request, pk):
     tenant = request.tenant
-    order  = get_object_or_404(OnlineOrder, pk=pk, tenant=tenant, status='pending')
+    order  = get_object_or_404(_scoped_orders(request, tenant), pk=pk, status='pending')
+    enforce_branch_ownership(request, order)
     try:
-        invoice = approve_order(order)
+        invoice = approve_order(order, request.user)
         return JsonResponse({
             'success':    True,
             'invoice_id': invoice.pk,
@@ -526,6 +823,7 @@ def manage_order_approve(request, pk):
 @require_POST
 def manage_order_reject(request, pk):
     tenant = request.tenant
-    order  = get_object_or_404(OnlineOrder, pk=pk, tenant=tenant, status='pending')
+    order  = get_object_or_404(_scoped_orders(request, tenant), pk=pk, status='pending')
+    enforce_branch_ownership(request, order)
     reject_order(order)
     return JsonResponse({'success': True})

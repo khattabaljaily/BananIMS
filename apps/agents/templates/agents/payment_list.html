@@ -6,7 +6,10 @@
 {% block page_description %}سجل دفعات المناديب وخصم المستحقات مباشرة من قسم المناديب.{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/expenses.css' %}?v=2.0">
+<link rel="stylesheet" href="{% static 'css/expenses.css' %}?v=1.1">
+<style>
+#paymentAgentDrop > div:hover { background: var(--surface-alt, #f3f4f6); }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -105,7 +108,7 @@
                                             <div style="position:relative;">
                                                 <input type="text" id="paymentAgentSearch" class="cx-input" placeholder="— ابحث عن مندوب —" autocomplete="off" spellcheck="false">
                                                 <input type="hidden" id="paymentModalAgent" value="">
-                                                <div id="paymentAgentDrop" style="display:none;position:absolute;top:100%;right:0;left:0;z-index:1060;background:#fff;border:1px solid #dee2e6;border-radius:8px;max-height:200px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.15);"></div>
+                                                <div id="paymentAgentDrop" style="display:none;position:absolute;top:100%;right:0;left:0;z-index:1060;background:var(--surface,#fff);color:var(--text-primary,#111827);border:1px solid var(--border-light,#dee2e6);border-radius:8px;max-height:200px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.15);"></div>
                                             </div>
                                         </div>
                                         <div class="col-md-6">
@@ -150,12 +153,12 @@
                                         <h3 class="cx-panel-title"><i class="fas fa-id-badge me-2"></i>تفاصيل المندوب</h3>
                                     </div>
                                     <div style="display:flex;flex-direction:column;gap:10px;">
-                                        <div style="background:#f8f9fa;border-radius:8px;padding:10px 14px;">
-                                            <div style="font-size:0.68rem;color:#6c757d;margin-bottom:3px;">اسم المندوب</div>
+                                        <div style="background:var(--surface-alt,#f8f9fa);color:var(--text-primary,#111827);border-radius:8px;padding:10px 14px;">
+                                            <div style="font-size:0.68rem;color:var(--text-muted,#6c757d);margin-bottom:3px;">اسم المندوب</div>
                                             <div style="font-size:0.88rem;font-weight:600;" id="paymentModalAgentName">—</div>
                                         </div>
-                                        <div style="background:#f8f9fa;border-radius:8px;padding:10px 14px;">
-                                            <div style="font-size:0.68rem;color:#6c757d;margin-bottom:3px;">المستحقات</div>
+                                        <div style="background:var(--surface-alt,#f8f9fa);color:var(--text-primary,#111827);border-radius:8px;padding:10px 14px;">
+                                            <div style="font-size:0.68rem;color:var(--text-muted,#6c757d);margin-bottom:3px;">المستحقات</div>
                                             <div style="font-size:0.88rem;font-weight:600;" id="paymentModalAgentBalance">—</div>
                                         </div>
                                     </div>
@@ -208,7 +211,7 @@
                     <div class="cx-view-section">
                         <div class="cx-view-section-title"><i class="fas fa-circle-info"></i> تفاصيل الدفعة</div>
                         <div class="cx-info-grid">
-                            <div class="cx-info-item"><span class="cx-info-label">رقم الدفعة</span><span class="cx-info-value" id="paymentDetailsId">—</span></div>
+                            <div class="cx-info-item"><span class="cx-info-label">رقم السداد</span><span class="cx-info-value" id="paymentDetailsId">—</span></div>
                             <div class="cx-info-item"><span class="cx-info-label">التاريخ</span><span class="cx-info-value" id="paymentDetailsDate">—</span></div>
                             <div class="cx-info-item"><span class="cx-info-label">المندوب</span><span class="cx-info-value" id="paymentDetailsAgent">—</span></div>
                             <div class="cx-info-item"><span class="cx-info-label">طريقة الدفع</span><span class="cx-info-value" id="paymentDetailsMethod">—</span></div>
@@ -308,7 +311,7 @@
     function renderAgentDrop(list) {
         paymentAgentDrop.innerHTML = list.length
             ? list.map(a => `<div class="pay-sup-opt" data-id="${a.id}" data-name="${a.name.replace(/"/g,'&quot;')}" data-balance="${a.balance}" style="padding:8px 12px;cursor:pointer;">${a.name}</div>`).join('')
-            : '<div style="padding:8px 12px;color:#6c757d;">لا توجد نتائج</div>';
+            : '<div style="padding:8px 12px;color:var(--text-muted,#6c757d);">لا توجد نتائج</div>';
         paymentAgentDrop.querySelectorAll('.pay-sup-opt').forEach(el => {
             el.addEventListener('mousedown', function(e) {
                 e.preventDefault();

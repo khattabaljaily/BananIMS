@@ -11,3 +11,5 @@ def prevent_deleting_system_default_treasury(sender, instance, **kwargs):
         return
     if getattr(instance, 'is_system_default', False):
         raise ValidationError('لا يمكن حذف الخزينة الافتراضية النظامية.')
+    if getattr(instance, 'is_head_office', False):
+        raise ValidationError('لا يمكن حذف خزينة الإدارة المركزية.')

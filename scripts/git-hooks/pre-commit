@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# يرفض أي commit يُدخل مصطلحاً محظوراً (راجع scripts/check_forbidden_terms.py).
+exec python3 "$(git rev-parse --show-toplevel)/scripts/check_forbidden_terms.py" --staged

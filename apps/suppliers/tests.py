@@ -31,10 +31,10 @@ class SupplierPaymentTests(TestCase):
         )
         self.factory = RequestFactory()
 
-    def test_supplier_payment_list_shows_cash_payment(self):
+    def test_supplier_payment_list_shows_ledger_amount(self):
         supplier = Supplier.objects.create(
             tenant=self.tenant,
-            name='Supplier',
+            name='Test Supplier',
             opening_balance=Decimal('0.00'),
         )
         SupplierLedger.objects.create(
@@ -63,13 +63,13 @@ class SupplierPaymentTests(TestCase):
     def test_supplier_cash_payment_cancel_restores_treasury(self):
         supplier = Supplier.objects.create(
             tenant=self.tenant,
-            name='Supplier',
+            name='Test Supplier',
             opening_balance=Decimal('0.00'),
         )
         treasury = Treasury.objects.create(
             tenant=self.tenant,
-            name='Cash Treasury',
-            code='CASH-1',
+            name='Main Treasury',
+            code='T-1',
             is_active=True,
             current_balance=Decimal('1000.00'),
         )

@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -6,12 +7,14 @@
 <title>بوابة المندوب — تسجيل الدخول</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<!-- Unified brand color variables (--primary/--secondary/etc.) -->
+<link rel="stylesheet" href="{% static 'css/main.css' %}?v=8.3">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   font-family: 'Cairo', sans-serif;
   min-height: 100vh;
-  background: #0d0b22;
+  background: #06141a;
   display: flex; align-items: center; justify-content: center;
   overflow: hidden; position: relative;
 }
@@ -19,16 +22,16 @@ body {
 /* ─── Animated background ─── */
 .bg-scene {
   position: fixed; inset: 0; pointer-events: none; z-index: 0;
-  background: linear-gradient(135deg, #0d0b22 0%, #1a1745 40%, #0d0b22 100%);
+  background: linear-gradient(135deg, #06141a 0%, #1f1712 40%, #06141a 100%);
 }
 
 .orb {
   position: absolute; border-radius: 50%;
   filter: blur(60px); opacity: .55; animation: float 8s ease-in-out infinite;
 }
-.orb-1 { width: 400px; height: 400px; top: -100px; right: -100px; background: radial-gradient(circle, #073e3a, #312e81); animation-delay: 0s; }
-.orb-2 { width: 320px; height: 320px; bottom: -80px; left: -80px; background: radial-gradient(circle, #7c3aed, #4c1d95); animation-delay: -3s; }
-.orb-3 { width: 220px; height: 220px; top: 40%; left: 30%; background: radial-gradient(circle, #0e6b64, #4a6e8c); animation-delay: -6s; opacity: .3; }
+.orb-1 { width: 400px; height: 400px; top: -100px; right: -100px; background: radial-gradient(circle, var(--primary), #1f1712); animation-delay: 0s; }
+.orb-2 { width: 320px; height: 320px; bottom: -80px; left: -80px; background: radial-gradient(circle, var(--secondary), var(--primary)); animation-delay: -3s; }
+.orb-3 { width: 220px; height: 220px; top: 40%; left: 30%; background: radial-gradient(circle, var(--primary), var(--primary)); animation-delay: -6s; opacity: .3; }
 
 @keyframes float {
   0%, 100% { transform: translate(0, 0) scale(1); }
@@ -40,8 +43,8 @@ body {
 .bg-grid {
   position: fixed; inset: 0; pointer-events: none; z-index: 0;
   background-image:
-    linear-gradient(rgba(19,37,57,.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(19,37,57,.08) 1px, transparent 1px);
+    linear-gradient(rgba(var(--primary-rgb),.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--primary-rgb),.08) 1px, transparent 1px);
   background-size: 60px 60px;
 }
 
@@ -68,17 +71,17 @@ body {
 .login-logo-wrap { text-align: center; margin-bottom: 2rem; }
 .login-logo-ring {
   width: 70px; height: 70px; border-radius: 20px; margin: 0 auto 1rem;
-  background: linear-gradient(135deg, #0e6b64, #e8a33d);
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
   display: flex; align-items: center; justify-content: center;
   font-size: 1.85rem; color: #fff;
-  box-shadow: 0 8px 28px rgba(19,37,57,.45);
+  box-shadow: 0 8px 28px rgba(var(--primary-rgb),.45);
   position: relative;
 }
 .login-logo-ring::after {
   content: '';
   position: absolute; inset: -4px;
   border-radius: 24px;
-  border: 1.5px solid rgba(19,37,57,.25);
+  border: 1.5px solid rgba(var(--primary-rgb),.25);
 }
 
 .login-title { font-size: 1.35rem; font-weight: 800; color: #1e293b; margin-bottom: .2rem; }
@@ -87,7 +90,7 @@ body {
 /* Tenant badge */
 .login-tenant {
   display: inline-flex; align-items: center; gap: .35rem;
-  background: #e4f2f0; color: #073e3a; border-radius: 100px;
+  background: rgba(var(--primary-rgb),.08); color: var(--primary-hover); border-radius: 100px;
   font-size: .75rem; font-weight: 700; padding: .22rem .7rem;
   margin-top: .5rem;
 }
@@ -115,26 +118,26 @@ body {
   transition: color .18s; background: none; border: none; padding: 0;
 }
 .input-field {
-  width: 100%; border: 1.5px solid #e0dcff; border-radius: 11px;
+  width: 100%; border: 1.5px solid rgba(var(--primary-rgb),.15); border-radius: 11px;
   padding: .68rem 2.5rem .68rem 1rem; font-size: .9rem;
   font-family: 'Cairo', sans-serif; color: #1e293b;
   background: #fff; outline: none;
   transition: border-color .18s, box-shadow .18s;
 }
 .input-field:focus {
-  border-color: #0e6b64;
-  box-shadow: 0 0 0 3.5px rgba(19,37,57,.12);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3.5px rgba(var(--primary-rgb),.12);
 }
-.input-field:focus ~ .input-icon { color: #0e6b64; }
+.input-field:focus ~ .input-icon { color: var(--primary); }
 
 /* Submit button */
 .login-btn {
   width: 100%; padding: .8rem;
-  background: linear-gradient(135deg, #0e6b64, #e8a33d);
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
   color: #fff; font-size: .95rem; font-weight: 800;
   border: none; border-radius: 11px; cursor: pointer;
   font-family: 'Cairo', sans-serif;
-  box-shadow: 0 6px 20px rgba(19,37,57,.4);
+  box-shadow: 0 6px 20px rgba(var(--primary-rgb),.4);
   transition: all .2s; position: relative; overflow: hidden;
   display: flex; align-items: center; justify-content: center; gap: .5rem;
 }
@@ -144,7 +147,7 @@ body {
   background: linear-gradient(135deg, rgba(255,255,255,.1), transparent);
   opacity: 0; transition: opacity .2s;
 }
-.login-btn:hover { box-shadow: 0 8px 28px rgba(19,37,57,.55); transform: translateY(-1px); }
+.login-btn:hover { box-shadow: 0 8px 28px rgba(var(--primary-rgb),.55); transform: translateY(-1px); }
 .login-btn:hover::before { opacity: 1; }
 .login-btn:active { transform: translateY(0); }
 

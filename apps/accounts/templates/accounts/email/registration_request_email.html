@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>طلب إنشاء حساب جديد - Banan</title>
+    <title>طلب إنشاء حساب جديد - {{ app_name }}</title>
     <style>
         body {
             font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
@@ -37,7 +37,7 @@
         }
 
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #4d7c0f 0%, #e6731f 100%);
             padding: 36px 30px;
             text-align: center;
         }
@@ -87,7 +87,7 @@
 
         .data-table td:first-child {
             font-weight: 700;
-            color: #667eea;
+            color: #4d7c0f;
             width: 42%;
             white-space: nowrap;
         }
@@ -116,7 +116,7 @@
         }
 
         .cta-button--secondary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #4d7c0f 0%, #e6731f 100%);
         }
 
         .footer {
@@ -143,7 +143,7 @@
     <div class="email-wrapper" dir="rtl">
         <div class="email-container" dir="rtl">
             <div class="header">
-                <div class="logo">Banan</div>
+                <div class="logo">{{ app_name }}</div>
                 <p class="subtitle">طلب إنشاء حساب جديد — التسجيل الذاتي متوقف مؤقتاً</p>
             </div>
 
@@ -156,10 +156,6 @@
                     <tr>
                         <td>البريد الإلكتروني الشخصي</td>
                         <td dir="ltr" style="text-align:right;">{{ personal_email }}</td>
-                    </tr>
-                    <tr>
-                        <td>نوع النشاط التجاري</td>
-                        <td>{{ business_type }}</td>
                     </tr>
                     <tr>
                         <td>اسم النشاط التجاري</td>
@@ -185,8 +181,8 @@
             </div>
 
             <div class="footer">
-                <p>هذا البريد الإلكتروني مرسل تلقائياً من نموذج التسجيل في Banan</p>
-                <p>&copy; {{ now|date:"Y" }} Banan - جميع الحقوق محفوظة</p>
+                <p>هذا البريد الإلكتروني مرسل تلقائياً من نموذج التسجيل في {{ app_name }}</p>
+                <p>&copy; {{ now|date:"Y" }} {{ app_name }} - جميع الحقوق محفوظة</p>
             </div>
         </div>
     </div>

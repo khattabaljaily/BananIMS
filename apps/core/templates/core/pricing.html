@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}خطط الأسعار | بنان{% endblock %}
+{% block title %}خطط الأسعار | {{ app_name }}{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/pricing.css' %}?v=4.0">
+<link rel="stylesheet" href="{% static 'css/pricing.css' %}?v=3.3">
 {% endblock %}
 
 {% block body %}
@@ -13,8 +13,11 @@
     <!-- ─── Top Bar ──────────────────────────────────────────────── -->
     <nav class="pr-topbar">
         <a href="/" class="pr-topbar__brand">
-            <img src="{% static 'img/logo/logo-color.png' %}" alt="بنان" height="30">
-            <span>بنان</span>
+            <span class="brand-mark brand-mark--on-light">
+                <img src="{% static 'logo/logo-dark.png' %}" alt="" class="brand-mark__icon brand-mark__icon--dark">
+                <img src="{% static 'logo/logo-light.png' %}" alt="" class="brand-mark__icon brand-mark__icon--light">
+                <span class="brand-wordmark">{{ app_name }}</span>
+            </span>
         </a>
         <div class="pr-topbar__links">
             <a href="{% url 'core:about' %}" class="pr-topbar__link">عن النظام</a>
@@ -35,11 +38,11 @@
                     {{ trial_days }} أيام تجربة مجانية — بدون دفع مسبق!
                 </span>
                 <h1 class="pr-hero__title">
-                    خطط مصممة لأعمال<br>
-                    <span class="pr-hero__accent">التجزئة والمخازن</span>
+                    خطط مصممة<br>
+                    <span class="pr-hero__accent">لنشاطك</span>
                 </h1>
                 <p class="pr-hero__desc">
-                    سواء كنت متجراً صغيراً أو مؤسسة بفروع متعددة — نجد لك الخطة المثالية.<br>
+                    سواء كنت محلاً واحداً أو سلسلة فروع أو شركة توزيع بالجملة — نجد لك الخطة المثالية.<br>
                     إدارة مخزون، فواتير، ومبيعات في مكان واحد.
                 </p>
                 <div class="pr-hero__cta">
@@ -59,6 +62,9 @@
                 </div>
             </div>
         </div>
+        <svg class="pr-hero__wave" viewBox="0 0 1440 60" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M0,32 C240,60 480,4 720,20 C960,36 1200,58 1440,26 L1440,60 L0,60 Z"></path>
+        </svg>
     </section>
 
     <!-- ─── Current Plan Banner ──────────────────────────────────── -->
@@ -78,7 +84,14 @@
             <div class="pr-section-head">
                 <span class="pr-section-kicker">خطط الأسعار</span>
                 <h2 class="pr-section-title">اختر ما يناسب نشاطك</h2>
-                <p class="pr-section-sub">كل خطة تشمل نظام مخزون كامل، فواتير مبيعات وشراء، وتقارير تفصيلية.</p>
+            </div>
+
+            <div class="pr-basics">
+                <span class="pr-basics__label">متاح في كل الباقات:</span>
+                <span class="pr-basics__item"><i class="fas fa-check"></i>نظام مخزون كامل</span>
+                <span class="pr-basics__item"><i class="fas fa-check"></i>فواتير مبيعات وشراء</span>
+                <span class="pr-basics__item"><i class="fas fa-check"></i>تقارير تفصيلية</span>
+                <span class="pr-basics__item"><i class="fas fa-check"></i>تجربة مجانية {{ trial_days }} أيام</span>
             </div>
 
             <div class="pr-cards">
@@ -104,9 +117,14 @@
                         <span class="pr-card__price-num">{{ plan.monthly }}</span>
                         <span class="pr-card__price-period">/شهر</span>
                     </div>
+                    {% if plan.per_branch %}
+                    <div class="pr-card__per-branch">+ <bdi>{{ plan.per_branch.monthly }}</bdi> شهرياً لكل فرع</div>
+                    <a href="#enterpriseCalc" class="pr-card__price-alt pr-card__calc-link">احسب اشتراك مؤسستك <i class="fas fa-arrow-down"></i></a>
+                    {% else %}
                     <div class="pr-card__price-alt">
-                        {{ plan.annual }} سنوياً &nbsp;·&nbsp; {{ plan.perpetual }} ترخيص دائم
+                        <bdi>{{ plan.annual }}</bdi> سنوياً &nbsp;·&nbsp; <bdi>{{ plan.perpetual }}</bdi> ترخيص دائم
                     </div>
+                    {% endif %}
 
                     <ul class="pr-card__features">
                         {% for f in plan.features %}
@@ -124,6 +142,36 @@
                 </div>
                 {% endfor %}
             </div>
+
+            {% if enterprise_pricing %}
+            <div class="pr-calc-band" id="enterpriseCalc">
+                <div class="pr-calc-band__info">
+                    <span class="pr-section-kicker">باقة المؤسسات</span>
+                    <h3 class="pr-calc-band__title">احسب اشتراك مؤسستك</h3>
+                    <p class="pr-calc-band__desc">
+                        رسوم أساسية <bdi>${{ enterprise_pricing.base }}</bdi> شهرياً للإدارة والمخزن المركزي،
+                        و<bdi>${{ enterprise_pricing.per_branch }}</bdi> شهرياً لكل فرع.
+                        <br>الترخيص الدائم: <bdi>{{ enterprise_pricing.perpetual_base_label }}</bdi> رسوماً أساسية، و<bdi>{{ enterprise_pricing.perpetual_per_branch_label }}</bdi> لكل فرع.
+                    </p>
+                    <ul class="pr-calc-band__list">
+                        <li><i class="fas fa-check"></i>مخزن مركزي ومشتريات مركزية</li>
+                        <li><i class="fas fa-check"></i>تحويلات بين الفروع باعتماد الاستلام</li>
+                        <li><i class="fas fa-check"></i>لوحة تحكم موحدة لكل الفروع</li>
+                    </ul>
+                </div>
+                <div class="pr-calc">
+                    <label class="pr-calc__label" for="branchCount">عدد الفروع</label>
+                    <div class="pr-calc__stepper">
+                        <button type="button" class="pr-calc__btn" data-step="-1" aria-label="فرع أقل">−</button>
+                        <input type="text" inputmode="numeric" id="branchCount" class="pr-calc__input" value="3" maxlength="3">
+                        <button type="button" class="pr-calc__btn" data-step="1" aria-label="فرع أكثر">+</button>
+                    </div>
+                    <div class="pr-calc__total"><strong><bdi id="calcMonthly"></bdi></strong> شهرياً</div>
+                    <div class="pr-calc__alt"><bdi id="calcAnnual"></bdi> سنوياً</div>
+                    <div class="pr-calc__alt"><bdi id="calcPerpetual"></bdi> ترخيص دائم</div>
+                </div>
+            </div>
+            {% endif %}
         </div>
     </section>
 
@@ -131,17 +179,17 @@
     <section class="pr-features">
         <div class="pr-container">
             <div class="pr-section-head">
-                <span class="pr-section-kicker">لماذا بنان؟</span>
+                <span class="pr-section-kicker">لماذا {{ app_name }}؟</span>
                 <h2 class="pr-section-title">ميزات النظام الشاملة</h2>
-                <p class="pr-section-sub">كل ما تحتاجه لإدارة نشاطك التجاري من مكان واحد.</p>
+                <p class="pr-section-sub">كل ما تحتاجه لإدارة نشاطك من مكان واحد.</p>
             </div>
             <div class="pr-benefits">
                 <div class="pr-benefit">
                     <div class="pr-benefit__icon pr-benefit__icon--indigo">
                         <i class="fas fa-chart-line"></i>
                     </div>
-                    <h4 class="pr-benefit__title">تقارير فورية</h4>
-                    <p class="pr-benefit__desc">لوحات تحكم ومؤشرات أداء لتتبع المبيعات والمشتريات بسهولة.</p>
+                    <h4 class="pr-benefit__title">تقارير فورية ودعم فني مستمر</h4>
+                    <p class="pr-benefit__desc">لوحات تحكم ومؤشرات أداء لتتبع المبيعات والمشتريات، مع تحديثات وصيانة ودعم فني جاهز لتشغيل سلس دون انقطاع.</p>
                 </div>
                 <div class="pr-benefit">
                     <div class="pr-benefit__icon pr-benefit__icon--violet">
@@ -158,15 +206,8 @@
                     <p class="pr-benefit__desc">حدد من يصل لأي جزء من النظام بسهولة تامة.</p>
                 </div>
                 <div class="pr-benefit">
-                    <div class="pr-benefit__icon pr-benefit__icon--green">
-                        <i class="fas fa-headset"></i>
-                    </div>
-                    <h4 class="pr-benefit__title">دعم فني مستمر</h4>
-                    <p class="pr-benefit__desc">تحديثات وصيانة جاهزة لتشغيل سلس دون انقطاع.</p>
-                </div>
-                <div class="pr-benefit">
                     <div class="pr-benefit__icon pr-benefit__icon--orange">
-                        <i class="fas fa-file-invoice-dollar"></i>
+                        <i class="fas fa-file-invoice"></i>
                     </div>
                     <h4 class="pr-benefit__title">فواتير احترافية</h4>
                     <p class="pr-benefit__desc">إنشاء فواتير PDF احترافية وإرسالها مباشرة لعملائك بضغطة واحدة.</p>
@@ -177,6 +218,13 @@
                     </div>
                     <h4 class="pr-benefit__title">إدارة المخزون</h4>
                     <p class="pr-benefit__desc">تتبع الكميات وتنبيهات المخزون المنخفض ومراقبة الحركة.</p>
+                </div>
+                <div class="pr-benefit">
+                    <div class="pr-benefit__icon pr-benefit__icon--green">
+                        <i class="fas fa-file-import"></i>
+                    </div>
+                    <h4 class="pr-benefit__title">استيراد المنتجات دفعة واحدة</h4>
+                    <p class="pr-benefit__desc">أدخل آلاف المنتجات من ملف Excel بدل الإدخال اليدوي، مع مطابقة ذكية لأعمدة الملف واكتشاف المنتجات المكررة — متاح في كل الباقات.</p>
                 </div>
                 <div class="pr-benefit">
                     <div class="pr-benefit__icon pr-benefit__icon--orange">
@@ -211,7 +259,7 @@
                 <div class="pr-cta__orb pr-cta__orb--2"></div>
                 <div class="pr-cta__content">
                     <h2 class="pr-cta__title">جاهز للبدء؟</h2>
-                    <p class="pr-cta__desc">جرّب بنان مجاناً لمدة {{ trial_days }} أيام — بدون أي التزام.</p>
+                    <p class="pr-cta__desc">جرّب {{ app_name }} مجاناً لمدة {{ trial_days }} أيام — بدون أي التزام.</p>
                     <a href="{% url 'accounts:register_step1' %}" class="pr-btn pr-btn--white pr-btn--lg">
                         <i class="fas fa-rocket"></i>
                         ابدأ الآن مجاناً
@@ -225,7 +273,7 @@
     <footer class="pr-footer">
         <div class="pr-container">
             <div class="pr-footer__inner">
-                <span class="pr-footer__copy">بنان &copy; 2026 — نظام إدارة المخزون</span>
+                <span class="pr-footer__copy">{{ app_name }} &copy; 2026 — نظام إدارة المخزون</span>
                 <div class="pr-footer__links">
                     <a href="{% url 'core:about' %}">عن النظام</a>
                     <a href="{% url 'accounts:login' %}">تسجيل الدخول</a>
@@ -236,4 +284,28 @@
     </footer>
 
 </div>
+{{ enterprise_pricing|json_script:"enterprisePricing" }}
+<script>
+(function () {
+    const cfg = JSON.parse(document.getElementById('enterprisePricing').textContent);
+    const input = document.getElementById('branchCount');
+    if (!input) return;
+    const fmt = n => '$' + n.toLocaleString('en-US');
+    function update() {
+        let n = parseInt(input.value.replace(/[^0-9]/g, ''), 10);
+        if (!Number.isFinite(n) || n < 1) n = 1;
+        if (n > 999) n = 999;
+        const monthly = cfg.base + cfg.per_branch * n;
+        document.getElementById('calcMonthly').textContent = fmt(monthly);
+        document.getElementById('calcAnnual').textContent = fmt(monthly * cfg.annual_months);
+        document.getElementById('calcPerpetual').textContent = fmt(cfg.perpetual_base + cfg.perpetual_per_branch * n);
+    }
+    document.querySelectorAll('.pr-calc .pr-calc__btn').forEach(btn => btn.addEventListener('click', () => {
+        input.value = Math.max(1, (parseInt(input.value, 10) || 1) + parseInt(btn.dataset.step, 10));
+        update();
+    }));
+    input.addEventListener('input', update);
+    update();
+})();
+</script>
 {% endblock %}

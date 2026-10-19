@@ -3,7 +3,7 @@
   --ct-bg: #f8fafc;
   --ct-card: #ffffff;
   --ct-foreground: #0f172a;
-  --ct-accent: #0ea5e9;
+  --ct-accent: #0e6b64;
   --ct-muted: #6b7280;
   --ct-radius: 12px;
   --ct-gap: 14px;
@@ -14,11 +14,11 @@
 .ct-item{position:relative; margin:8px 0}
 .ct-row{display:flex; align-items:center; gap:12px; padding:12px; border-radius:10px; cursor:pointer; user-select:none; background:var(--ct-card); box-shadow:0 1px 0 rgba(15,23,42,0.04); transition:transform .12s ease, box-shadow .12s ease}
 .ct-row:hover{transform:translateY(-2px); box-shadow:0 10px 30px rgba(2,6,23,0.06)}
-.ct-row:focus{outline:2px solid rgba(14,165,233,.14); outline-offset:4px}
+.ct-row:focus{outline:2px solid rgba(14,107,100,.14); outline-offset:4px}
 .ct-label{flex:1; font-size:15px; font-weight:600}
 .ct-meta{font-size:13px; color:var(--ct-muted)}
-.ct-toggle{width:44px; height:44px; display:inline-grid; place-items:center; border-radius:9px; color:var(--ct-accent); background:rgba(14,165,233,0.06); border:1px solid rgba(14,165,233,0.06); transition:background .12s ease, transform .12s ease}
-.ct-toggle:hover{background:rgba(14,165,233,0.11)}
+.ct-toggle{width:44px; height:44px; display:inline-grid; place-items:center; border-radius:9px; color:var(--ct-accent); background:rgba(14,107,100,0.06); border:1px solid rgba(14,107,100,0.06); transition:background .12s ease, transform .12s ease}
+.ct-toggle:hover{background:rgba(14,107,100,0.11)}
 .ct-toggle-icon{display:inline-block; transition:transform .18s ease}
 .ct-children{list-style:none; margin:10px 0 10px 56px; padding:8px 0 0 8px; max-height:0; overflow:hidden; opacity:0; transition:max-height .28s cubic-bezier(.2,.9,.2,1), opacity .22s ease}
 .ct-children.expanded{max-height:1600px; opacity:1}

@@ -1,5 +1,5 @@
 /* ============================================================
-   BananIMS — Store Cart  v3.0
+   BANAN — Store Cart  v3.0
    ============================================================ */
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap');
 
@@ -55,7 +55,7 @@ body {
   border-radius: 8px;
   transition: color .15s, background .15s;
 }
-.sc-back:hover { color: var(--brand); background: #eaf3f1; }
+.sc-back:hover { color: var(--brand); background: #f1f5f9; }
 .sc-header__title {
   font-size: .95rem;
   font-weight: 800;
@@ -171,6 +171,22 @@ body {
   color: var(--sc-t900);
 }
 
+.sc-qty__input {
+  width: 56px;
+  height: 30px;
+  text-align: center;
+  font-weight: 800;
+  font-size: .9rem;
+  color: var(--sc-t900);
+  border: 1.5px solid var(--sc-border);
+  border-radius: 8px;
+  background: var(--sc-surface);
+  -moz-appearance: textfield;
+}
+.sc-qty__input::-webkit-outer-spin-button,
+.sc-qty__input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.sc-qty__input:focus { outline: none; border-color: var(--brand); }
+
 .sc-item__total {
   font-size: .95rem;
   font-weight: 800;
@@ -193,7 +209,7 @@ body {
   transition: color .15s, background .15s;
   flex-shrink: 0;
 }
-.sc-remove:hover { color: #e5484d; background: #fee2e2; }
+.sc-remove:hover { color: #ef4444; background: #fee2e2; }
 
 /* ── Summary bar ──────────────────────────────────────────── */
 .sc-summary {
@@ -280,3 +296,8 @@ body {
   .sc-item__total { min-width: 75px; font-size: .88rem; }
   .sc-qty__btn { width: 28px; height: 28px; }
 }
+
+/* v4 — brand accent + softer cards (matches storefront) */
+.sc-header { border-top: 3px solid var(--brand); }
+.sc-card { border-radius: 20px; box-shadow: 0 10px 30px -18px rgba(15,23,42,.3); }
+.sc-page-title { font-weight: 900; }

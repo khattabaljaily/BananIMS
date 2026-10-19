@@ -16,7 +16,7 @@
 <!-- ── Header ─────────────────────────────────────────── -->
 <header class="sf-header">
   <div class="sf-header__inner">
-    <a href="{% url 'store:storefront' slug=store.slug %}" class="sf-brand">
+    <a href="{% url 'store:storefront' slug=store.slug %}{% if branch %}?branch={{ branch.id }}{% endif %}" class="sf-brand">
       {% if store.cover_image %}
       <img src="{{ store.cover_image.url }}" alt="{{ store.display_name }}" class="sf-brand__img">
       {% endif %}
@@ -24,7 +24,7 @@
     </a>
     <div class="sf-header__actions">
       {% if store.show_price_list %}
-      <a href="{% url 'store:price_list' slug=store.slug %}" class="sf-pricelist-btn">
+      <a href="{% url 'store:price_list' slug=store.slug %}{% if branch %}?branch={{ branch.id }}{% endif %}" class="sf-pricelist-btn">
         <i class="fas fa-tags"></i><span>قائمة الأسعار</span>
       </a>
       {% endif %}
@@ -50,18 +50,21 @@
         <span class="sf-status__sub"><i class="fas fa-clock"></i> {{ status.today_hours }}</span>
       {% endif %}
     </div>
+    {% include 'store/partials/branch_bar.html' with variant='sf-branch-wrap--hero' %}
   </div>
 </div>
+{% else %}
+{% include 'store/partials/branch_bar.html' %}
 {% endif %}
-
 <!-- ── Search ─────────────────────────────────────────── -->
-<div class="sf-search-wrap">
+<div class="sf-search-wrap{% if not search %} sf-search-wrap--float{% endif %}">
   <form class="sf-search" method="get" role="search">
+    {% if branch %}<input type="hidden" name="branch" value="{{ branch.id }}">{% endif %}
     <i class="fas fa-search sf-search__icon"></i>
     <input class="sf-search__input" type="search" name="q"
            value="{{ search }}" placeholder="ابحث في المنتجات..." autocomplete="off">
     {% if search %}
-    <a href="{% url 'store:storefront' slug=store.slug %}" class="sf-search__clear" title="مسح البحث">
+    <a href="{% url 'store:storefront' slug=store.slug %}{% if branch %}?branch={{ branch.id }}{% endif %}" class="sf-search__clear" title="مسح البحث">
       <i class="fas fa-times"></i>
     </a>
     {% endif %}
@@ -72,12 +75,12 @@
 {% if categories %}
 <div class="sf-cats">
   <div class="sf-cats__scroll">
-    <a href="{% url 'store:storefront' slug=store.slug %}"
+    <a href="{% url 'store:storefront' slug=store.slug %}{% if branch %}?branch={{ branch.id }}{% endif %}"
        class="sf-cat {% if not category_id %}sf-cat--active{% endif %}">
       <i class="fas fa-border-all"></i> الكل
     </a>
     {% for cat in categories %}
-    <a href="?cat={{ cat.id }}"
+    <a href="?cat={{ cat.id }}{% if branch %}&branch={{ branch.id }}{% endif %}"
        class="sf-cat {% if category_id == cat.id|stringformat:'s' %}sf-cat--active{% endif %}">
       {{ cat.name }}
     </a>
@@ -105,6 +108,8 @@
           {% with qty=stock_qty_map|get_qty:item.id %}
           {% if not qty or qty <= 0 %}
           <span class="sf-badge sf-badge--out">نافد</span>
+          {% elif qty <= 5 %}
+          <span class="sf-badge sf-badge--low">آخر {{ qty|floatformat:0 }} قطع</span>
           {% endif %}
           {% endwith %}
         {% endif %}
@@ -114,28 +119,29 @@
         {% if item.category %}<p class="sf-card__cat">{{ item.category.name }}</p>{% endif %}
         <h3 class="sf-card__name">{{ item.name }}</h3>
 
-        <div class="sf-card__meta">
-          {% if store.show_prices %}
-          <div class="sf-card__price">
-            {{ item.selling_price|format_price }}
-            <span class="sf-card__cur">{{ store.tenant.currency|currency_ar }}</span>
-          </div>
-          {% endif %}
-          {% if store.show_stock_quantity %}
-          {% with qty=stock_qty_map|get_qty:item.id %}
-          {% if qty and qty > 0 %}
-          <span class="sf-badge sf-badge--in">{{ qty|floatformat:0 }} متوفر</span>
-          {% endif %}
-          {% endwith %}
-          {% endif %}
+        {% if store.show_prices %}
+        <div class="sf-card__price">
+          {{ item.selling_price|format_price }}
+          <span class="sf-card__cur">{{ store.tenant.currency|currency_ar }}</span>
         </div>
+        {% endif %}
+        {% if store.show_stock_quantity %}
+          {% with qty=stock_qty_map|get_qty:item.id %}
+          {% if qty and qty > 0 %}<span class="sf-stock"><i class="fas fa-circle-check"></i> متوفر ({{ qty|floatformat:0 }})</span>{% endif %}
+          {% endwith %}
+        {% endif %}
 
         <form method="post" action="{% url 'store:cart_add' slug=store.slug %}" class="add-to-cart-form">
           {% csrf_token %}
           <input type="hidden" name="item_id" value="{{ item.id }}">
-          <input type="hidden" name="qty" value="1">
+          <div class="sf-stepper">
+            <button type="button" class="sf-stepper__btn" data-step="1" aria-label="زيادة الكمية"><i class="fas fa-plus"></i></button>
+            <input type="number" name="qty" class="sf-qty-input" value="1" min="1" step="1"
+                   inputmode="numeric" aria-label="الكمية">
+            <button type="button" class="sf-stepper__btn" data-step="-1" aria-label="إنقاص الكمية"><i class="fas fa-minus"></i></button>
+          </div>
           <button type="submit" class="sf-add-btn">
-            <i class="fas fa-cart-plus"></i> أضف للسلة
+            <i class="fas fa-cart-plus"></i> <span>أضف</span>
           </button>
         </form>
       </div>
@@ -149,7 +155,7 @@
         {% else %}لا توجد منتجات متاحة حالياً.{% endif %}
       </p>
       {% if search %}
-      <a href="{% url 'store:storefront' slug=store.slug %}" class="sf-empty__link">
+      <a href="{% url 'store:storefront' slug=store.slug %}{% if branch %}?branch={{ branch.id }}{% endif %}" class="sf-empty__link">
         <i class="fas fa-arrow-right"></i> عرض كل المنتجات
       </a>
       {% endif %}
@@ -170,6 +176,13 @@
   </div>
 </footer>
 
+<!-- ── Mobile cart bar ────────────────────────────────── -->
+<a href="{% url 'store:cart' slug=store.slug %}" class="sf-cartbar{% if cart_count > 0 %} show{% endif %}" id="sfCartBar">
+  <span class="sf-cartbar__count" id="sfCartBarCount">{{ cart_count }}</span>
+  <span class="sf-cartbar__label">عرض السلة وإتمام الطلب</span>
+  <i class="fas fa-arrow-left"></i>
+</a>
+
 <!-- ── Toast ──────────────────────────────────────────── -->
 <div class="sf-toast" id="sfToast">
   <i class="fas fa-check-circle"></i> تمت الإضافة للسلة
@@ -177,6 +190,15 @@
 
 <script>
 (function () {
+  document.querySelectorAll('.sf-stepper').forEach(function (box) {
+    var input = box.querySelector('.sf-qty-input');
+    box.querySelectorAll('.sf-stepper__btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var v = (parseInt(input.value, 10) || 1) + parseInt(btn.dataset.step, 10);
+        input.value = Math.max(1, v);
+      });
+    });
+  });
   document.querySelectorAll('.add-to-cart-form').forEach(function (form) {
     form.addEventListener('submit', function (e) {
       e.preventDefault();
@@ -191,7 +213,7 @@
       }).then(function (res) {
         var toast = document.getElementById('sfToast');
         if (!res.ok) {
-          toast.innerHTML = '<i class="fas fa-lock"></i> ' + (res.data.error || 'المتجر مغلق');
+          toast.innerHTML = '<i class="fas fa-circle-exclamation"></i> ' + (res.data.error || 'تعذرت الإضافة للسلة');
           toast.classList.add('show', 'sf-toast--error');
           setTimeout(function () { toast.classList.remove('show', 'sf-toast--error'); }, 2500);
           return;
@@ -207,6 +229,11 @@
             b.textContent = d.cart_count;
             document.querySelector('.sf-cart').appendChild(b);
           }
+        }
+        var bar = document.getElementById('sfCartBar');
+        if (bar && d.cart_count > 0) {
+          document.getElementById('sfCartBarCount').textContent = d.cart_count;
+          bar.classList.add('show');
         }
         toast.innerHTML = '<i class="fas fa-check-circle"></i> تمت الإضافة للسلة';
         toast.classList.remove('sf-toast--error');

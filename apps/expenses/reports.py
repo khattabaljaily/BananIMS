@@ -3,6 +3,7 @@
 ================
 """
 
+from apps.core.utils import BranchLabelMixin
 from datetime import timedelta
 from decimal import Decimal
 from django.db.models import Sum
@@ -20,17 +21,25 @@ def format_number(value, decimals=2):
         return str(value)
 
 
-class ExpensesReportGenerator:
+class ExpensesReportGenerator(BranchLabelMixin):
 
-    def __init__(self, tenant, start_date=None, end_date=None):
+    def __init__(self, tenant, start_date=None, end_date=None, branch=None, head_office=False):
         self.tenant = tenant
+        self.branch = branch
+        # مصروفات الإدارة المركزية فقط (بلا فرع، تُسدَّد من خزائنها وحساباتها البنكية).
+        self.head_office = head_office
         self.start_date = start_date or (timezone.localdate() - timedelta(days=30))
         self.end_date = end_date or timezone.localdate()
 
+    def _expenses(self):
+        """قاعدة كل التقارير: مصروفات الإدارة المركزية، أو نطاق الفرع/إجمالي المؤسسة المعتاد."""
+        if self.head_office:
+            return Expense.unscoped.filter(tenant=self.tenant, branch__isnull=True)
+        return Expense.objects.for_tenant(self.tenant).for_branch(self.branch, strict=True)
+
     def get_summary_report(self):
         """ملخص المصروفات بالفترة"""
-        expenses = Expense.objects.filter(
-            tenant=self.tenant,
+        expenses = self._expenses().filter(
             status='confirmed',
             expense_date__gte=self.start_date,
             expense_date__lte=self.end_date,
@@ -57,16 +66,14 @@ class ExpensesReportGenerator:
         categories = ExpenseCategory.objects.filter(tenant=self.tenant).order_by('name')
         data = []
         for cat in categories:
-            agg = Expense.objects.filter(
-                tenant=self.tenant,
+            agg = self._expenses().filter(
                 category=cat,
                 status='confirmed',
                 expense_date__gte=self.start_date,
                 expense_date__lte=self.end_date,
             ).aggregate(total=Sum('amount'), count=Sum('id'))
 
-            count = Expense.objects.filter(
-                tenant=self.tenant,
+            count = self._expenses().filter(
                 category=cat,
                 status='confirmed',
                 expense_date__gte=self.start_date,
@@ -83,8 +90,7 @@ class ExpensesReportGenerator:
                 })
 
         # Uncategorized
-        uncat = Expense.objects.filter(
-            tenant=self.tenant,
+        uncat = self._expenses().filter(
             category=None,
             status='confirmed',
             expense_date__gte=self.start_date,
@@ -110,8 +116,7 @@ class ExpensesReportGenerator:
 
     def get_by_date_report(self, group_by='day'):
         """المصروفات حسب التاريخ"""
-        expenses = Expense.objects.filter(
-            tenant=self.tenant,
+        expenses = self._expenses().filter(
             status='confirmed',
             expense_date__gte=self.start_date,
             expense_date__lte=self.end_date,
@@ -141,6 +146,7 @@ class ExpensesReportGenerator:
                 'label': b['label'],
                 'expense_count': format_number(b['count'], 0),
                 'total_amount': format_number(float(b['total']), 2),
+                'total_amount_raw': float(b['total']),
             })
 
         return {
@@ -151,12 +157,11 @@ class ExpensesReportGenerator:
 
     def get_details_report(self, category_id=None):
         """قائمة تفصيلية بالمصروفات"""
-        expenses = Expense.objects.filter(
-            tenant=self.tenant,
+        expenses = self._expenses().filter(
             status='confirmed',
             expense_date__gte=self.start_date,
             expense_date__lte=self.end_date,
-        ).select_related('category', 'treasury').order_by('-expense_date')
+        ).select_related('category', 'treasury', 'bank_account').order_by('-expense_date')
 
         if category_id:
             expenses = expenses.filter(category_id=category_id)
@@ -169,7 +174,7 @@ class ExpensesReportGenerator:
                 'description': e.description,
                 'category_name': e.category.name if e.category else '—',
                 'payment_method': e.get_payment_method_display(),
-                'treasury_name': e.treasury.name if e.treasury else '—',
+                'treasury_name': self._party(e.treasury or e.bank_account, '—'),
                 'amount': format_number(float(e.amount), 2),
                 'reference_number': e.reference_number,
             })

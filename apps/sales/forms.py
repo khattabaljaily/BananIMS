@@ -24,11 +24,8 @@ class SaleInvoiceLineForm(forms.ModelForm):
         fields = [
             'item', 'quantity', 'unit_price',
             'discount_percent', 'tax_rate',
-            'batch_number', 'serial_number', 'expiry_date',
+            'serial_number',
         ]
-        widgets = {
-            'expiry_date': forms.DateInput(attrs={'type': 'date'}),
-        }
 
 
 class SaleReturnForm(forms.ModelForm):

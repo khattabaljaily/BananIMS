@@ -10,9 +10,11 @@
                 <i class="fas fa-bars"></i>
             </button>
             <a class="navbar-brand-wrap" href="{% url 'core:dashboard' %}">
-                <img src="{% static 'img/logo/logo-dark.png' %}" alt="بنان" class="navbar-logo logo-light">
-                <img src="{% static 'img/logo/logo-white.png' %}" alt="بنان" class="navbar-logo logo-dark">
-                <span class="navbar-brand-text">بنان</span>
+                <span class="brand-mark">
+                    <img src="{% static 'logo/logo-dark.png' %}" alt="" class="brand-mark__icon brand-mark__icon--dark">
+                    <img src="{% static 'logo/logo-light.png' %}" alt="" class="brand-mark__icon brand-mark__icon--light">
+                    <span class="brand-wordmark">{{ app_name }}</span>
+                </span>
             </a>
         </div>
 
@@ -53,8 +55,8 @@
 
             <div class="navbar-sep"></div>
 
-            <!-- Tenant Info -->
-            {% if current_tenant %}
+            <!-- Tenant Info (مخفي بالكامل عن مستخدمي الفروع — كل عناصره من صلاحيات مدير النشاط) -->
+            {% if current_tenant and not request.branch %}
             <div class="dropdown">
                 <a class="navbar-menu-link dropdown-toggle" href="#" data-bs-toggle="dropdown" data-bs-display="static">
                     <i class="fas fa-store" style="font-size:0.8rem;color:var(--primary)"></i>
@@ -75,7 +77,7 @@
             <div class="dropdown">
                 <a class="navbar-menu-link dropdown-toggle" href="#" data-bs-toggle="dropdown" data-bs-display="static">
                     <span class="navbar-avatar">{{ user.get_full_name|slice:':1'|default:user.username|slice:':1'|upper }}</span>
-                    <span class="navbar-label">{{ user.get_full_name|default:user.username }}</span>
+                    <span class="navbar-label">{{ user.get_full_name|default:user.username }}{% if user.branch_id %} <small class="opacity-75">· {{ user.branch.name }}</small>{% endif %}</span>
                 </a>
                 <ul class="dropdown-menu dropdown-menu-end">
                     <li><a class="dropdown-item" href="{% url 'accounts:profile' %}">
@@ -112,10 +114,10 @@ function toggleTheme() {
     });
 }
 
-// Load saved theme on page load
+// Theme itself is already applied by the blocking script in <head>;
+// this just syncs the icon to match.
 (function() {
-    const savedTheme = localStorage.getItem('theme') || 'light';
-    document.documentElement.setAttribute('data-theme', savedTheme);
+    const savedTheme = document.documentElement.getAttribute('data-theme');
     if (savedTheme === 'dark') {
         document.querySelectorAll('.theme-icon-ref').forEach(function(icon) {
             icon.classList.replace('fa-moon', 'fa-sun');
@@ -200,8 +202,38 @@ function getCookie(name) {
     return v ? v.pop() : '';
 }
 
-// Load on dropdown open + poll every 2 minutes
+// تحديث العدّاد: عند فتح القائمة، وعند تحميل الصفحة، وكل 30 ثانية (والتبويب ظاهر)،
+// وعند رجوع المستخدم للتبويب، وفور نجاح أي عملية كتابة في الصفحة (إرسال شحنة، تأكيد فاتورة...).
 document.getElementById('notifDropdown')?.addEventListener('show.bs.dropdown', loadNotifications);
 loadNotifications();
-setInterval(loadNotifications, 120000);
+setInterval(function () { if (!document.hidden) loadNotifications(); }, 30000);
+document.addEventListener('visibilitychange', function () { if (!document.hidden) loadNotifications(); });
+
+let _notifRefreshTimer = null;
+function refreshNotificationsSoon() {
+    clearTimeout(_notifRefreshTimer);
+    _notifRefreshTimer = setTimeout(loadNotifications, 700);
+}
+function _isNotifUrl(url) { return /notif/i.test(String(url || '')); }
+
+(function () {
+    const origFetch = window.fetch;
+    if (origFetch) {
+        window.fetch = function (input, init) {
+            const method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+            const url = typeof input === 'string' ? input : (input && input.url);
+            const p = origFetch.apply(this, arguments);
+            if (method !== 'GET' && method !== 'HEAD' && !_isNotifUrl(url)) {
+                p.then(function (resp) { if (resp && resp.ok) refreshNotificationsSoon(); }).catch(function () {});
+            }
+            return p;
+        };
+    }
+    if (window.jQuery) {
+        window.jQuery(document).ajaxSuccess(function (e, xhr, settings) {
+            const type = String((settings && settings.type) || 'GET').toUpperCase();
+            if (type !== 'GET' && type !== 'HEAD' && !_isNotifUrl(settings && settings.url)) refreshNotificationsSoon();
+        });
+    }
+})();
 </script>

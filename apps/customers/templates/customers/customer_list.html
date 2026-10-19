@@ -4,7 +4,7 @@
 {% load permission_tags %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/customers.css' %}?v=2.0">
+<link rel="stylesheet" href="{% static 'css/customers.css' %}?v=1.1">
 {% endblock %}
 
 {% block page_header %}{% endblock %}
@@ -28,10 +28,6 @@
         </div>
         <div class="cx-hero-right">
             <div class="cx-hero-actions">
-                <button type="button" class="cx-btn-secondary" id="btnImportCustomers" data-require-perm="import_customers">
-                    <i class="fas fa-arrow-down"></i>
-                    <span>استيراد</span>
-                </button>
                 <button type="button" class="cx-btn-secondary" id="btnExportCustomers" data-require-perm="export_customers">
                     <i class="fas fa-arrow-up"></i>
                     <span>تصدير</span>
@@ -148,6 +144,12 @@
                                 <label class="cx-label" for="id_city">{{ form.city.label }}</label>
                                 {{ form.city }}
                             </div>
+                            {% if form.branch %}
+                            <div class="col-md-6">
+                                <label class="cx-label" for="id_branch">{{ form.branch.label }}</label>
+                                {{ form.branch }}
+                            </div>
+                            {% endif %}
                             <div class="col-12">
                                 <label class="cx-label" for="id_address">{{ form.address.label }}</label>
                                 {{ form.address }}
@@ -419,75 +421,6 @@
     </div>
 </div>
 
-<!-- ══════════════════════════ IMPORT MODAL ══════════════════════════ -->
-<div class="modal fade" id="importCustomersModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered cx-import-dialog">
-        <div class="modal-content cx-import-modal">
-            <div class="cx-import-header">
-                <div>
-                    <h5 class="cx-import-title">
-                        <i class="fas fa-upload"></i>
-                        استيراد العملاء
-                    </h5>
-                    <p class="cx-import-subtitle">قم برفع ملف Excel أو CSV يحتوي على بيانات العملاء</p>
-                </div>
-                <button type="button" class="cx-import-close" data-bs-dismiss="modal" aria-label="Close">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            
-            <div class="cx-import-body">
-                <div class="cx-upload-area" id="uploadArea">
-                    <div class="cx-upload-icon">
-                        <i class="fas fa-cloud-upload-alt"></i>
-                    </div>
-                    <h6 class="cx-upload-title">اسحب وأفلت الملق هنا</h6>
-                    <p class="cx-upload-text">أو اضغط لاختيار ملف</p>
-                    <input type="file" id="importFileInput" accept=".xlsx,.xls,.csv" hidden>
-                    <button type="button" class="cx-btn-upload" id="btnChooseFile">
-                        <i class="fas fa-folder-open me-1"></i> اختر ملف
-                    </button>
-                    <p class="cx-upload-hint">يدعم ملفات Excel و CSV</p>
-                </div>
-                
-                <div class="cx-file-selected" id="fileSelected" style="display: none;">
-                    <div class="cx-file-info">
-                        <div class="cx-file-icon">
-                            <i class="fas fa-file-excel"></i>
-                        </div>
-                        <div class="cx-file-details">
-                            <div class="cx-file-name" id="fileName"></div>
-                            <div class="cx-file-size" id="fileSize"></div>
-                        </div>
-                    </div>
-                    <button type="button" class="cx-file-remove" id="btnRemoveFile">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                
-                <div class="cx-import-instructions">
-                    <h6 class="cx-instructions-title">
-                        <i class="fas fa-info-circle"></i>
-                        تعليمات هامة
-                    </h6>
-                    <ul class="cx-instructions-list">
-                        <li>يجب أن يحتوي الملف على الأعمدة التالية: الاسم، الهاتف، البريد، المدينة</li>
-                        <li>يمكنك تحميل نموذج ملف من هنا: <a href="#" class="cx-template-link" id="btnDownloadTemplate">نموذج Excel</a></li>
-                        <li>الحد الأقصى لحجم الملف: 5 MB</li>
-                    </ul>
-                </div>
-            </div>
-
-            <div class="cx-import-footer">
-                <button type="button" class="cx-btn-ghost" data-bs-dismiss="modal">إلغاء</button>
-                <button type="button" class="cx-btn-primary" id="btnStartImport" disabled>
-                    <i class="fas fa-check me-1"></i> بدء الاستيراد
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
 {% endblock %}
 
 {% block extra_js %}
@@ -720,6 +653,7 @@
                 $('#id_email').val(d.email || '');
                 $('#id_city').val(d.city || '');
                 $('#id_address').val(d.address || '');
+                if (d.branch) { $('#id_branch').val(d.branch); }
                 $('#id_opening_balance').val(BananIMS.parseNumber(d.opening_balance) || '');
                 $('#id_credit_limit').val(BananIMS.parseNumber(d.credit_limit) || '');
                 $('#id_notes').val(d.notes || '');
@@ -833,7 +767,7 @@
         if (t === 'payment')    return { amtColor:'#11998e', badgeBg:'rgba(17,153,142,.13)', badgeColor:'#0d7a72', rowBg:'rgba(16,185,129,.07)' };
         if (t === 'return')     return { amtColor:'#0891b2', badgeBg:'rgba(8,145,178,.13)',  badgeColor:'#0369a1', rowBg:'rgba(6,182,212,.07)'  };
         if (t === 'invoice')    return { amtColor:'#dc2626', badgeBg:'rgba(239,68,68,.11)',  badgeColor:'#dc2626', rowBg:'rgba(239,68,68,.05)'  };
-        if (t === 'opening')    return { amtColor:'var(--primary)', badgeBg:'rgba(19,37,57,.13)', badgeColor:'var(--primary-hover)', rowBg:'rgba(19,37,57,.06)' };
+        if (t === 'opening')    return { amtColor:'var(--primary)', badgeBg:'rgba(var(--primary-rgb),.13)', badgeColor:'var(--primary-hover)', rowBg:'rgba(var(--primary-rgb),.06)' };
         if (t === 'adjustment') return { amtColor:'#d97706', badgeBg:'rgba(251,191,36,.18)', badgeColor:'#b45309', rowBg:'rgba(251,191,36,.06)' };
         return { amtColor:'inherit', badgeBg:'rgba(107,114,128,.1)', badgeColor:'#6b7280', rowBg:'' };
     }
@@ -997,165 +931,6 @@
         $('#portalLinkInput').val('');
         $('#generatePortalBtnLabel').text('إنشاء رابط الوصول');
         $('#generatePortalTokenBtn').prop('disabled', false);
-    });
-
-    /* ══════════════════════════ IMPORT / EXPORT ══════════════════════════ */
-    const importModalEl = document.getElementById('importCustomersModal');
-    if (importModalEl && importModalEl.parentElement !== document.body) {
-        document.body.appendChild(importModalEl);
-    }
-    const importModal = new bootstrap.Modal(importModalEl);
-    let selectedFile = null;
-
-    // Open import modal
-    $('#btnImportCustomers').on('click', function() {
-        selectedFile = null;
-        $('#importFileInput').val('');
-        $('#fileSelected').hide();
-        $('#uploadArea').show();
-        $('#btnStartImport').prop('disabled', true);
-        importModal.show();
-    });
-
-    // Choose file button
-    $('#btnChooseFile').on('click', function(e) {
-        e.stopPropagation();
-        $('#importFileInput').click();
-    });
-
-    // Upload area click
-    $('#uploadArea').on('click', function(e) {
-        if (e.target === this || $(e.target).closest('.cx-upload-icon, .cx-upload-title, .cx-upload-text, .cx-upload-hint').length) {
-            $('#importFileInput').click();
-        }
-    });
-
-    // File input change
-    $('#importFileInput').on('change', function(e) {
-        const file = e.target.files[0];
-        if (file) {
-            handleFileSelect(file);
-        }
-    });
-
-    // Drag and drop
-    const uploadArea = document.getElementById('uploadArea');
-    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-        uploadArea.addEventListener(eventName, preventDefaults, false);
-    });
-
-    function preventDefaults(e) {
-        e.preventDefault();
-        e.stopPropagation();
-    }
-
-    ['dragenter', 'dragover'].forEach(eventName => {
-        uploadArea.addEventListener(eventName, () => {
-            uploadArea.classList.add('drag-over');
-        }, false);
-    });
-
-    ['dragleave', 'drop'].forEach(eventName => {
-        uploadArea.addEventListener(eventName, () => {
-            uploadArea.classList.remove('drag-over');
-        }, false);
-    });
-
-    uploadArea.addEventListener('drop', function(e) {
-        const dt = e.dataTransfer;
-        const file = dt.files[0];
-        if (file) {
-            handleFileSelect(file);
-        }
-    }, false);
-
-    // Handle file selection
-    function handleFileSelect(file) {
-        // Validate file type
-        const validTypes = [
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'application/vnd.ms-excel',
-            'text/csv'
-        ];
-        if (!validTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls|csv)$/i)) {
-            BananIMS.toast('نوع الملف غير مدعوم. الرجاء اختيار ملف Excel أو CSV', 'error');
-            return;
-        }
-
-        // Validate file size (5MB)
-        if (file.size > 5 * 1024 * 1024) {
-            BananIMS.toast('حجم الملف كبير جداً. الحد الأقصى 5 MB', 'error');
-            return;
-        }
-
-        selectedFile = file;
-        
-        // Show file info
-        $('#fileName').text(file.name);
-        $('#fileSize').text(formatFileSize(file.size));
-        $('#uploadArea').hide();
-        $('#fileSelected').show();
-        $('#btnStartImport').prop('disabled', false);
-    }
-
-    // Remove file
-    $('#btnRemoveFile').on('click', function() {
-        selectedFile = null;
-        $('#importFileInput').val('');
-        $('#fileSelected').hide();
-        $('#uploadArea').show();
-        $('#btnStartImport').prop('disabled', true);
-    });
-
-    // Format file size
-    function formatFileSize(bytes) {
-        if (bytes === 0) return '0 Bytes';
-        const k = 1024;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
-    }
-
-    // Start import
-    $('#btnStartImport').on('click', function() {
-        if (!selectedFile) return;
-        
-        const formData = new FormData();
-        formData.append('file', selectedFile);
-
-        $.ajax({
-            url: '{% url "customers:import_api" %}',
-            method: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
-            success: function(resp) {
-                if (resp.success) {
-                    if (resp.imported > 0) {
-                        importModal.hide();
-                        dt.ajax.reload();
-                    }
-                    const toastType = resp.imported > 0 ? 'success' : 'error';
-                    BananIMS.toast(resp.message || 'تم استيراد العملاء بنجاح', toastType);
-                    if (resp.errors && resp.errors.length > 0) {
-                        const errHtml = resp.errors.map(e => `<div>• ${e}</div>`).join('');
-                        BananIMS.toast(errHtml, 'error');
-                    }
-                } else {
-                    BananIMS.toast(resp.message || 'فشل الاستيراد', 'error');
-                }
-            },
-            error: function(xhr) {
-                const msg = xhr.responseJSON?.message || 'حدث خطأ أثناء الاستيراد';
-                BananIMS.toast(msg, 'error');
-            }
-        });
-    });
-
-    // Download template
-    $('#btnDownloadTemplate').on('click', function(e) {
-        e.preventDefault();
-        window.location.href = '{% url "customers:download_template" %}';
     });
 
     // Export customers

@@ -1,5 +1,5 @@
 /* ============================================================
-   BananIMS - Stocks (Warehouses) Page Specific Styles
+   BANAN - Stocks (Warehouses) Page Specific Styles
    خاص بصفحة المخازن فقط
    ============================================================ */
 
@@ -126,7 +126,7 @@
         grid-template-columns: 1fr;
         gap: 0.75rem;
         padding: 0.9rem;
-        background: var(--bg-card, var(--surface));
+        background: var(--bg-card, #ffffff);
         border: 1px solid var(--border-color);
         border-radius: 18px;
         box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
@@ -135,7 +135,7 @@
 
     .cx-stock-card:hover {
         transform: translateY(-1px);
-        border-color: rgba(19,37,57, 0.24);
+        border-color: rgba(var(--primary-rgb), 0.24);
         box-shadow: 0 16px 34px rgba(15, 23, 42, 0.12);
     }
 
@@ -157,7 +157,7 @@
         margin: 0;
         font-size: 0.99rem;
         font-weight: 700;
-        color: var(--text-heading, var(--text-primary));
+        color: var(--text-heading, #111827);
         line-height: 1.2;
         display: flex;
         align-items: center;
@@ -166,11 +166,11 @@
     .cx-stock-card-code {
         margin: 0;
         font-size: 0.76rem;
-        color: var(--text-secondary, var(--text-tertiary));
+        color: var(--text-secondary, #6b7280);
     }
 
     .cx-stock-card-code code {
-        background: rgba(19,37,57, 0.09);
+        background: rgba(var(--primary-rgb), 0.09);
         padding: 0.2rem 0.4rem;
         border-radius: 6px;
         font-family: 'Courier New', monospace;
@@ -206,14 +206,14 @@
     .cx-stock-card-meta-label {
         font-size: 0.68rem;
         font-weight: 700;
-        color: var(--text-tertiary, var(--text-tertiary));
+        color: var(--text-tertiary, #6b7280);
         letter-spacing: 0.36px;
         text-transform: uppercase;
     }
 
     .cx-stock-card-meta-value {
         font-size: 0.92rem;
-        color: var(--text-heading, var(--text-primary));
+        color: var(--text-heading, #111827);
         font-weight: 700;
     }
 
@@ -241,11 +241,11 @@
     }
 
     .cx-stock-card-actions .cxr-act--view {
-        background: rgba(19,37,57, 0.08);
+        background: rgba(var(--primary-rgb), 0.08);
     }
 
     .cx-stock-card-actions .cxr-act--view:hover {
-        background: rgba(19,37,57, 0.12);
+        background: rgba(var(--primary-rgb), 0.12);
     }
 
     .cx-stock-card-actions .cxr-act--del {

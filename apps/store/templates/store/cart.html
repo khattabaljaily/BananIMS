@@ -1,4 +1,4 @@
-{% load static store_tags %}
+{% load static store_tags number_format %}
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -16,7 +16,7 @@
 <!-- Header -->
 <header class="sc-header">
   <div class="sc-header__inner">
-    <a href="{% url 'store:storefront' slug=store.slug %}" class="sc-back">
+    <a href="{% url 'store:storefront' slug=store.slug %}{% if branch %}?branch={{ branch.id }}{% endif %}" class="sc-back">
       <i class="fas fa-arrow-right"></i>
       <span>متابعة التسوق</span>
     </a>
@@ -26,9 +26,23 @@
 </header>
 
 <main class="sc-wrap">
+{% include 'store/partials/branch_bar.html' with locked=True %}
   <h2 class="sc-page-title">
     <i class="fas fa-shopping-bag"></i> سلة التسوق
   </h2>
+
+  {% if messages %}
+  {% for m in messages %}
+  <div class="sc-alert" style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:12px;padding:.75rem 1rem;margin-bottom:1rem;font-weight:600;">
+    <i class="fas fa-circle-exclamation"></i> {{ m }}
+  </div>
+  {% endfor %}
+  {% endif %}
+  {% if shortages %}
+  <div class="sc-alert" style="background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:12px;padding:.75rem 1rem;margin-bottom:1rem;">
+    <strong><i class="fas fa-triangle-exclamation"></i> بعض الكميات غير متوفرة في {{ branch.name|default:"المتجر" }}</strong> — عدّلها أو احذف الصنف لإتمام الطلب.
+  </div>
+  {% endif %}
 
   <div class="sc-card">
     {% if cart_items %}
@@ -50,6 +64,9 @@
       <div class="sc-item__info">
         <div class="sc-item__name">{{ row.item.name }}</div>
         <div class="sc-item__unit">{{ row.unit_price|format_price }} {{ store.tenant.currency|currency_ar }}</div>
+        {% for sh in shortages %}{% if sh.item.id == row.item.id %}
+        <div style="color:#b45309;font-size:.8rem;font-weight:700;"><i class="fas fa-triangle-exclamation"></i> المتوفر {{ sh.available|qty }} فقط</div>
+        {% endif %}{% endfor %}
       </div>
 
       <div class="sc-qty">
@@ -59,7 +76,13 @@
           <input type="hidden" name="qty" value="{{ row.qty|floatformat:0|add:'-1' }}">
           <button type="submit" class="sc-qty__btn" aria-label="تقليل">−</button>
         </form>
-        <span class="sc-qty__val">{{ row.qty|floatformat:0 }}</span>
+        <form method="post" action="{% url 'store:cart_update' slug=store.slug %}">
+          {% csrf_token %}
+          <input type="hidden" name="item_id" value="{{ row.item.id }}">
+          <input type="number" name="qty" class="sc-qty__input" value="{{ row.qty|floatformat:0 }}"
+                 min="0" step="1" inputmode="numeric" aria-label="الكمية"
+                 onchange="this.form.submit()">
+        </form>
         <form method="post" action="{% url 'store:cart_update' slug=store.slug %}">
           {% csrf_token %}
           <input type="hidden" name="item_id" value="{{ row.item.id }}">
@@ -85,9 +108,15 @@
         الإجمالي:
         <span>{{ subtotal|format_price }} {{ store.tenant.currency|currency_ar }}</span>
       </div>
+      {% if shortages %}
+      <span class="sc-checkout-btn" style="opacity:.5;cursor:not-allowed;" aria-disabled="true">
+        <i class="fas fa-credit-card"></i> عدّل الكميات لإتمام الطلب
+      </span>
+      {% else %}
       <a href="{% url 'store:checkout' slug=store.slug %}" class="sc-checkout-btn">
         <i class="fas fa-credit-card"></i> إتمام الطلب
       </a>
+      {% endif %}
     </div>
 
     {% else %}
@@ -96,7 +125,7 @@
       <div class="sc-empty__icon"><i class="fas fa-shopping-bag"></i></div>
       <h3 class="sc-empty__title">سلتك فارغة</h3>
       <p class="sc-empty__text">لم تضف أي منتجات بعد</p>
-      <a href="{% url 'store:storefront' slug=store.slug %}" class="sc-empty__link">
+      <a href="{% url 'store:storefront' slug=store.slug %}{% if branch %}?branch={{ branch.id }}{% endif %}" class="sc-empty__link">
         <i class="fas fa-arrow-right"></i> تصفح المنتجات
       </a>
     </div>

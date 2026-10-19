@@ -1,11 +1,12 @@
 """
-AI Services — DeepSeek integration for BananIMS
+AI Services — DeepSeek integration for BANAN
 ================================================
 Collects real business data per tenant, then queries DeepSeek to generate
 Arabic business insights, chat responses, and smart notification analysis.
 """
 
 import json
+import time
 import logging
 import requests
 from decimal import Decimal
@@ -23,38 +24,102 @@ logger = logging.getLogger(__name__)
 # DeepSeek API call
 # ──────────────────────────────────────────────────────────────
 
-def _call_deepseek(messages: list, max_tokens: int = 600) -> str:
-    """Send messages to DeepSeek and return the assistant reply."""
+def _post_deepseek(payload: dict, timeout: float = 60):
+    """
+    يرسل payload إلى DeepSeek مع محاولة ثانية عند التعثر المؤقت.
+    يرجع (message_dict, None) عند النجاح أو (None, رسالة_خطأ_للمستخدم).
+    """
+    api_key = settings.DEEPSEEK_API_KEY
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
+    # محاولة ثانية واحدة عند تعثر مؤقت (مهلة/انقطاع/خطأ 5xx من المزوّد) بدل
+    # إظهار فشل للمستخدم من أول محاولة.
+    last_error = None
+    for attempt in range(2):
+        try:
+            response = requests.post(settings.DEEPSEEK_API_URL, headers=headers, json=payload,
+                                     timeout=timeout)
+            if response.status_code >= 500 and attempt == 0:
+                logger.warning("DeepSeek API %s — retrying", response.status_code)
+                continue
+            response.raise_for_status()
+            message = response.json()["choices"][0]["message"]
+            if (message.get("content") or "").strip() or message.get("tool_calls"):
+                return message, None
+            logger.warning("DeepSeek returned an empty reply")
+            last_error = 'empty'
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            logger.warning("DeepSeek API transient error: %s", exc)
+            last_error = exc
+            continue
+        except requests.RequestException as exc:
+            logger.error("DeepSeek API error: %s", exc)
+            return None, "تعذّر الاتصال بالمساعد الذكي في الوقت الحالي."
+        except (KeyError, IndexError, ValueError) as exc:
+            logger.error("DeepSeek response parse error: %s", exc)
+            return None, "حدث خطأ أثناء معالجة رد المساعد الذكي."
+
+    if isinstance(last_error, requests.Timeout):
+        return None, "انتهت مهلة الاتصال بالمساعد الذكي. يرجى المحاولة مرة أخرى."
+    if last_error == 'empty':
+        return None, "لم يصل رد من المساعد الذكي. أعد صياغة سؤالك أو حاول مرة أخرى."
+    return None, "تعذّر الاتصال بالمساعد الذكي في الوقت الحالي."
+
+
+MAX_TOOL_ROUNDS = 8
+# Gunicorn يقتل العامل بعد 30 ثانية افتراضياً: لا نبدأ جولة أدوات جديدة بعد هذه المدة.
+TOOL_TIME_BUDGET = 16
+
+
+def _call_deepseek(messages: list, max_tokens: int = 600, tools: list | None = None,
+                   tool_runner=None) -> str:
+    """
+    Send messages to DeepSeek and return the assistant reply.
+
+    مع tools/tool_runner: حلقة function calling — ينفّذ المساعد استعلامات على
+    بيانات النشاط (tool_runner(name, arguments_json) -> نص) ثم يكتب الجواب.
+    """
     api_key = settings.DEEPSEEK_API_KEY
     if not api_key:
         return "مفتاح API غير مُعيَّن. يرجى إضافة DEEPSEEK_API_KEY في secrets.json."
 
-    try:
-        response = requests.post(
-            settings.DEEPSEEK_API_URL,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": settings.DEEPSEEK_MODEL,
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "temperature": 0.7,
-            },
-            timeout=30,
-        )
-        response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"].strip()
-    except requests.Timeout:
-        logger.warning("DeepSeek API timeout")
-        return "انتهت مهلة الاتصال بالمساعد الذكي. يرجى المحاولة مرة أخرى."
-    except requests.RequestException as exc:
-        logger.error("DeepSeek API error: %s", exc)
-        return "تعذّر الاتصال بالمساعد الذكي في الوقت الحالي."
-    except (KeyError, IndexError, ValueError) as exc:
-        logger.error("DeepSeek response parse error: %s", exc)
-        return "حدث خطأ أثناء معالجة رد المساعد الذكي."
+    payload = {
+        "model": settings.DEEPSEEK_MODEL,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": 0.3 if tools else 0.7,
+    }
+    if not tools:
+        message, error = _post_deepseek(payload)
+        return error if error else message["content"].strip()
+
+    payload["tools"] = tools
+    convo = list(messages)
+    started = time.monotonic()
+    for round_no in range(MAX_TOOL_ROUNDS + 1):
+        elapsed = time.monotonic() - started
+        if round_no == MAX_TOOL_ROUNDS or elapsed > TOOL_TIME_BUDGET:
+            # آخر جولة (عدد الجولات أو الوقت): اطلب الجواب النهائي بما جُمع دون مزيد من الأدوات.
+            payload.pop("tools", None)
+            convo.append({"role": "user", "content":
+                          "اكتب الآن الجواب النهائي بالاعتماد على النتائج التي حصلت عليها."})
+            final = True
+        else:
+            final = False
+        payload["messages"] = convo
+        message, error = _post_deepseek(payload, timeout=40 if final else 25)
+        if error:
+            return error
+        calls = message.get("tool_calls")
+        if not calls or final:
+            return (message.get("content") or "").strip() or "تعذّر إكمال الجواب. أعد صياغة سؤالك."
+        convo.append({"role": "assistant", "content": message.get("content") or "", "tool_calls": calls})
+        for call in calls:
+            fn = call.get("function") or {}
+            result = tool_runner(fn.get("name", ""), fn.get("arguments", "")) if tool_runner else \
+                json.dumps({"error": "الأدوات غير متاحة"}, ensure_ascii=False)
+            convo.append({"role": "tool", "tool_call_id": call.get("id", ""), "content": result})
+    return "تعذّر إكمال الجواب. أعد صياغة سؤالك."
 
 
 # ──────────────────────────────────────────────────────────────
@@ -66,11 +131,203 @@ def _decimal_to_float(value):
     return float(value) if isinstance(value, Decimal) else value
 
 
-def collect_business_context(tenant) -> dict:
+def _is_enterprise_owner(tenant, user) -> bool:
+    """
+    مدير النشاط (is_tenant_admin) في نسخة المؤسسات مقيّد الآن بصلاحيات إدارية
+    فقط — لا وصول مباشر للمبيعات/المشتريات/العملاء/الموردين/المصروفات/
+    الخزائن/رواتب الموظفين (راجع ENTERPRISE_OWNER_EXCLUDED_CATEGORIES في
+    apps/accounts/permissions.py). محتوى الذكاء الاصطناعي يجب أن يعكس هذا:
+    راجع _ENTERPRISE_OWNER_PERSONA أدناه.
+    """
+    return bool(
+        tenant and tenant.is_enterprise()
+        and user is not None and getattr(user, 'is_tenant_admin', False)
+    )
+
+
+def _user_branch(user):
+    """فرع المستخدم (مدير فرع/موظف فرع) أو None للمستخدم المركزي/نسخ بلا فروع."""
+    return getattr(user, 'branch', None) if user is not None else None
+
+
+def _collect_owner_overview(tenant) -> dict:
+    """
+    صورة شاملة لكل فرع لمدير النشاط في نسخة المؤسسات: بيانات الفرع، إدارته،
+    مبيعاته ومشترياته ومصروفاته، المخزون، الخزائن، وأسماء/أرصدة العملاء والموردين
+    والمناديب والموظفين. كل فرع يُجمَّع بمعزل عن غيره (فلترة صارمة بالفرع).
+    """
+    from apps.core.models import Branch
+    from apps.accounts.models import User
+    from apps.core.utils import filter_by_branch_strict
+    from apps.sales.models import SaleInvoice, SaleInvoiceLine, SaleReturn, CustomerLedger
+    from apps.purchases.models import PurchaseInvoice, SupplierLedger
+    from apps.expenses.models import Expense
+    from apps.stocks.models import Stock, StockQuantity
+    from apps.customers.models import Customer
+    from apps.suppliers.models import Supplier
+    from apps.agents.models import Agent
+    from apps.employees.models import Employee
+    from apps.treasury.models import Treasury
+
+    now = timezone.localdate()
+    month_ago = now - timedelta(days=30)
+    prev_month_ago = now - timedelta(days=60)
+    week_ago = now - timedelta(days=7)
+    f = _decimal_to_float
+
+    branches = []
+    for b in Branch.objects.filter(tenant=tenant, is_active=True).select_related('manager').order_by('name'):
+        sales = filter_by_branch_strict(SaleInvoice.objects.filter(
+            tenant=tenant, status__in=SaleInvoice.REVENUE_STATUSES, invoice_date__gte=month_ago), b)
+        prev_sales = filter_by_branch_strict(SaleInvoice.objects.filter(
+            tenant=tenant, status__in=SaleInvoice.REVENUE_STATUSES,
+            invoice_date__gte=prev_month_ago, invoice_date__lt=month_ago), b)
+        week_sales = sales.filter(invoice_date__gte=week_ago)
+        today_sales = sales.filter(invoice_date=now)
+        purchases = filter_by_branch_strict(PurchaseInvoice.objects.filter(
+            tenant=tenant, status__in=PurchaseInvoice.EFFECTIVE_STATUSES, invoice_date__gte=month_ago), b)
+        expenses = Expense.unscoped.filter(tenant=tenant, branch=b, expense_date__gte=month_ago)
+        returns_total = SaleReturn.objects.filter(
+            tenant=tenant, branch=b, status='confirmed', return_date__gte=month_ago,
+        ).aggregate(t=Sum('total_returned'))['t'] or 0
+
+        low_qs = (filter_by_branch_strict(StockQuantity.objects.filter(
+            tenant=tenant, item__is_active=True, item__min_quantity__gt=0,
+            quantity__lte=F('item__min_quantity')), b, field='stock__branch')
+            .select_related('item', 'stock').order_by('quantity'))
+        low_stock_items = [
+            {'item': sq.item.name, 'current': f(sq.quantity), 'min': f(sq.item.min_quantity), 'stock': sq.stock.name}
+            for sq in low_qs[:10]
+        ]
+        stock_value = filter_by_branch_strict(StockQuantity.objects.filter(
+            tenant=tenant, quantity__gt=0), b, field='stock__branch'
+        ).aggregate(v=Sum(F('quantity') * F('item__cost_price')))['v'] or 0
+
+        top_items = [
+            {'name': r['item__name'], 'qty': f(r['q']), 'revenue': f(r['r'])}
+            for r in filter_by_branch_strict(SaleInvoiceLine.objects.filter(
+                invoice__tenant=tenant, invoice__status__in=SaleInvoice.REVENUE_STATUSES,
+                invoice__invoice_date__gte=month_ago), b, field='invoice__stock__branch')
+            .values('item__name').annotate(q=Sum('quantity'), r=Sum('line_total')).order_by('-r')[:5]
+        ]
+
+        cust_ledger = CustomerLedger.objects.filter(tenant=tenant, customer__branch=b)
+        receivables = cust_ledger.aggregate(t=Sum('amount'))['t'] or 0
+        top_debtors = [
+            {'name': r['customer__name'], 'balance': f(r['bal'])}
+            for r in cust_ledger.values('customer__name').annotate(bal=Sum('amount'))
+            .filter(bal__gt=0).order_by('-bal')[:8]
+        ]
+        sup_ledger = SupplierLedger.objects.filter(tenant=tenant, supplier__branch=b)
+        payables = sup_ledger.aggregate(t=Sum('amount'))['t'] or 0
+        top_creditors = [
+            {'name': r['supplier__name'], 'balance': f(r['bal'])}
+            for r in sup_ledger.values('supplier__name').annotate(bal=Sum('amount'))
+            .filter(bal__gt=0).order_by('-bal')[:8]
+        ]
+        top_customers = [
+            {'name': r['customer__name'], 'revenue': f(r['r'])}
+            for r in sales.filter(customer__isnull=False).values('customer__name')
+            .annotate(r=Sum('grand_total')).order_by('-r')[:5]
+        ]
+
+        customers_qs = Customer.unscoped.filter(tenant=tenant, branch=b, is_active=True)
+        suppliers_qs = Supplier.unscoped.filter(tenant=tenant, branch=b, is_active=True)
+        agents = list(Agent.unscoped.filter(tenant=tenant, branch=b, is_active=True).values_list('name', flat=True)[:15])
+        employees_qs = Employee.unscoped.filter(tenant=tenant, branch=b, is_active=True)
+        employees = [
+            {'name': e.name, 'position': e.position, 'salary': f(e.base_salary)}
+            for e in employees_qs.order_by('name')[:20]
+        ]
+        users = [
+            {'name': u.get_full_name() or u.username,
+             'role': 'مدير الفرع' if (u.is_branch_supervisor or u.id == b.manager_id) else 'موظف'}
+            for u in User.objects.filter(tenant=tenant, branch=b, is_active=True).order_by('username')[:20]
+        ]
+        treasuries = [
+            {'name': t.name, 'balance': f(t.current_balance)}
+            for t in Treasury.objects.filter(tenant=tenant, branch=b, is_active=True)
+        ]
+        expense_by_cat = [
+            {'category': r['category__name'], 'total': f(r['t'])}
+            for r in expenses.values('category__name').annotate(t=Sum('amount')).order_by('-t')[:5]
+        ]
+
+        revenue = f(sales.aggregate(t=Sum('grand_total'))['t'] or 0)
+        purchases_total = f(purchases.aggregate(t=Sum('grand_total'))['t'] or 0)
+        branches.append({
+            'name': b.name,
+            'code': b.code,
+            'address': b.address,
+            'phone': b.phone,
+            'is_default': b.is_default,
+            'manager': (b.manager.get_full_name() or b.manager.username) if b.manager_id else '',
+            'has_manager': b.manager_id is not None,
+            'stocks': list(Stock.objects.filter(tenant=tenant, branch=b, is_active=True).values_list('name', flat=True)),
+            'revenue': revenue,
+            'prev_revenue': f(prev_sales.aggregate(t=Sum('grand_total'))['t'] or 0),
+            'weekly_revenue': f(week_sales.aggregate(t=Sum('grand_total'))['t'] or 0),
+            'today_revenue': f(today_sales.aggregate(t=Sum('grand_total'))['t'] or 0),
+            'invoices': sales.count(),
+            'returns': f(returns_total),
+            'purchases': purchases_total,
+            'expenses': f(expenses.aggregate(t=Sum('amount'))['t'] or 0),
+            'expense_by_category': expense_by_cat,
+            'receivables': f(receivables),
+            'payables': f(payables),
+            'stock_value': f(stock_value),
+            'low_stock_items': low_stock_items,
+            'low_stock_count': low_qs.values('item').distinct().count(),
+            'top_items': top_items,
+            'top_customers': top_customers,
+            'top_debtors': top_debtors,
+            'top_creditors': top_creditors,
+            'customers_count': customers_qs.count(),
+            'suppliers_count': suppliers_qs.count(),
+            'customer_names': list(customers_qs.order_by('name').values_list('name', flat=True)[:25]),
+            'supplier_names': list(suppliers_qs.order_by('name').values_list('name', flat=True)[:25]),
+            'agents': agents,
+            'employees': employees,
+            'users': users,
+            'active_users': len(users),
+            'treasuries': treasuries,
+        })
+
+    top_items_qs = (
+        SaleInvoiceLine.objects
+        .filter(invoice__tenant=tenant, invoice__status__in=SaleInvoice.REVENUE_STATUSES,
+                invoice__invoice_date__gte=month_ago)
+        .values('item__name')
+        .annotate(total_qty=Sum('quantity'), total_rev=Sum('line_total'))
+        .order_by('-total_rev')[:5]
+    )
+    top_items = [
+        {'name': r['item__name'], 'qty': f(r['total_qty']), 'revenue': f(r['total_rev'])}
+        for r in top_items_qs
+    ]
+
+    return {
+        'mode': 'owner_overview',
+        'period': f"{month_ago} → {now}",
+        'currency': tenant.currency or '',
+        'branches': branches,
+        'top_selling_items': top_items,
+    }
+
+
+def collect_business_context(tenant, user=None) -> dict:
     """
     Gather key business metrics for the last 30 days for the given tenant.
     Returns a serializable dict suitable for embedding in the AI prompt.
+
+    - مدير النشاط في نسخة المؤسسات: ملخص إحصائي لكل فرع بلا تفاصيل عملاء/موردين.
+    - مدير/موظف فرع: بيانات فرعه وحده فقط.
+    - غير ذلك (نسخ بلا فروع): بيانات النشاط كاملة كالمعتاد.
     """
+    if _is_enterprise_owner(tenant, user):
+        return _collect_owner_overview(tenant)
+
+    from apps.core.utils import filter_by_branch_strict
     from apps.sales.models import SaleInvoice, SaleInvoiceLine
     from apps.items.models import Item
     from apps.stocks.models import StockQuantity
@@ -78,14 +335,15 @@ def collect_business_context(tenant) -> dict:
     from apps.purchases.models import PurchaseInvoice
     from apps.expenses.models import Expense
 
+    branch = _user_branch(user)
     now = timezone.localdate()
     month_ago = now - timedelta(days=30)
     week_ago = now - timedelta(days=7)
 
     # ── Sales ────────────────────────────────────────────────
-    confirmed_sales = SaleInvoice.objects.filter(
-        tenant=tenant, status='confirmed'
-    )
+    confirmed_sales = filter_by_branch_strict(SaleInvoice.objects.filter(
+        tenant=tenant, status__in=SaleInvoice.REVENUE_STATUSES
+    ), branch)
     monthly_sales = confirmed_sales.filter(invoice_date__gte=month_ago)
     weekly_sales  = confirmed_sales.filter(invoice_date__gte=week_ago)
 
@@ -99,9 +357,11 @@ def collect_business_context(tenant) -> dict:
 
     # ── Top selling items (by revenue) ───────────────────────
     top_items_qs = (
-        SaleInvoiceLine.objects
-        .filter(invoice__tenant=tenant, invoice__status='confirmed',
-                invoice__invoice_date__gte=month_ago)
+        filter_by_branch_strict(
+            SaleInvoiceLine.objects.filter(
+                invoice__tenant=tenant, invoice__status__in=SaleInvoice.REVENUE_STATUSES,
+                invoice__invoice_date__gte=month_ago),
+            branch, field='invoice__stock__branch')
         .values('item__name')
         .annotate(total_qty=Sum('quantity'), total_rev=Sum('line_total'))
         .order_by('-total_rev')[:5]
@@ -117,9 +377,11 @@ def collect_business_context(tenant) -> dict:
 
     # ── Low stock items ───────────────────────────────────────
     low_stock_qs = (
-        StockQuantity.objects
-        .filter(tenant=tenant, item__is_active=True, item__min_quantity__gt=0)
-        .filter(quantity__lte=F('item__min_quantity'))
+        filter_by_branch_strict(
+            StockQuantity.objects
+            .filter(tenant=tenant, item__is_active=True, item__min_quantity__gt=0)
+            .filter(quantity__lte=F('item__min_quantity')),
+            branch, field='stock__branch')
         .select_related('item', 'stock')
         .order_by('quantity')[:10]
     )
@@ -136,8 +398,7 @@ def collect_business_context(tenant) -> dict:
     # ── Top customer debtors ─────────────────────────────────
     from apps.sales.models import CustomerLedger
     debtor_qs = (
-        CustomerLedger.objects
-        .filter(tenant=tenant)
+        filter_by_branch_strict(CustomerLedger.objects.filter(tenant=tenant), branch, field='customer__branch')
         .values('customer__name')
         .annotate(balance=Sum('amount'))
         .filter(balance__gt=0)
@@ -152,13 +413,15 @@ def collect_business_context(tenant) -> dict:
     monthly_expenses = _decimal_to_float(
         Expense.objects
         .filter(tenant=tenant, expense_date__gte=month_ago)
+        .for_branch(branch, strict=True)
         .aggregate(t=Sum('amount'))['t'] or 0
     )
 
     # ── Recent purchases ─────────────────────────────────────
     recent_purchases = (
-        PurchaseInvoice.objects
-        .filter(tenant=tenant, status='confirmed', invoice_date__gte=month_ago)
+        filter_by_branch_strict(PurchaseInvoice.objects.filter(
+            tenant=tenant, status__in=PurchaseInvoice.EFFECTIVE_STATUSES, invoice_date__gte=month_ago
+        ), branch)
         .aggregate(t=Sum('grand_total'))['t'] or 0
     )
     monthly_purchases = _decimal_to_float(recent_purchases)
@@ -166,29 +429,30 @@ def collect_business_context(tenant) -> dict:
     # ── Employee payroll (last 30 days) ───────────────────────
     employee_data = {}
     try:
-        from apps.employees.models import Employee, SalaryPayment, EmployeeAdvance
-        employee_count = Employee.objects.filter(tenant=tenant, is_active=True).count()
+        from apps.employees.models import Employee, EmployeeSalaryPayment, EmployeeAdvance
+        employee_count = Employee.objects.filter(tenant=tenant, is_active=True).for_branch(branch, strict=True).count()
+        employee_data = {'active_employees': employee_count}
         monthly_salaries = _decimal_to_float(
-            SalaryPayment.objects
-            .filter(tenant=tenant, status='paid', period_start__gte=month_ago)
-            .aggregate(t=Sum('net_salary'))['t'] or 0
+            filter_by_branch_strict(EmployeeSalaryPayment.objects
+                .filter(tenant=tenant, status='paid', period_start__gte=month_ago), branch, field='employee__branch')
+            .annotate(net=F('base_salary') + F('bonus') - F('advances_deducted') - F('deductions'))
+            .aggregate(t=Sum('net'))['t'] or 0
         )
         pending_advances = _decimal_to_float(
-            EmployeeAdvance.objects
-            .filter(tenant=tenant, status='active')
+            filter_by_branch_strict(EmployeeAdvance.objects
+                .filter(tenant=tenant, status='pending'), branch, field='employee__branch')
             .aggregate(t=Sum('amount'))['t'] or 0
         )
-        employee_data = {
-            'active_employees': employee_count,
-            'monthly_salaries': monthly_salaries,
-            'pending_advances': pending_advances,
-        }
+        employee_data['monthly_salaries'] = monthly_salaries
+        employee_data['pending_advances'] = pending_advances
     except Exception:
         pass
 
     return {
+        'mode': 'branch' if branch is not None else 'tenant',
+        'branch_name': branch.name if branch is not None else '',
         'period': f"{month_ago} → {now}",
-        'currency': tenant.currency or 'QAR',
+        'currency': tenant.currency or '',
         'monthly_revenue': monthly_revenue,
         'weekly_revenue': weekly_revenue,
         'monthly_invoice_count': monthly_invoice_count,
@@ -203,30 +467,245 @@ def collect_business_context(tenant) -> dict:
 
 
 # ──────────────────────────────────────────────────────────────
-# System prompt
+# Business-type awareness & system knowledge
 # ──────────────────────────────────────────────────────────────
 
-_SYSTEM_PROMPT = """أنت مساعد أعمال ذكي متخصص في تحليل بيانات المخزون والمبيعات.
-تعمل داخل نظام إدارة مخزون (BananIMS) لصاحب المحل.
-قواعد الرد الصارمة:
-- أجب دائماً بالعربية، بأسلوب مهني وموجز.
+_DEFAULT_PERSONA = (
+    'المستخدم تاجر أو مدير نشاط تجاري يبيع منتجات مثل قطع الغيار أو الإلكترونيات والأجهزة '
+    'الكهربائية أو الهواتف والحواسيب أو الأدوات والمعدات، بالتجزئة عبر نقطة البيع أو بالجملة '
+    'عبر فواتير المبيعات ومندوبي المبيعات، وقد يتتبع الأرقام التسلسلية لبعض المنتجات.'
+)
+
+_ENTERPRISE_OWNER_PERSONA = (
+    'ملاحظة مهمة عن المستخدم الحالي: هو مدير النشاط (مالك الاشتراك) في نسخة المؤسسات متعددة الفروع. '
+    'يشرف على كل الفروع وله الحق في أي معلومة عن أي فرع: عملاؤه وموردوه ومناديبه وموظفوه وفواتيره '
+    'وأرصدته وخزائنه ومخازنه ومصروفاته. أجب عن أي سؤال عن أي فرع بالأسماء والأرقام الفعلية من الأدوات، '
+    'وانسب كل معلومة للفرع الذي تتبعه. للتصفية بين الفروع استعمل حقل الفرع (مثل stock__branch__name '
+    'أو branch__name أو customer__branch__name). لا تخلط بيانات فرع بفرع آخر؛ إن تكرر الاسم في أكثر '
+    'من فرع فاذكر كل فرع على حدة. قارن بين الفروع عند الطلب ونبّه للفروع المتعثرة.'
+)
+
+_BRANCH_USER_PERSONA = (
+    'ملاحظة مهمة عن المستخدم الحالي: هو من فريق فرع "{branch}" (مدير فرع أو موظف). له الحق في أي معلومة '
+    'عن فرعه: عملاؤه وموردوه ومناديبه وموظفوه وفواتيره وأرصدته وخزائنه ومخازنه ومصروفاته. أجب عن أي '
+    'سؤال عن فرعه بالأسماء والأرقام الفعلية من الأدوات. النظام يقصر النتائج على فرعه تلقائياً، فلا تقل '
+    'إن شيئاً "محجوب" أو "غير متاح" إلا إذا سأل عن فرع آخر، وحينها وضّح أن بياناته تقتصر على فرعه.'
+)
+
+
+_CAPABILITY_LABELS_AR = {
+    'has_serial_numbers': 'أرقام تسلسلية',
+    'has_weight_items': 'أصناف بالوزن',
+    'has_services': 'بنود خدمات',
+    'has_pos': 'نقطة البيع (POS)',
+    'has_sales_invoice': 'فواتير مبيعات',
+    'has_agents_module': 'مناديب المبيعات',
+    'has_branch_stock_lookup': 'استعلام توفر الصنف في المخازن الأخرى',
+}
+
+_SYSTEM_KNOWLEDGE = (
+    "أنت المساعد الذكي داخل نظام BANAN، وهو نظام سحابي متعدد المستأجرين لإدارة المخزون والمبيعات "
+    "موجّه للتجار وشركات بيع المنتجات مثل قطع الغيار والإلكترونيات والأجهزة الكهربائية والهواتف "
+    "والحواسيب والأدوات والمعدات.\n\n"
+    "وحدات النظام:\n"
+    "- العملاء والموردون: سجلات كاملة مع دفتر حسابات ومدفوعات.\n"
+    "- الأصناف: تصنيفات هرمية، وحدات قياس مع معاملات تحويل، الشركة المصنعة وبلد المنشأ، وتتبع الرقم التسلسلي.\n"
+    "- المخازن: أرصدة افتتاحية، تحويلات بين المخازن، جرد مخزون، سجلات إتلاف.\n"
+    "- المبيعات: فواتير، عروض أسعار، مرتجعات، نقطة بيع (POS)، تسليم مؤجل.\n"
+    "- المشتريات: فواتير، طلبات عروض أسعار، أوامر شراء، مرتجعات.\n"
+    "- المصروفات: تصنيفات مربوطة بالخزائن.\n"
+    "- الخزينة: حسابات نقدية وبنكية، تحويلات بينها.\n"
+    "- الموظفون: سجلات، صرف رواتب، سلف فورية، حوافز وخصومات.\n"
+    "- مناديب المبيعات: حسابات بعمولة على الفاتورة أو التحصيل، مع بوابة ذاتية للمندوب.\n"
+    "- التقارير: أكثر من 36 تقريراً (مبيعات، مشتريات، مخزون، مصروفات، خزائن، قائمة دخل).\n"
+    "- المتجر الإلكتروني: صفحة عامة لكل مشترك مع سلة شراء وجدولة ورمز QR.\n"
+    "- بوابة العملاء: روابط وصول سريعة للعملاء لعرض فواتيرهم وكشوف حساباتهم.\n"
+    "- الإشعارات الذكية: مخزون منخفض، فاتورة متأخرة، طلب جديد.\n"
+    "- النسخ الاحتياطي: نسخ يومية تلقائية لكل مشترك.\n"
+    "- الدعم الفني: نظام تذاكر مدمج.\n"
+    "- الذكاء الاصطناعي: دردشة ذكية ورؤى يومية.\n\n"
+    "إجراءات شائعة (خطوات عامة):\n"
+    "- إنشاء فاتورة مبيعات: وحدة المبيعات ← فاتورة جديدة ← اختر العميل والأصناف والكميات ← احفظ وأكد.\n"
+    "- إضافة صنف: وحدة الأصناف ← صنف جديد ← حدد التصنيف والوحدة والسعر ← فعّل تتبع الرقم التسلسلي إن لزم.\n"
+    "- جرد المخزون: وحدة المخازن ← عملية جرد ← قارن الكميات الفعلية بالمسجلة ← اعتمد الفروقات.\n"
+    "- تحويل بين المخازن: وحدة المخازن ← تحويل ← حدد مخزن المصدر والوجهة والأصناف والكميات.\n"
+    "- إنشاء أمر شراء: وحدة المشتريات ← أمر شراء ← اختر المورد والأصناف والكميات.\n"
+    "- إضافة مندوب مبيعات: وحدة مناديب المبيعات ← مندوب جديد ← حدد نسبة العمولة.\n"
+    "- صرف راتب: وحدة الموظفين ← دفعة راتب ← اختر الموظف والمبلغ والشهر.\n"
+    "- إنشاء خزينة: وحدة الخزينة ← خزينة جديدة ← نقدية أو بنكية ← حدد الرصيد الافتتاحي.\n"
+)
+
+_RESPONSE_RULES = """قواعد الرد الصارمة:
+- أجب دائماً بالعربية الفصحى الواضحة، بأسلوب مهني وموجز، ولا تستخدم أي لهجة عامية أو مفردات محلية.
+- خاطب المستخدم حسب نوع نشاطه الفعلي المذكور في ملف المشترك وطبيعة منتجاته الظاهرة في البيانات.
+- عند شرح ميزة أو إجراء، اذكر الخطوات على مستوى وحدات النظام المذكورة أعلاه فقط، ولا تخترع أسماء قوائم أو أزرار غير مذكورة.
 - استخدم دائماً رمز العملة العربي الموجود في البيانات ولا تُبدّله بعملة أخرى.
-- إذا كانت العملة معروفة برمز عربي مثل ج.س أو د.إ فاذكرها بدلاً من رمز العملة الإنجليزي.
+- إذا كان للعملة رمز عربي فاذكره بدلاً من رمز العملة الإنجليزي.
 - اكتب النص بدون أي تنسيق Markdown: لا نجوم (**) ولا شرطات سفلية ولا علامات # للعناوين.
 - استخدم الأرقام والنقاط والعناوين النصية العادية فقط.
 - استند إلى الأرقام المُقدَّمة واستنتج منها بشكل منطقي.
 - قدّم توصيات عملية قابلة للتنفيذ.
-- لا تتجاوز 300 كلمة ما لم يطلب المستخدم تفصيلاً أكثر.
-- لا تخترع أرقاماً أو معلومات غير موجودة في السياق."""
+- كن موجزاً، لكن اذكر كل التفاصيل والأسماء والأرقام التي طلبها المستخدم كاملة دون اختصارها.
+- لا تخترع أرقاماً أو معلومات: خذها من السياق أو من نتائج الأدوات فقط."""
+
+
+def _capabilities_summary(tenant) -> str:
+    """ملخص عربي للميزات المفعّلة لنوع نشاط هذا المشترك."""
+    features = {}
+    try:
+        features = tenant.business_type.features or {}
+    except Exception:
+        features = {}
+
+    if not isinstance(features, dict):
+        return ''
+
+    enabled = [
+        _CAPABILITY_LABELS_AR[k]
+        for k, v in features.items()
+        if v and k in _CAPABILITY_LABELS_AR
+    ]
+    return '، '.join(enabled) if enabled else ''
+
+
+def _build_tenant_profile(tenant, user=None) -> str:
+    """نص عربي يصف المشترك (النشاط، الباقة، العملة، الميزات المفعّلة)."""
+    bt = getattr(tenant, 'business_type', None)
+    name_ar = getattr(bt, 'name_ar', '') or 'تجارة عامة'
+    persona = _DEFAULT_PERSONA
+
+    try:
+        plan_label = tenant.get_subscription_plan_display()
+    except Exception:
+        plan_label = tenant.subscription_plan
+
+    try:
+        version_label = tenant.get_version_type_display()
+    except Exception:
+        version_label = tenant.version_type
+
+    cur = (tenant.currency or '').strip().upper()
+    cur_label = CURRENCY_AR.get(cur, cur)
+
+    caps = _capabilities_summary(tenant)
+
+    lines = [
+        'ملف المشترك الحالي:',
+        f'  • اسم النشاط: {tenant.name}',
+        f'  • نوع النشاط: {name_ar}',
+        f'  • {persona}',
+        f'  • الباقة: {plan_label}',
+        f'  • نسخة النظام: {version_label}',
+        f'  • العملة: {cur_label}',
+    ]
+    if tenant.country:
+        lines.append(f'  • الدولة: {tenant.country}')
+    if caps:
+        lines.append(f'  • الميزات المفعّلة: {caps}')
+
+    profile = '\n'.join(lines)
+    if _is_enterprise_owner(tenant, user):
+        profile = f"{profile}\n\n{_ENTERPRISE_OWNER_PERSONA}"
+    elif _user_branch(user) is not None:
+        profile = f"{profile}\n\n{_BRANCH_USER_PERSONA.format(branch=_user_branch(user).name)}"
+    return profile
+
+
+_DATA_ACCESS_RULES = """الوصول إلى البيانات (مهم جداً):
+- لديك أدوات استعلام مباشر عن كل بيانات النشاط: list_entities (أنواع البيانات)، describe_entity (حقول نوع معيّن)، query_data (استعلام وتصفية وترتيب وإجماليات وتجميع).
+- ملخص البيانات في أول المحادثة مختصر عمداً. لأي سؤال عن بيانات (عميل، مورد، مندوب، موظف، فاتورة، رصيد، صنف، مخزون، خزينة، مصروف، فرع، مبيعات فترة...) استعمل الأدوات واجلب الإجابة الفعلية قبل أن تجيب.
+- ممنوع أن تقول "لا تتوفر لدي بيانات" أو "لا أعرف" أو "لا أستطيع الوصول" قبل أن تجرّب الاستعلام. إن لم يعطِ استعلامك نتيجة فعدّله وجرّب مرة أخرى (مثلاً ابحث بالاسم بـ contains، أو غيّر الحقل، أو استدعِ describe_entity). لا تقل إن المعلومة غير موجودة إلا إذا استعلمت فعلاً وكانت النتيجة فارغة، وقل حينها ما بحثت عنه.
+- أنت لا تحتاج إذناً: كل ما تصل إليه الأدوات مسموح للمستخدم الحالي. والنظام يقيّد النتائج تلقائياً بنطاقه.
+- الأرصدة: رصيد العميل = مجموع amount في customer_ledger لهذا العميل (الموجب = مستحق على العميل). رصيد المورد = مجموع amount في supplier_ledger (الموجب = مستحق للمورد). المبيعات الفعلية: فواتير sale_invoices بحالات confirmed و partially_returned و returned.
+- لا تعرض معرّفات داخلية (id) للمستخدم ما لم يطلبها. اعرض الأسماء والأرقام بوضوح، وقدّم تحليلاً وتوصيات عند الحاجة.
+"""
+
+
+def _build_system_prompt(tenant, user=None, with_tools=False) -> str:
+    """يبني system prompt واعٍ بنوع نشاط المشترك ودور المستخدم الحالي."""
+    profile = _build_tenant_profile(tenant, user)
+    prompt = f"{_SYSTEM_KNOWLEDGE}\n\n{profile}\n\n{_RESPONSE_RULES}"
+    if with_tools:
+        prompt += f"\n\n{_DATA_ACCESS_RULES}"
+    return prompt
+
+
+def _build_owner_context_message(ctx: dict) -> str:
+    """سياق مدير النشاط: تفاصيل كل فرع على حدة (كل فرع في قسم مستقل)."""
+    cur = str(ctx.get('currency', '')).strip().upper()
+    cur_label = CURRENCY_AR.get(cur, cur)
+    branches = ctx.get('branches', [])
+    m = lambda v: f"{v:,.0f} {cur_label}"
+    lines = [f"📊 بيانات فروع المؤسسة ({ctx['period']}) — العملة: {cur_label}"]
+    if not branches:
+        lines.append("  • لا توجد فروع نشطة بعد.")
+    else:
+        lines.append(f"  • عدد الفروع النشطة: {len(branches)}")
+        lines.append(f"  • إجمالي إيرادات المؤسسة: {m(sum(b['revenue'] for b in branches))}")
+        lines.append(f"  • إجمالي المشتريات: {m(sum(b['purchases'] for b in branches))}")
+        lines.append(f"  • إجمالي المصروفات: {m(sum(b['expenses'] for b in branches))}")
+        lines.append(f"  • إجمالي مديونية العملاء: {m(sum(b['receivables'] for b in branches))}")
+        lines.append(f"  • إجمالي مستحقات الموردين: {m(sum(b['payables'] for b in branches))}")
+    for b in branches:
+        lines.append(f"\n🏬 الفرع: {b['name']}" + (' (الفرع الافتراضي)' if b['is_default'] else '') + ':')
+        info = [x for x in (f"رمز {b['code']}" if b['code'] else '', b['address'], f"هاتف {b['phone']}" if b['phone'] else '') if x]
+        if info:
+            lines.append(f"  • بيانات الفرع: {' — '.join(info)}")
+        lines.append(f"  • مدير الفرع: {b['manager'] or 'غير معيّن'}")
+        if b['stocks']:
+            lines.append(f"  • المخازن: {'، '.join(b['stocks'])}")
+        lines.append(f"  • إيرادات آخر 30 يوماً: {m(b['revenue'])} (الشهر السابق: {m(b['prev_revenue'])}) — "
+                     f"آخر 7 أيام: {m(b['weekly_revenue'])} — اليوم: {m(b['today_revenue'])}")
+        lines.append(f"  • عدد الفواتير: {b['invoices']} — مرتجعات مبيعات مؤكدة: {m(b['returns'])}")
+        lines.append(f"  • مشتريات: {m(b['purchases'])} — مصروفات: {m(b['expenses'])}")
+        if b['expense_by_category']:
+            lines.append("  • أكبر بنود المصروفات: " + '، '.join(
+                f"{e['category']} {m(e['total'])}" for e in b['expense_by_category']))
+        lines.append(f"  • مديونية العملاء: {m(b['receivables'])} — مستحقات الموردين: {m(b['payables'])}")
+        lines.append(f"  • قيمة المخزون بسعر التكلفة: {m(b['stock_value'])}")
+        lines.append(f"  • أصناف تحت الحد الأدنى: {b['low_stock_count']}")
+        for i in b['low_stock_items']:
+            lines.append(f"      - {i['item']}: {i['current']:.0f} (الحد {i['min']:.0f}) — {i['stock']}")
+        if b['top_items']:
+            lines.append("  • أكثر الأصناف مبيعاً: " + '، '.join(
+                f"{i['name']} ({i['qty']:.0f} وحدة / {m(i['revenue'])})" for i in b['top_items']))
+        if b['top_customers']:
+            lines.append("  • أكبر العملاء شراءً: " + '، '.join(
+                f"{c['name']} ({m(c['revenue'])})" for c in b['top_customers']))
+        if b['top_debtors']:
+            lines.append("  • أعلى أرصدة العملاء: " + '، '.join(
+                f"{d['name']} ({m(d['balance'])})" for d in b['top_debtors']))
+        if b['top_creditors']:
+            lines.append("  • أعلى مستحقات الموردين: " + '، '.join(
+                f"{d['name']} ({m(d['balance'])})" for d in b['top_creditors']))
+        lines.append(f"  • العملاء ({b['customers_count']}): " + ('، '.join(b['customer_names']) or '—'))
+        lines.append(f"  • الموردون ({b['suppliers_count']}): " + ('، '.join(b['supplier_names']) or '—'))
+        lines.append("  • المناديب: " + ('، '.join(b['agents']) or '—'))
+        if b['employees']:
+            lines.append("  • الموظفون: " + '، '.join(
+                f"{e['name']}" + (f" ({e['position']})" if e['position'] else '') + f" راتب {m(e['salary'])}"
+                for e in b['employees']))
+        if b['users']:
+            lines.append("  • مستخدمو النظام: " + '، '.join(f"{u['name']} ({u['role']})" for u in b['users']))
+        if b['treasuries']:
+            lines.append("  • الخزائن: " + '، '.join(f"{t['name']} {t['balance']:,.2f}" for t in b['treasuries']))
+    if ctx.get('top_selling_items'):
+        lines.append("\n🏆 أكثر المنتجات مبيعاً على مستوى المؤسسة:")
+        for i in ctx['top_selling_items']:
+            lines.append(f"  • {i['name']}: {i['qty']:.0f} وحدة / {m(i['revenue'])}")
+    return "\n".join(lines)
 
 
 def _build_context_message(context: dict) -> str:
     """Format business context as a readable Arabic text block."""
     ctx = context
+    if ctx.get('mode') == 'owner_overview':
+        return _build_owner_context_message(ctx)
     cur = str(ctx.get('currency', '')).strip().upper()
     cur_label = CURRENCY_AR.get(cur, cur)
+    scope = f" — فرع {ctx['branch_name']}" if ctx.get('branch_name') else ''
     lines = [
-        f"📊 بيانات الأعمال ({ctx['period']}) — العملة: {cur_label}",
+        f"📊 بيانات الأعمال ({ctx['period']}){scope} — العملة: {cur_label}",
         f"  • إيرادات الشهر: {ctx['monthly_revenue']:,.0f} {cur_label}",
         f"  • إيرادات الأسبوع: {ctx['weekly_revenue']:,.0f} {cur_label}",
         f"  • عدد الفواتير: {ctx['monthly_invoice_count']}",
@@ -265,51 +744,72 @@ def _build_context_message(context: dict) -> str:
 # Public API — Chat
 # ──────────────────────────────────────────────────────────────
 
-def chat(user_message: str, history: list, tenant) -> str:
+def chat(user_message: str, history: list, tenant, user=None) -> str:
     """
     Handle a user chat message.
     history: list of {"role": "user"|"assistant", "content": str}
     Returns the assistant reply string.
     """
-    context = collect_business_context(tenant)
-    context_text = _build_context_message(context)
+    context = collect_business_context(tenant, user)
+    context_text = (_build_context_message(context)
+                    + "\n\n(هذا ملخص مختصر فقط. للتفاصيل الكاملة وأي سؤال آخر استعمل أدوات الاستعلام.)")
 
     messages = [
-        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "system", "content": _build_system_prompt(tenant, user, with_tools=True)},
         {"role": "user", "content": context_text},
-        {"role": "assistant", "content": "حسناً، لديّ البيانات. كيف يمكنني مساعدتك؟"},
+        {"role": "assistant", "content": "حسناً، لديّ ملخص البيانات وأدوات الاستعلام. كيف يمكنني مساعدتك؟"},
     ]
 
-    # Append trimmed history (last 6 turns to stay within token budget)
-    for turn in history[-6:]:
-        messages.append({"role": turn["role"], "content": turn["content"]})
+    # Append trimmed history (last 10 turns to stay within token budget)
+    for turn in history[-10:]:
+        if (isinstance(turn, dict) and turn.get("role") in ("user", "assistant")
+                and isinstance(turn.get("content"), str) and turn["content"].strip()):
+            messages.append({"role": turn["role"], "content": turn["content"]})
 
     messages.append({"role": "user", "content": user_message})
 
-    return _call_deepseek(messages, max_tokens=600)
+    from apps.ai.data_tools import TOOL_SCHEMAS, run_tool
+    return _call_deepseek(
+        messages, max_tokens=1500, tools=TOOL_SCHEMAS,
+        tool_runner=lambda name, args: run_tool(name, args, tenant, user),
+    )
 
 
 # ──────────────────────────────────────────────────────────────
 # Public API — Daily Insights
 # ──────────────────────────────────────────────────────────────
 
-def generate_daily_insights(tenant) -> str:
+# شكل نقاط النصائح: تُعرض في شريط من سطرين فقط، فتُطلب قصيرة وبلا مقدمات (وإلا قُصّت في الواجهة).
+_TIP_FORMAT_RULES = (
+    "اكتب كل نقطة في سطر مستقل، جملة واحدة قصيرة لا تتجاوز 120 حرفاً، بلا ترقيم ولا عناوين ولا مقدمة "
+    "ولا «فرضية عمل»؛ ابدأ مباشرة بالنصيحة أو الملاحظة."
+)
+
+
+def generate_daily_insights(tenant, user=None) -> str:
     """
     Generate a concise Arabic business health summary for the dashboard widget.
     """
-    context = collect_business_context(tenant)
+    context = collect_business_context(tenant, user)
     context_text = _build_context_message(context)
 
+    if _is_enterprise_owner(tenant, user):
+        instruction = (
+            "بناءً على بيانات الفروع أعلاه، اكتب نصائح إدارية موجزة (5 نقاط كحد أقصى): "
+            "قارن أداء الفروع ببعضها، نبّه لفرع يحتاج متابعة (مبيعات متراجعة عن الشهر السابق، "
+            "مخزون منخفض، مديونيات مرتفعة، فرع بلا مدير)، واقترح قراراً إدارياً مناسباً. "
+            + _TIP_FORMAT_RULES
+        )
+    else:
+        instruction = (
+            "بناءً على هذه البيانات، اكتب تقرير صحة أعمال يومي موجز (5 نقاط كحد أقصى) "
+            "يشمل: أبرز إنجاز، أبرز تحذير، وتوصية واحدة عملية فورية. "
+            + _TIP_FORMAT_RULES
+        )
+
     messages = [
-        {"role": "system", "content": _SYSTEM_PROMPT},
-        {
-            "role": "user",
-            "content": (
-                f"{context_text}\n\n"
-                "بناءً على هذه البيانات، اكتب تقرير صحة أعمال يومي موجز (5 نقاط كحد أقصى) "
-                "يشمل: أبرز إنجاز، أبرز تحذير، وتوصية واحدة عملية فورية."
-            ),
-        },
+        {"role": "system", "content": _build_system_prompt(tenant, user)},
+        {"role": "user", "content": f"{context_text}\n\n{instruction}"},
     ]
 
     return _call_deepseek(messages, max_tokens=400)
@@ -428,12 +928,12 @@ def smart_map_headers(actual_headers: list, field_schema: list) -> dict:
     return {}
 
 
-def enrich_notification(notification_type: str, raw_message: str, tenant) -> str:
+def enrich_notification(notification_type: str, raw_message: str, tenant, user=None) -> str:
     """
     Given a raw notification message (e.g., "المخزون منخفض لمنتج X"),
     return an AI-enriched version with context and actionable advice.
     """
-    context = collect_business_context(tenant)
+    context = collect_business_context(tenant, user)
     context_text = _build_context_message(context)
 
     prompt = (
@@ -444,7 +944,7 @@ def enrich_notification(notification_type: str, raw_message: str, tenant) -> str
     )
 
     messages = [
-        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "system", "content": _build_system_prompt(tenant, user)},
         {"role": "user", "content": prompt},
     ]
 
@@ -456,44 +956,45 @@ def enrich_notification(notification_type: str, raw_message: str, tenant) -> str
 # ──────────────────────────────────────────────────────────────
 
 _MARKETING_FEATURES_REFERENCE = (
-    "حقائق عن نظام بنان (BananIMS) يجب الاستناد إليها فقط، دون اختراع أي ميزة أو رقم غير مذكور هنا. "
-    "استخدم اسم \"بنان\" في نص المنشور، لا \"BananIMS\":\n"
-    "- نظام سحابي لإدارة المخزون والمبيعات، بواجهة عربية كاملة من الأساس، وليست مترجمة.\n"
+    "حقائق عن نظام BANAN يجب الاستناد إليها فقط، دون اختراع أي ميزة أو رقم غير مذكور هنا. "
+    "استخدم اسم \"BANAN\" في نص المنشور:\n"
+    "- نظام سحابي لإدارة المخزون والمبيعات للتجار وشركات بيع المنتجات: قطع الغيار، الإلكترونيات والأجهزة "
+    "الكهربائية، الهواتف والحواسيب، والأدوات والمعدات، بواجهة عربية كاملة من الأساس، وليست مترجمة.\n"
     "- يدعم محلاً واحداً بمخزن واحد، أو مخازن متعددة، أو فروعاً متعددة (حتى عشرين فرعاً)، بنفس السهولة.\n"
     "- نسخة احتياطية يومية تلقائية لبيانات كل مشترك، مع عزل تام لبياناته عن أي مشترك آخر.\n"
     "- نقطة بيع سريعة (POS)، فواتير، عروض أسعار، مرتجعات، وتسليم مؤجل.\n"
     "- إدارة مشتريات كاملة: طلبات عروض أسعار، أوامر شراء، مرتجعات مشتريات.\n"
-    "- إدارة مخازن: أرصدة افتتاحية، تحويلات بين المخازن، جرد مخزون، تتبع تواريخ الصلاحية والدُفعات للمنتجات الغذائية والدوائية.\n"
+    "- إدارة مخازن: أرصدة افتتاحية، تحويلات بين المخازن، جرد مخزون، سجلات إتلاف، وتتبع الأرقام التسلسلية.\n"
     "- متجر إلكتروني عام مجاني مع كل باقة، بسلة شراء وصفحة مستقلة لكل مشترك.\n"
     "- بوابة عميل: رابط خاص لكل عميل يعرض فواتيره وكشف حسابه.\n"
     "- ذكاء اصطناعي مدمج: دردشة ذكية ورؤى يومية تلقائية عن أداء العمل.\n"
     "- إشعارات ذكية تلقائية (مخزون منخفض، فاتورة متأخرة، طلب جديد).\n"
-    "- أكثر من 27 تقريراً: مبيعات، مشتريات، مخزون، مصروفات، خزائن، قائمة الدخل.\n"
+    "- عشرات التقارير: مبيعات، مشتريات، مخزون، مصروفات، خزائن، قائمة الدخل.\n"
     "- إدارة مصروفات وخزائن (نقدية وبنكية) مع تحويلات بينها.\n"
-    "- نظام صلاحيات دقيق: 23 قسماً و151 صلاحية، وسجل نشاط كامل لكل عملية.\n"
+    "- نظام صلاحيات دقيق على مستوى كل شاشة وعملية، وسجل نشاط كامل لكل عملية.\n"
     "- دعم فني عبر نظام تذاكر مدمج.\n"
-    "- تجربة مجانية لمدة 7 أيام، بدون التزام."
+    "- تجربة مجانية لمدة 14 يوماً، بدون التزام."
 )
 
 _MARKETING_CATEGORY_GUIDANCE = {
     'comprehensive': 'منشور شامل يلخّص أهم ميزات النظام في فقرة واحدة متماسكة، دون أن يتحول لقائمة.',
-    'problem': 'يبدأ من مشكلة يومية حقيقية يعيشها صاحب محل (دفاتر ورقية، جرد يدوي، حسابات خاطئة...)، ثم يشير لكيف يحل النظام هذه المشكلة تحديداً.',
+    'problem': 'يبدأ من مشكلة يومية حقيقية يعيشها التاجر (دفاتر ورقية، جرد يدوي، حسابات خاطئة، بضاعة راكدة تُكتشف متأخراً، ديون عملاء غير متابعة...)، ثم يشير لكيف يحل النظام هذه المشكلة تحديداً.',
     'feature': 'يشرح ميزة واحدة فقط من ميزات النظام بعمق، لا أكثر من ميزة في نفس المنشور.',
-    'business_type': 'موجّه لأحد الأنشطة التالية تحديداً: تجارة عامة (قطع غيار، إلكترونيات)، أو أغذية وصيدليات (تتبع صلاحية)، أو مطاعم ومقاهي (وصفات ومواد خام). اختر نشاطاً واحداً واجعل المنشور خاصاً به.',
+    'business_type': 'موجّه لأحد أنواع الأنشطة التالية تحديداً: محل قطع غيار، أو معرض إلكترونيات وأجهزة كهربائية، أو محل هواتف وحواسيب، أو شركة أدوات ومعدات، أو تاجر جملة بمندوبين. اختر نوعاً واحداً واجعل المنشور خاصاً به.',
     'trust': 'يعالج هاجس الأمان أو الثقة في نظام سحابي: حماية البيانات، النسخ الاحتياطي، العزل بين المشتركين، الصلاحيات.',
-    'objection': 'يطرح اعتراضاً واقعياً يقوله تاجر مثل "معقد وما عندي وقت أتعلمه" أو "عندي نظام قديم شغال"، ثم يرد عليه بإجابة مقنعة وصادقة.',
-    'tip': 'نصيحة تجارية عملية مفيدة بذاتها لصاحب أي محل، مع ربط خفيف بكيف يسهّل النظام تطبيقها.',
-    'comparison': 'يقارن بين طريقة عمل تقليدية (دفتر ورقي، إكسل، برنامج قديم، الذاكرة) وبين نظام إدارة حقيقي مثل بنان.',
-    'cta': 'دعوة مباشرة وصريحة لبدء التجربة المجانية لمدة 7 أيام، بدون وعود مبالغ فيها.',
+    'objection': 'يطرح اعتراضاً واقعياً يقوله التاجر مثل "النظام معقد وليس لدي وقت لتعلمه" أو "لدي نظام قديم يعمل"، ثم يرد عليه بإجابة مقنعة وصادقة.',
+    'tip': 'نصيحة عملية مفيدة بذاتها لأي تاجر أو صاحب محل، مع ربط خفيف بكيف يسهّل النظام تطبيقها.',
+    'comparison': 'يقارن بين طريقة عمل تقليدية (دفتر ورقي، إكسل، برنامج قديم، الذاكرة) وبين نظام إدارة حقيقي مثل BANAN.',
+    'cta': 'دعوة مباشرة وصريحة لبدء التجربة المجانية لمدة 14 يوماً، بدون وعود مبالغ فيها.',
     'engagement': 'سؤال حقيقي يدفع القارئ للتعليق والمشاركة، دون ذكر مباشر للنظام في بداية المنشور، ويمكن ذكره بخفة في النهاية أو عدم ذكره إطلاقاً.',
-    'sudan_context': 'يتحدث عن واقع التجار في السودان تحديداً: إدارة العمل عن بُعد، النزوح بين المدن، تعدد الفروع الجغرافي، أو تذبذب العملة — دون المبالغة أو افتراض معلومات غير مؤكدة.',
+    'remote_management': 'يتحدث عن إدارة النشاط عن بُعد: متابعة الفروع والمخازن من أي مكان، أو متابعة المبيعات والمخزون لحظياً — دون المبالغة أو افتراض معلومات غير مؤكدة.',
 }
 
 
 def generate_marketing_post(category: str, topic_hint: str = '', existing_posts: list | None = None) -> str:
     """
     Generate ONE ready-to-publish Arabic (Modern Standard Arabic) social media
-    post about BananIMS itself, for the given marketing category.
+    post about BANAN itself, for the given marketing category.
 
     `existing_posts` (optional): content of posts already saved in this same
     category, used to steer the model away from repeating an idea or phrasing
@@ -518,7 +1019,7 @@ def generate_marketing_post(category: str, topic_hint: str = '', existing_posts:
 
     prompt = (
         f"{_MARKETING_FEATURES_REFERENCE}\n\n"
-        f"اكتب منشوراً واحداً فقط لوسائل التواصل الاجتماعي (فيسبوك أو إنستقرام) للترويج لنظام بنان.\n"
+        f"اكتب منشوراً واحداً فقط لوسائل التواصل الاجتماعي (فيسبوك أو إنستقرام) للترويج لنظام BANAN.\n"
         f"نوع المنشور المطلوب: {guidance}"
         f"{hint_line}"
         f"{existing_block}\n"

@@ -81,21 +81,71 @@ def get_cart_items(slug: str, cart: dict) -> list:
 
 
 # ──────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────
+# Stock availability (المخزن الذي يخدم طلبات المتجر)
+# ──────────────────────────────────────────────────────────────
+
+def store_stock(tenant, branch=None):
+    """
+    المخزن الذي يخدم طلبات المتجر: المخزن الافتراضي للفرع المختار (أو أول مخازنه)؛
+    بلا فروع: المخزن الافتراضي للمشترك. منه تُعرض الكميات ويُتحقق منها وتُصدر الفاتورة.
+    """
+    from apps.stocks.models import Stock
+    stocks = Stock.objects.filter(tenant=tenant, is_active=True, is_central=False)
+    if branch is not None:
+        stocks = stocks.filter(branch=branch)
+    return stocks.filter(is_default=True).first() or stocks.order_by('id').first()
+
+
+def available_quantities(stock, item_ids):
+    """{item_id: المتاح} = الرصيد − المحجوز في مخزن المتجر."""
+    from apps.stocks.models import StockQuantity
+    if stock is None:
+        return {}
+    rows = StockQuantity.objects.filter(stock=stock, item_id__in=list(item_ids)).values(
+        'item_id', 'quantity', 'reserved_quantity')
+    return {r['item_id']: (r['quantity'] or 0) - (r['reserved_quantity'] or 0) for r in rows}
+
+
+def cart_shortages(stock, cart_items):
+    """بنود السلة التي تتجاوز المتاح: [{'item', 'requested', 'available'}]."""
+    available = available_quantities(stock, [r['item'].id for r in cart_items])
+    shortages = []
+    for row in cart_items:
+        have = max(available.get(row['item'].id, Decimal('0')), Decimal('0'))
+        if row['qty'] > have:
+            shortages.append({'item': row['item'], 'requested': row['qty'], 'available': have})
+    return shortages
+
+
+def shortage_message(shortages):
+    from apps.core.templatetags.number_format import qty
+    parts = [f'«{s["item"].name}» (المتاح {qty(s["available"])})' for s in shortages]
+    return 'الكمية المطلوبة غير متوفرة حالياً: ' + '، '.join(parts)
+
+
+# ──────────────────────────────────────────────────────────────
 # Place Order
 # ──────────────────────────────────────────────────────────────
 
 @transaction.atomic
-def place_order(store: StoreSettings, cart_items: list, customer_data: dict) -> OnlineOrder:
+def place_order(store: StoreSettings, cart_items: list, customer_data: dict, branch=None) -> OnlineOrder:
     """
     Create OnlineOrder + OnlineOrderLines.
-    Sends a notification to the tenant.
+    Sends a notification to the order's branch (or the tenant without branches).
     Returns the new OnlineOrder.
     """
+    if store.tenant.is_enterprise() and branch is None:
+        raise ValueError('اختر الفرع أولاً.')
+    shortages = cart_shortages(store_stock(store.tenant, branch), cart_items)
+    if shortages:
+        raise ValueError(shortage_message(shortages))
     subtotal = sum(r['line_total'] for r in cart_items)
 
     order = OnlineOrder.objects.create(
         tenant          = store.tenant,
         store           = store,
+        branch          = branch,
         customer_name   = customer_data['name'],
         customer_phone  = customer_data['phone'],
         customer_address= customer_data.get('address', ''),
@@ -124,6 +174,7 @@ def _notify_new_order(order: OnlineOrder):
     from apps.notifications.models import Notification
     Notification.objects.create(
         tenant            = order.tenant,
+        branch            = order.branch,   # الطلب يخص فرعه: هو من يقبله ويُصدر فاتورته
         notification_type = 'online_order',
         priority          = 'high',
         title             = f'طلب جديد من المتجر: {order.order_number}',
@@ -141,33 +192,43 @@ def _notify_new_order(order: OnlineOrder):
 # ──────────────────────────────────────────────────────────────
 
 @transaction.atomic
-def approve_order(order: OnlineOrder) -> 'SaleInvoice':
+def approve_order(order: OnlineOrder, user=None) -> 'SaleInvoice':
     """
-    1. Find or create a Customer by phone number.
-    2. Create a SaleInvoice (draft) with all lines.
-    3. Link OnlineOrder.sale_invoice and mark as approved.
+    1. Verify the branch store stock still covers every line.
+    2. Find or create a Customer by phone number.
+    3. Create a SaleInvoice (draft) with all lines, from the order's branch.
+    4. Link OnlineOrder.sale_invoice and mark as approved.
     """
     from apps.customers.models import Customer
     from apps.sales.models import SaleInvoice, SaleInvoiceLine
-    from apps.stocks.models import Stock
 
     tenant = order.tenant
 
+    # ── Store stock ───────────────────────────────────────────
+    # طلب فرع محدد يُخدَّم من مخزن ذلك الفرع فقط، وبنفس المخزن الذي عرض الكميات للزبون.
+    stock = store_stock(tenant, order.branch)
+    if stock is None:
+        raise ValueError('لا يوجد مخزن فعّال لفرع الطلب')
+    # بلا حجز: الكمية قد تُباع في الفرع بعد الطلب، فنتحقق مجدداً عند القبول.
+    lines = list(order.lines.select_related('item'))
+    shortages = cart_shortages(stock, [{'item': ln.item, 'qty': ln.quantity} for ln in lines])
+    if shortages:
+        raise ValueError(shortage_message(shortages) + ' — عدّل الطلب مع الزبون أو ارفضه.')
+
     # ── Customer ─────────────────────────────────────────────
-    customer, _ = Customer.objects.get_or_create(
-        tenant=tenant,
-        phone=order.customer_phone,
-        defaults={'name': order.customer_name},
-    )
+    # في نسخة المؤسسات يتبع زبون المتجر فرعَ المخزن الذي يخدم الطلب.
+    # البحث داخل فرع المخزن فقط (لا نربط الطلب بعميل فرع آخر)، والهاتف ليس
+    # فريداً، فنأخذ أقدم تطابق بدل get_or_create الذي يفشل عند التكرار.
+    branch_id = stock.branch_id if stock else None
+    customer = (Customer.objects.filter(tenant=tenant, phone=order.customer_phone, branch_id=branch_id)
+                .order_by('id').first())
+    if customer is None:
+        customer = Customer.objects.create(
+            tenant=tenant, phone=order.customer_phone, name=order.customer_name, branch_id=branch_id,
+        )
     if customer.name != order.customer_name and not customer.name:
         customer.name = order.customer_name
         customer.save(update_fields=['name'])
-
-    # ── Default stock ─────────────────────────────────────────
-    stock = (
-        Stock.objects.filter(tenant=tenant, is_default=True, is_active=True).first()
-        or Stock.objects.filter(tenant=tenant, is_active=True).first()
-    )
 
     # ── Invoice ───────────────────────────────────────────────
     invoice = SaleInvoice.objects.create(
@@ -177,6 +238,8 @@ def approve_order(order: OnlineOrder) -> 'SaleInvoice':
         invoice_date   = timezone.localdate(),
         payment_method = order.payment_method,
         status         = 'draft',
+        created_by     = user,
+        updated_by     = user,
         notes          = (
             f'طلب أونلاين {order.order_number}'
             + (f' — {order.customer_notes}' if order.customer_notes else '')
@@ -186,7 +249,7 @@ def approve_order(order: OnlineOrder) -> 'SaleInvoice':
     # ── Lines ─────────────────────────────────────────────────
     from decimal import Decimal as D
     running_subtotal = D('0')
-    for line in order.lines.select_related('item').all():
+    for line in lines:
         sale_line = SaleInvoiceLine(
             tenant            = tenant,
             invoice           = invoice,

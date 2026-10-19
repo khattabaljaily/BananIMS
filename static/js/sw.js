@@ -1,4 +1,4 @@
-/* BananIMS Service Worker — app-shell only, no data caching */
+/* BANAN Service Worker — app-shell only, no data caching */
 const CACHE = 'banan-shell-v2';
 const SHELL = [
   '/static/css/main.css',
@@ -6,9 +6,6 @@ const SHELL = [
   '/static/css/components.css',
   '/static/css/auth.css',
   '/static/js/main.js',
-  '/static/img/logo/logo-6547bd.png',
-  '/static/img/logo/logo-ffffff.png',
-  '/static/img/icons/icon-192x192.png',
   '/static/fonts/cairo/Cairo-Regular.ttf',
   '/static/fonts/cairo/Cairo-Bold.ttf',
 ];
@@ -34,22 +31,26 @@ self.addEventListener('fetch', e => {
   /* Only handle same-origin GET requests */
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
 
-  /* Static assets — network first, cache only as an offline fallback.
-     (Cache-first here meant CSS/JS edits could never be seen again
-     without clearing site data, since the cached copy would win forever.) */
+  /* Static assets — stale-while-revalidate: serve cached copy instantly,
+     but always refetch in the background so the NEXT load gets fresh assets
+     after a deploy instead of being stuck on a cached copy indefinitely. */
   if (url.pathname.startsWith('/static/')) {
     e.respondWith(
-      fetch(request).then(res => {
-        const clone = res.clone();
-        caches.open(CACHE).then(c => c.put(request, clone));
-        return res;
-      }).catch(() => caches.match(request))
+      caches.open(CACHE).then(cache =>
+        cache.match(request).then(cached => {
+          const fetchPromise = fetch(request).then(res => {
+            cache.put(request, res.clone());
+            return res;
+          }).catch(() => cached);
+          return cached || fetchPromise;
+        })
+      )
     );
     return;
   }
 
-  /* HTML pages — network first, fall back to cache */
-  e.respondWith(
-    fetch(request).catch(() => caches.match(request))
-  );
+  /* Everything else (pages, APIs, downloads) is left to the browser.
+     Pages are never cached, so intercepting them only turned any brief
+     network drop into ERR_FAILED instead of the browser's own retry/offline
+     handling. */
 });

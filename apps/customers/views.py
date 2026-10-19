@@ -1,6 +1,7 @@
 import csv
 import io
 import json
+from django.db.models.deletion import ProtectedError
 from decimal import Decimal
 from apps.accounts.activity_service import log_activity
 
@@ -14,6 +15,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from apps.accounts.decorators import require_permission, require_any_permission
+from apps.core.utils import filter_by_branch_via, enforce_branch_ownership, operational_money_accounts
 from .forms import CustomerForm
 from .models import Customer
 from apps.sales.models import CustomerLedger, SalePayment
@@ -23,6 +25,7 @@ from apps.sales.services import (
     reverse_customer_payment_by_ledger_entry,
 )
 from apps.treasury.models import Treasury, TreasuryMovement
+from apps.bank_accounts.models import BankAccount, BankAccountMovement
 
 
 def _ensure_tenant(request):
@@ -39,19 +42,20 @@ def customer_list(request):
     if not tenant:
         return redirect('core:no_tenant')
 
-    qs = Customer.objects.for_tenant(tenant)
+    qs = Customer.objects.for_tenant(tenant).for_branch(getattr(request, 'branch', None))
     total = qs.count()
     active = qs.filter(is_active=True).count()
     inactive = total - active
 
     context = {
-        'form': CustomerForm(),
+        'form': CustomerForm(tenant=tenant, branch=getattr(request, 'branch', None)),
         'stats': {
             'total': total,
             'active': active,
             'inactive': inactive,
         },
     }
+
     return render(request, 'customers/customer_list.html', context)
 
 
@@ -83,7 +87,7 @@ def customer_table_api(request):
     search_value = request.GET.get('search[value]', '').strip()
     status = request.GET.get('status', '').strip()
 
-    queryset = Customer.objects.for_tenant(tenant).annotate(
+    queryset = Customer.objects.for_tenant(tenant).for_branch(getattr(request, 'branch', None)).annotate(
         ledger_total=Coalesce(
             Sum('ledger_entries__amount'),
             Value(0),
@@ -162,10 +166,13 @@ def customer_create_api(request):
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
 
-    form = CustomerForm(request.POST)
+    branch = getattr(request, 'branch', None)
+    form = CustomerForm(request.POST, tenant=tenant, branch=branch)
     if form.is_valid():
         customer = form.save(commit=False)
         customer.tenant = tenant
+        if branch is not None:
+            customer.branch = branch
         customer.created_by = request.user
         customer.updated_by = request.user
         customer.save()
@@ -193,6 +200,7 @@ def generate_portal_token(request, pk):
     if not tenant:
         return JsonResponse({'success': False, 'message': 'لا يوجد نشاط تجاري'}, status=400, json_dumps_params={'ensure_ascii': False})
     customer = get_object_or_404(Customer.objects.for_tenant(tenant), pk=pk)
+    enforce_branch_ownership(request, customer)
     customer.refresh_portal_token()
     from django.urls import reverse
     portal_url = request.build_absolute_uri(
@@ -213,6 +221,7 @@ def customer_detail_api(request, pk):
         return JsonResponse({'success': False, 'message': 'لا يوجد نشاط تجاري'}, status=400, json_dumps_params={'ensure_ascii': False})
 
     customer = get_object_or_404(Customer.objects.for_tenant(tenant), pk=pk)
+    enforce_branch_ownership(request, customer)
     ledger_total = (
         CustomerLedger.objects
         .for_tenant(tenant)
@@ -231,6 +240,7 @@ def customer_detail_api(request, pk):
             'email': customer.email,
             'city': customer.city,
             'address': customer.address,
+            'branch': customer.branch_id,
             'opening_balance': str(customer.opening_balance),
             'current_balance': str(current_balance),
             'credit_limit': str(customer.credit_limit),
@@ -248,6 +258,7 @@ def customer_transactions_api(request, pk):
         return JsonResponse({'success': False, 'message': 'لا يوجد نشاط تجاري'}, status=400, json_dumps_params={'ensure_ascii': False})
 
     customer = get_object_or_404(Customer.objects.for_tenant(tenant), pk=pk)
+    enforce_branch_ownership(request, customer)
     opening = customer.opening_balance or Decimal('0')
 
     type_labels = {
@@ -306,15 +317,19 @@ def customer_payments(request):
     if not tenant:
         return redirect('core:no_tenant')
 
-    customers = Customer.objects.for_tenant(tenant).filter(is_active=True).annotate(
+    customers = Customer.objects.for_tenant(tenant).for_branch(getattr(request, 'branch', None)).filter(is_active=True).annotate(
         ledger_total=Coalesce(
             Sum('ledger_entries__amount', output_field=DecimalField(max_digits=14, decimal_places=2)),
             Value(0, output_field=DecimalField(max_digits=14, decimal_places=2)),
             output_field=DecimalField(max_digits=14, decimal_places=2),
         )
     ).order_by('name')
-    treasuries = Treasury.objects.for_tenant(tenant).filter(is_active=True).order_by('name')
-    stats = CustomerLedger.objects.for_tenant(tenant).filter(entry_type='payment').aggregate(
+    treasuries = operational_money_accounts(Treasury.objects.for_tenant(tenant), request).filter(is_active=True).order_by('name')
+    bank_accounts = operational_money_accounts(BankAccount.objects.for_tenant(tenant), request).filter(is_active=True).order_by('name')
+    branch = getattr(request, 'branch', None)
+    stats = filter_by_branch_via(
+        CustomerLedger.objects.for_tenant(tenant).filter(entry_type='payment'), branch, field='customer__branch'
+    ).aggregate(
         total=Coalesce(
             Sum('amount', output_field=DecimalField(max_digits=14, decimal_places=2)),
             Value(0, output_field=DecimalField(max_digits=14, decimal_places=2)),
@@ -338,8 +353,11 @@ def customer_payments(request):
     context = {
         'customers': customers,
         'treasuries': treasuries,
+        'bank_accounts': bank_accounts,
         'stats': {
-            'total': CustomerLedger.objects.for_tenant(tenant).filter(entry_type='payment').count(),
+            'total': filter_by_branch_via(
+                CustomerLedger.objects.for_tenant(tenant).filter(entry_type='payment'), branch, field='customer__branch'
+            ).count(),
             'total_amount': positive(stats['total']),
             'cash_amount': positive(stats['cash']),
             'bank_amount': positive(stats['bank']),
@@ -364,6 +382,7 @@ def customer_payments_table_api(request):
     method_filter = request.GET.get('payment_method', '')
 
     qs = CustomerLedger.objects.for_tenant(tenant).filter(entry_type='payment')
+    qs = filter_by_branch_via(qs, getattr(request, 'branch', None), field='customer__branch')
     total = qs.count()
 
     if customer_filter:
@@ -469,6 +488,7 @@ def customer_payment_detail_api(request, pk):
         entry_type='payment',
         pk=pk,
     )
+    enforce_branch_ownership(request, payment, field='customer__branch')
 
     # لو القيد مرتبط بفاتورة حقيقية (SalePayment)، الأصل عن حالة الإلغاء وحركة
     # الخزينة موجود عند تلك الدفعة نفسها (مُعرَّفة برقمها هي، لا بمعرّف قيد العميل).
@@ -477,7 +497,9 @@ def customer_payment_detail_api(request, pk):
         linked_sale_payment = SalePayment.objects.for_tenant(tenant).filter(pk=payment.reference_id).first()
 
     is_hard = payment.reference_type.endswith('_cash')
+    is_bank = payment.reference_type.endswith('_bank')
     cash_treasury = None
+    bank_account_name = None
     cancellation = None
     if linked_sale_payment:
         if is_hard:
@@ -486,6 +508,12 @@ def customer_payment_detail_api(request, pk):
             ).select_related('treasury').first()
             if treasury_movement:
                 cash_treasury = treasury_movement.treasury.name
+        elif is_bank:
+            bank_movement = BankAccountMovement.objects.for_tenant(tenant).filter(
+                reference_type='sale_payment', reference_id=linked_sale_payment.id,
+            ).select_related('bank_account').first()
+            if bank_movement:
+                bank_account_name = bank_movement.bank_account.name
         if linked_sale_payment.is_reversed:
             cancellation = CustomerLedger.objects.for_tenant(tenant).filter(
                 reference_type=payment.reference_type, reference_id=payment.reference_id, is_reversal=True,
@@ -501,6 +529,12 @@ def customer_payment_detail_api(request, pk):
             ).select_related('treasury').first()
             if treasury_movement:
                 cash_treasury = treasury_movement.treasury.name
+        elif is_bank:
+            bank_movement = BankAccountMovement.objects.for_tenant(tenant).filter(
+                reference_type=payment.reference_type, reference_id=payment.id,
+            ).select_related('bank_account').first()
+            if bank_movement:
+                bank_account_name = bank_movement.bank_account.name
 
     response_data = {
         'id': payment.id,
@@ -513,6 +547,7 @@ def customer_payment_detail_api(request, pk):
         'cancellation_note': cancellation.notes if cancellation else '',
         'cancellation_date': cancellation.entry_date.strftime('%Y-%m-%d') if cancellation else None,
         'cash_treasury': cash_treasury,
+        'bank_account': bank_account_name,
     }
     return _json_ok(data=response_data)
 
@@ -535,6 +570,7 @@ def customer_payment_create_api(request):
         payment_date = body.get('payment_date') or timezone.localdate().isoformat()
         method = body.get('method', 'cash')
         treasury_id = body.get('treasury_id')
+        bank_account_id = body.get('bank_account_id')
         reference = str(body.get('reference', '') or '').strip()
         notes = str(body.get('notes', '') or '').strip()
     except (TypeError, ValueError, json.JSONDecodeError) as e:
@@ -544,21 +580,29 @@ def customer_payment_create_api(request):
         return _json_error('المبلغ يجب أن يكون أكبر من الصفر')
 
     customer = get_object_or_404(Customer.objects.for_tenant(tenant), pk=customer_id)
+    enforce_branch_ownership(request, customer)
     note_text = notes
     if reference:
         note_text = f"{note_text} | مرجع: {reference}" if note_text else f"مرجع: {reference}"
 
     treasury = None
+    bank_account = None
     if method == 'cash':
         if not treasury_id:
             return _json_error('يجب اختيار الخزينة عند دفع نقداً')
-        treasury = get_object_or_404(Treasury.objects.for_tenant(tenant), pk=int(treasury_id))
+        treasury = get_object_or_404(operational_money_accounts(Treasury.objects.for_tenant(tenant), request), pk=int(treasury_id))
+        enforce_branch_ownership(request, treasury)
+    elif method == 'bank':
+        if not bank_account_id:
+            return _json_error('يجب اختيار الحساب البنكي عند الدفع بنكياً')
+        bank_account = get_object_or_404(operational_money_accounts(BankAccount.objects.for_tenant(tenant), request), pk=int(bank_account_id))
+        enforce_branch_ownership(request, bank_account)
 
     try:
         allocation = record_customer_payment_allocated(
             tenant=tenant, customer=customer, amount=amount, method=method,
             date=payment_date, reference=reference, notes=note_text,
-            user=request.user, treasury=treasury,
+            user=request.user, treasury=treasury, bank_account=bank_account,
         )
     except ValueError as e:
         return _json_error(str(e), status=400)
@@ -600,6 +644,7 @@ def customer_payment_cancel_api(request, pk):
         CustomerLedger.objects.for_tenant(tenant).filter(entry_type='payment'),
         pk=pk,
     )
+    enforce_branch_ownership(request, payment, field='customer__branch')
     try:
         with transaction.atomic():
             reverse_customer_payment_by_ledger_entry(tenant, payment, user=request.user)
@@ -621,7 +666,8 @@ def customer_update_api(request, pk):
         return HttpResponseNotAllowed(['POST'])
 
     customer = get_object_or_404(Customer.objects.for_tenant(tenant), pk=pk)
-    form = CustomerForm(request.POST, instance=customer)
+    enforce_branch_ownership(request, customer)
+    form = CustomerForm(request.POST, instance=customer, tenant=tenant, branch=getattr(request, 'branch', None))
 
     if form.is_valid():
         customer = form.save(commit=False)
@@ -651,8 +697,15 @@ def customer_delete_api(request, pk):
         return HttpResponseNotAllowed(['POST'])
 
     customer = get_object_or_404(Customer.objects.for_tenant(tenant), pk=pk)
+    enforce_branch_ownership(request, customer)
     cus_name = customer.name
-    customer.delete()
+    try:
+        customer.delete()
+    except ProtectedError:
+        return JsonResponse({
+            'success': False,
+            'message': 'لا يمكن حذف العميل لوجود فواتير أو حركات مرتبطة به.',
+        }, status=400, json_dumps_params={'ensure_ascii': False})
     log_activity(request, 'حذف عميل', cus_name, 'delete')
     return JsonResponse({
         'success': True,
@@ -663,87 +716,6 @@ def customer_delete_api(request, pk):
 @login_required
 def customer_create(request):
     return redirect('customers:list')
-
-
-_CUSTOMER_FIELD_SCHEMA = [
-    {"field": "name",            "description": "اسم العميل أو الزبون أو الشخص", "required": True},
-    {"field": "phone",           "description": "رقم الهاتف أو الجوال أو الموبايل"},
-    {"field": "email",           "description": "البريد الإلكتروني"},
-    {"field": "city",            "description": "المدينة أو المنطقة أو الموقع"},
-    {"field": "address",         "description": "العنوان التفصيلي أو الشارع"},
-    {"field": "opening_balance", "description": "المديونية الافتتاحية أو مديونية البداية أو الرصيد الافتتاحي"},
-    {"field": "credit_limit",    "description": "حد الائتمان أو سقف الدين أو أقصى دين"},
-    {"field": "notes",           "description": "ملاحظات أو تعليقات"},
-]
-
-
-@login_required
-@require_permission('import_customers')
-def customer_import_api(request):
-    """Import customers from Excel/CSV with AI-assisted column mapping."""
-    from apps.core.io_utils import parse_uploaded_file, smart_get, safe_decimal, clean_phone, clean_email
-    from apps.ai.services import smart_map_headers
-
-    tenant = _ensure_tenant(request)
-    if not tenant:
-        return JsonResponse({'success': False, 'message': 'لا يوجد نشاط تجاري'}, status=400, json_dumps_params={'ensure_ascii': False})
-
-    if request.method != 'POST':
-        return HttpResponseNotAllowed(['POST'])
-
-    if 'file' not in request.FILES:
-        return JsonResponse({'success': False, 'message': 'لم يتم رفع أي ملف'}, status=400, json_dumps_params={'ensure_ascii': False})
-
-    rows, err = parse_uploaded_file(request.FILES['file'])
-    if err:
-        return JsonResponse({'success': False, 'message': err}, status=400, json_dumps_params={'ensure_ascii': False})
-
-    if not rows:
-        return JsonResponse({'success': False, 'message': 'الملف فارغ أو لا يحتوي على بيانات'}, status=400, json_dumps_params={'ensure_ascii': False})
-
-    # AI maps actual headers → canonical field names (one call for the whole import)
-    actual_headers = list(rows[0].keys())
-    try:
-        mapping = smart_map_headers(actual_headers, _CUSTOMER_FIELD_SCHEMA)
-    except Exception:
-        mapping = {}
-
-    imported_count, errors = 0, []
-    for row_num, row in enumerate(rows, start=2):
-        try:
-            name = smart_get(row, 'name', mapping, 'الاسم', 'اسم العميل', 'العميل', 'name')
-            if not name:
-                errors.append(f'الصف {row_num}: اسم العميل مطلوب')
-                continue
-
-            Customer.objects.create(
-                tenant=tenant,
-                name=name,
-                phone=clean_phone(smart_get(row, 'phone', mapping, 'الهاتف', 'الجوال', 'الموبايل', 'phone')) or '',
-                email=clean_email(smart_get(row, 'email', mapping, 'البريد', 'البريد الإلكتروني', 'email')) or '',
-                city=smart_get(row, 'city', mapping, 'المدينة', 'المنطقة', 'city'),
-                address=smart_get(row, 'address', mapping, 'العنوان', 'address'),
-                opening_balance=safe_decimal(smart_get(row, 'opening_balance', mapping, 'المديونية الافتتاحية', 'المديونية', 'مديونية البداية', 'الرصيد الافتتاحي', 'الرصيد', 'opening_balance', default='0')),
-                credit_limit=safe_decimal(smart_get(row, 'credit_limit', mapping, 'حد الائتمان', 'حد_الائتمان', 'credit_limit', default='0')),
-                notes=smart_get(row, 'notes', mapping, 'الملاحظات', 'ملاحظات', 'notes'),
-                is_active=True,
-            )
-            imported_count += 1
-        except Exception as e:
-            import logging, traceback
-            logging.getLogger('customers').error('import row %d: %s\n%s', row_num, e, traceback.format_exc())
-            errors.append(f'الصف {row_num}: {str(e)}')
-
-    message = f'تم استيراد {imported_count} عميل بنجاح'
-    if errors:
-        message += f'. حدثت {len(errors)} أخطاء'
-
-    return JsonResponse({
-        'success': True,
-        'message': message,
-        'imported': imported_count,
-        'errors': errors[:10],
-    }, json_dumps_params={'ensure_ascii': False})
 
 
 @login_required
@@ -770,7 +742,7 @@ def customer_export_api(request):
     ])
     
     # Write data
-    customers = Customer.objects.for_tenant(tenant).order_by('name')
+    customers = Customer.objects.for_tenant(tenant).for_branch(getattr(request, 'branch', None)).order_by('name')
     for customer in customers:
         writer.writerow([
             customer.name,
@@ -787,29 +759,3 @@ def customer_export_api(request):
     
     return response
 
-
-@login_required
-@require_permission('import_customers')
-def download_template(request):
-    """Download CSV template for import"""
-    response = HttpResponse(content_type='text/csv; charset=utf-8')
-    response['Content-Disposition'] = 'attachment; filename="customers_template.csv"'
-    
-    # Add BOM for Excel UTF-8 support
-    response.write('\ufeff')
-    
-    writer = csv.writer(response)
-    
-    # Write headers
-    writer.writerow([
-        'الاسم', 'الهاتف', 'البريد', 'المدينة', 'العنوان',
-        'المديونية الافتتاحية', 'حد الائتمان'
-    ])
-    
-    # Write example row
-    writer.writerow([
-        'أحمد محمد', '0512345678', 'ahmad@example.com', 'الرياض', 'شارع الملك فهد',
-        '0', '5000'
-    ])
-    
-    return response

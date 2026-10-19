@@ -22,7 +22,6 @@ class PurchaseInvoiceEditTests(TestCase):
             name='Purchase Test Tenant',
             slug='purchase-test-tenant',
             business_type=self.business_type,
-            currency='SDG',
         )
         self.user = User.objects.create_user(
             username='purchase-admin',

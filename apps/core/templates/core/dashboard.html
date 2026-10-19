@@ -7,8 +7,34 @@
 {% block page_title %}نظرة عامة{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/dashboard.css' %}?v=3.0">
-<link rel="stylesheet" href="{% static 'css/ai_advices.css' %}?v=2.0">
+<link rel="stylesheet" href="{% static 'css/dashboard.css' %}?v=2.1">
+<link rel="stylesheet" href="{% static 'css/ai_advices.css' %}">
+<style>
+.db-branch-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+}
+.db-branch-pill i { font-size: .72rem; opacity: .85; }
+.db-branch-pill select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background: transparent;
+    border: none;
+    color: #fff;
+    font-family: 'Cairo', sans-serif;
+    font-size: .78rem;
+    font-weight: 700;
+    cursor: pointer;
+    padding-left: 1.15rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9' viewBox='0 0 10 10'%3E%3Cpath fill='%23ffffff' d='M5 7L0 2h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: left center;
+}
+.db-branch-pill select:focus { outline: none; }
+.db-branch-pill select option { color: #1a1a1a; }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -22,6 +48,19 @@
             <span class="db-datetime-date"><i class="fas fa-calendar-alt"></i> <span id="dbDate"></span></span>
             <span class="db-datetime-sep"></span>
             <span class="db-datetime-time"><i class="fas fa-clock"></i> <span id="dbTime"></span></span>
+            {% if is_central_admin %}
+            <span class="db-datetime-sep"></span>
+            <span class="db-datetime-date db-branch-pill">
+                <i class="fas fa-code-branch"></i>
+                <select id="dbBranchFilter"
+                        onchange="if(this.value){window.location.search='?branch='+this.value;}else{window.location.search='';}">
+                    <option value=""{% if not selected_branch %} selected{% endif %}>كل الفروع (إجمالي المؤسسة)</option>
+                    {% for b in branches_for_filter %}
+                    <option value="{{ b.id }}"{% if selected_branch.id == b.id %} selected{% endif %}>{{ b.name }}</option>
+                    {% endfor %}
+                </select>
+            </span>
+            {% endif %}
         </div>
     </div>
     <div class="db-greeting-badges" {% if not request.user|has_perm_key:"view_dashboard" %}style="pointer-events:none;user-select:none;"{% endif %}>
@@ -66,16 +105,162 @@
 <div id="aiAdviceModal" class="ai-adv-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="aiAdviceModalTitle">
     <div class="ai-adv-modal-dialog" role="document">
         <button type="button" id="aiAdviceModalClose" class="ai-adv-modal-close" aria-label="إغلاق">×</button>
-        <h2 id="aiAdviceModalTitle" class="ai-adv-modal-title">النصيحة الكاملة</h2>
+        <h2 id="aiAdviceModalTitle" class="ai-adv-modal-title">النصائح الذكية</h2>
         <div id="aiAdviceModalBody" class="ai-adv-modal-body"></div>
     </div>
 </div>
 {% endif %}
 
+<!-- ══ CHARTS ROW ═════════════════════════════════════════════════ -->
+<div class="row g-3 mb-3">
+    <div class="col-lg-8">
+        <div class="db-panel">
+            <div class="db-panel-head">
+                <h3 class="db-panel-title">
+                    <i class="fas fa-chart-column" style="color:#10b981;"></i>
+                    إيرادات ومصروفات
+                </h3>
+                <span class="db-panel-meta">أسبوعي</span>
+            </div>
+            <div class="db-panel-body">
+                <div class="db-chart-wrap">
+                    <canvas id="revenuesExpensesChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="db-panel">
+            <div class="db-panel-head">
+                <h3 class="db-panel-title">
+                    <i class="fas fa-chart-area" style="color:var(--primary);"></i>
+                    المبيعات الأسبوعية
+                </h3>
+                <span class="db-panel-meta">7 أيام</span>
+            </div>
+            <div class="db-panel-body">
+                <div class="db-chart-wrap">
+                    <canvas id="weeklySalesChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══ SECONDARY STATS ════════════════════════════════════════════ -->
+<div class="db-stat-row">
+
+    <div class="db-stat">
+        <div class="db-stat-icon" style="background:rgba(var(--primary-rgb),.1); color:var(--primary);">
+            <i class="fas fa-users"></i>
+        </div>
+        <div>
+            <div class="db-stat-num">{{ stats.total_users }}</div>
+            <div class="db-stat-lbl">مستخدمون</div>
+        </div>
+    </div>
+
+    <div class="db-stat">
+        <div class="db-stat-icon" style="background:rgba(16,185,129,.1); color:#10b981;">
+            <i class="fas fa-box-open"></i>
+        </div>
+        <div>
+            <div class="db-stat-num">{{ stats.total_products }}</div>
+            <div class="db-stat-lbl">منتجات</div>
+        </div>
+    </div>
+
+    <div class="db-stat">
+        <div class="db-stat-icon" style="background:rgba(14,165,233,.1); color:#0ea5e9;">
+            <i class="fas fa-user-group"></i>
+        </div>
+        <div>
+            <div class="db-stat-num">{{ stats.total_customers }}</div>
+            <div class="db-stat-lbl">عملاء</div>
+        </div>
+    </div>
+
+    {# النمط المركزي: الموردون من اختصاص الإدارة، فلا تظهر بطاقتهم في لوحة الفرع. #}
+    {% if not current_tenant.is_central_purchasing or not request.branch %}
+    <div class="db-stat">
+        <div class="db-stat-icon" style="background:rgba(245,158,11,.1); color:#d97706;">
+            <i class="fas fa-truck"></i>
+        </div>
+        <div>
+            <div class="db-stat-num">{{ stats.total_suppliers }}</div>
+            <div class="db-stat-lbl">موردون</div>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+
+<!-- ══ QUICK ACTIONS ══════════════════════════════════════════════ -->
+<div class="row g-3 mb-3">
+    <div class="col-12">
+        <div class="db-panel">
+            <div class="db-panel-head">
+                <h3 class="db-panel-title">
+                    <i class="fas fa-bolt" style="color:#d97706;"></i>
+                    إجراءات سريعة
+                </h3>
+            </div>
+            <div class="db-panel-body">
+                <div class="db-actions-grid db-actions-grid--3col">
+                    <a href="{% url 'sales:invoice_create' %}" class="db-action db-action--indigo">
+                        <div class="db-action-icon"><i class="fas fa-plus"></i></div>
+                        <div>
+                            <span class="db-action-title">فاتورة جديدة</span>
+                            <span class="db-action-sub">تسجيل بيع جديد</span>
+                        </div>
+                    </a>
+                    <a href="{% url 'items:list' %}" class="db-action db-action--emerald">
+                        <div class="db-action-icon"><i class="fas fa-box"></i></div>
+                        <div>
+                            <span class="db-action-title">المنتجات</span>
+                            <span class="db-action-sub">إدارة الأصناف</span>
+                        </div>
+                    </a>
+                    <a href="{% url 'customers:create' %}" class="db-action db-action--sky">
+                        <div class="db-action-icon"><i class="fas fa-user-plus"></i></div>
+                        <div>
+                            <span class="db-action-title">عميل جديد</span>
+                            <span class="db-action-sub">إضافة عميل سريع</span>
+                        </div>
+                    </a>
+                    <a href="{% url 'sales:invoice_list' %}" class="db-action db-action--amber">
+                        <div class="db-action-icon"><i class="fas fa-list-check"></i></div>
+                        <div>
+                            <span class="db-action-title">الفواتير</span>
+                            <span class="db-action-sub">عرض جميع الفواتير</span>
+                        </div>
+                    </a>
+                    {% if not current_tenant.is_central_purchasing or not request.branch %}
+                    <a href="{% url 'purchases:order_list' %}" class="db-action db-action--violet">
+                        <div class="db-action-icon"><i class="fas fa-cart-shopping"></i></div>
+                        <div>
+                            <span class="db-action-title">أوامر الشراء</span>
+                            <span class="db-action-sub">إدارة المشتريات</span>
+                        </div>
+                    </a>
+                    {% endif %}
+                    <a href="{% url 'reports:reports' %}" class="db-action db-action--rose">
+                        <div class="db-action-icon"><i class="fas fa-chart-bar"></i></div>
+                        <div>
+                            <span class="db-action-title">التقارير</span>
+                            <span class="db-action-sub">تقارير وإحصاءات</span>
+                        </div>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- ══ PRIMARY KPI ROW ════════════════════════════════════════════ -->
 <div class="db-kpi-grid">
 
-    <div class="db-kpi db-kpi--indigo">
+    <div class="db-kpi db-kpi--indigo db-kpi--hero">
         <div class="db-kpi-icon"><i class="fas fa-arrow-trend-up"></i></div>
         <div class="db-kpi-body">
             <div class="db-kpi-val">{{ stats.today_sales|money }}</div>
@@ -116,93 +301,12 @@
 
 </div>
 
-<!-- ══ SECONDARY STATS ════════════════════════════════════════════ -->
-<div class="db-stat-row">
-
-    <div class="db-stat">
-        <div class="db-stat-icon" style="background:rgba(19,37,57,.1); color:var(--primary);">
-            <i class="fas fa-users"></i>
-        </div>
-        <div>
-            <div class="db-stat-num">{{ stats.total_users }}</div>
-            <div class="db-stat-lbl">مستخدمون</div>
-        </div>
-    </div>
-
-    <div class="db-stat">
-        <div class="db-stat-icon" style="background:rgba(16,185,129,.1); color:#10b981;">
-            <i class="fas fa-box-open"></i>
-        </div>
-        <div>
-            <div class="db-stat-num">{{ stats.total_products }}</div>
-            <div class="db-stat-lbl">منتجات</div>
-        </div>
-    </div>
-
-    <div class="db-stat">
-        <div class="db-stat-icon" style="background:rgba(14,165,233,.1); color:#0ea5e9;">
-            <i class="fas fa-user-group"></i>
-        </div>
-        <div>
-            <div class="db-stat-num">{{ stats.total_customers }}</div>
-            <div class="db-stat-lbl">عملاء</div>
-        </div>
-    </div>
-
-    <div class="db-stat">
-        <div class="db-stat-icon" style="background:rgba(245,158,11,.1); color:#d97706;">
-            <i class="fas fa-truck"></i>
-        </div>
-        <div>
-            <div class="db-stat-num">{{ stats.total_suppliers }}</div>
-            <div class="db-stat-lbl">موردون</div>
-        </div>
-    </div>
-
-</div>
-
-<!-- ══ CHARTS ROW ═════════════════════════════════════════════════ -->
-<div class="row g-3 mb-3">
-    <div class="col-lg-8">
-        <div class="db-panel">
-            <div class="db-panel-head">
-                <h3 class="db-panel-title">
-                    <i class="fas fa-chart-area" style="color:var(--primary);"></i>
-                    المبيعات الأسبوعية
-                </h3>
-                <span class="db-panel-meta">7 أيام</span>
-            </div>
-            <div class="db-panel-body">
-                <div class="db-chart-wrap">
-                    <canvas id="weeklySalesChart"></canvas>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-lg-4">
-        <div class="db-panel">
-            <div class="db-panel-head">
-                <h3 class="db-panel-title">
-                    <i class="fas fa-chart-column" style="color:#10b981;"></i>
-                    إيرادات ومصروفات
-                </h3>
-                <span class="db-panel-meta">أسبوعي</span>
-            </div>
-            <div class="db-panel-body">
-                <div class="db-chart-wrap">
-                    <canvas id="revenuesExpensesChart"></canvas>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- ══ STORE QR WIDGET ════════════════════════════════════════════ -->
 {% if store %}
 <div class="row g-3 mb-3">
   <div class="col-12">
-    <div class="db-panel" style="background:linear-gradient(135deg,rgba(19,37,57,.06) 0%,rgba(250,167,29,.04) 100%);border-color:rgba(19,37,57,.18);">
-      <div class="db-panel-head" style="border-color:rgba(19,37,57,.12);">
+    <div class="db-panel" style="background:linear-gradient(135deg,rgba(var(--primary-rgb),.06) 0%,rgba(139,92,246,.04) 100%);border-color:rgba(var(--primary-rgb),.18);">
+      <div class="db-panel-head" style="border-color:rgba(var(--primary-rgb),.12);">
         <h3 class="db-panel-title">
           <i class="fas fa-store" style="color:var(--primary);"></i>
           متجرك الإلكتروني
@@ -218,26 +322,28 @@
       </div>
       <div class="db-panel-body">
         <div style="display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap;">
-          <div style="flex-shrink:0;background:#fff;border-radius:12px;padding:8px;box-shadow:0 2px 12px rgba(19,37,57,.15);border:1.5px solid rgba(19,37,57,.12);">
-            <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&margin=4&data={{ request.scheme }}://{{ request.META.HTTP_HOST }}/store/{{ store.slug }}/"
+          <div style="flex-shrink:0;background:#fff;border-radius:12px;padding:8px;box-shadow:0 2px 12px rgba(var(--primary-rgb),.15);border:1.5px solid rgba(var(--primary-rgb),.12);">
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&margin=4&data={{ request.scheme }}://{{ request.META.HTTP_HOST }}/store/{{ store.slug }}/{% if request.branch %}?branch={{ request.branch.id }}{% endif %}"
                  alt="QR Code المتجر" style="width:80px;height:80px;display:block;">
           </div>
           <div style="flex:1;min-width:200px;">
             <div style="font-size:.95rem;font-weight:700;color:var(--text-primary,#0f172a);margin-bottom:.3rem;">{{ store.display_name|default:request.tenant.name }}</div>
-            <div style="font-size:.8rem;color:var(--text-secondary,#64748b);margin-bottom:.75rem;direction:ltr;text-align:right;">{{ request.scheme }}://{{ request.META.HTTP_HOST }}/store/{{ store.slug }}/</div>
+            <div style="font-size:.8rem;color:var(--text-secondary,#64748b);margin-bottom:.75rem;direction:ltr;text-align:right;">{{ request.scheme }}://{{ request.META.HTTP_HOST }}/store/{{ store.slug }}/{% if request.branch %}?branch={{ request.branch.id }}{% endif %}</div>
             <div style="display:flex;flex-wrap:wrap;gap:.5rem;">
               {% if store.is_enabled %}
-              <a href="/store/{{ store.slug }}/" target="_blank" style="display:inline-flex;align-items:center;gap:.4rem;padding:.38rem .85rem;border-radius:8px;border:1.5px solid rgba(19,37,57,.3);color:var(--primary);font-size:.8rem;font-weight:600;text-decoration:none;background:rgba(19,37,57,.06);">
+              <a href="/store/{{ store.slug }}/{% if request.branch %}?branch={{ request.branch.id }}{% endif %}" target="_blank" style="display:inline-flex;align-items:center;gap:.4rem;padding:.38rem .85rem;border-radius:8px;border:1.5px solid rgba(var(--primary-rgb),.3);color:var(--primary);font-size:.8rem;font-weight:600;text-decoration:none;background:rgba(var(--primary-rgb),.06);">
                 <i class="fas fa-external-link-alt"></i> عرض المتجر
               </a>
               {% endif %}
-              <button onclick="openStoreQR('{{ request.scheme }}://{{ request.META.HTTP_HOST }}/store/{{ store.slug }}/', '{{ store.display_name|default:request.tenant.name }}')"
-                      style="display:inline-flex;align-items:center;gap:.4rem;padding:.38rem .85rem;border-radius:8px;border:1.5px solid rgba(19,37,57,.3);color:var(--primary);font-size:.8rem;font-weight:600;cursor:pointer;background:rgba(19,37,57,.06);font-family:inherit;">
+              <button onclick="openStoreQR('{{ request.scheme }}://{{ request.META.HTTP_HOST }}/store/{{ store.slug }}/{% if request.branch %}?branch={{ request.branch.id }}{% endif %}', '{{ store.display_name|default:request.tenant.name }}')"
+                      style="display:inline-flex;align-items:center;gap:.4rem;padding:.38rem .85rem;border-radius:8px;border:1.5px solid rgba(var(--primary-rgb),.3);color:var(--primary);font-size:.8rem;font-weight:600;cursor:pointer;background:rgba(var(--primary-rgb),.06);font-family:inherit;">
                 <i class="fas fa-print"></i> طباعة QR
               </button>
+              {% if user|has_perm_key:'view_store_settings' %}
               <a href="{% url 'store:manage_settings' %}" style="display:inline-flex;align-items:center;gap:.4rem;padding:.38rem .85rem;border-radius:8px;border:1.5px solid var(--border-color,#e2e8f0);color:var(--text-secondary,#64748b);font-size:.8rem;font-weight:600;text-decoration:none;background:var(--surface-alt,#f8fafc);">
                 <i class="fas fa-cog"></i> إعدادات المتجر
               </a>
+              {% endif %}
             </div>
           </div>
         </div>
@@ -318,7 +424,7 @@
         <div class="db-panel" style="height:auto;">
             <div class="db-panel-head">
                 <h3 class="db-panel-title">
-                    <i class="fas fa-shield-heart" style="color:#ef4444;"></i>
+                    <i class="fas fa-gauge-high" style="color:#ef4444;"></i>
                     مؤشرات النظام
                 </h3>
             </div>
@@ -343,15 +449,6 @@
                     </span>
                     <span class="db-status-val {% if stats.low_stock_items %}db-status-val--warn{% else %}db-status-val--ok{% endif %}">
                         {{ stats.low_stock_items }}
-                    </span>
-                </div>
-                <div class="db-status-row">
-                    <span class="db-status-label">
-                        <i class="fas fa-calendar-xmark" style="color:#ef4444;"></i>
-                        منتهي الصلاحية
-                    </span>
-                    <span class="db-status-val {% if stats.expired_items %}db-status-val--danger{% else %}db-status-val--ok{% endif %}">
-                        {{ stats.expired_items|default:0 }}
                     </span>
                 </div>
                 <div class="db-status-row">
@@ -400,14 +497,14 @@
 <!-- ══ NO PERMISSION — beautiful locked placeholder ═══════════════ -->
 
 <!-- Lock notice banner -->
-<div style="display:flex;align-items:center;gap:.65rem;padding:.65rem 1rem;margin-bottom:1rem;background:rgba(19,37,57,.08);border:1px solid rgba(19,37,57,.2);border-radius:10px;font-size:.84rem;color:var(--text-secondary,#64748b);">
+<div style="display:flex;align-items:center;gap:.65rem;padding:.65rem 1rem;margin-bottom:1rem;background:rgba(var(--primary-rgb),.08);border:1px solid rgba(var(--primary-rgb),.2);border-radius:10px;font-size:.84rem;color:var(--text-secondary,#64748b);">
     <i class="fas fa-lock" style="color:var(--primary);font-size:.9rem;flex-shrink:0;"></i>
     <span>إحصاءات لوحة التحكم محجوبة — تواصل مع مدير النظام للحصول على صلاحية <strong>عرض لوحة التحكم</strong></span>
 </div>
 
 <!-- KPI Cards — blurred fake values -->
 <div class="db-kpi-grid" style="pointer-events:none;user-select:none;">
-    <div class="db-kpi db-kpi--indigo">
+    <div class="db-kpi db-kpi--indigo db-kpi--hero">
         <div class="db-kpi-icon"><i class="fas fa-arrow-trend-up"></i></div>
         <div class="db-kpi-body">
             <div class="db-kpi-val" style="filter:blur(7px);opacity:.7;">8,250.00</div>
@@ -444,7 +541,7 @@
 <!-- Secondary stats — blurred -->
 <div class="db-stat-row" style="pointer-events:none;user-select:none;">
     <div class="db-stat">
-        <div class="db-stat-icon" style="background:rgba(19,37,57,.1);color:var(--primary);"><i class="fas fa-users"></i></div>
+        <div class="db-stat-icon" style="background:rgba(var(--primary-rgb),.1);color:var(--primary);"><i class="fas fa-users"></i></div>
         <div><div class="db-stat-num" style="filter:blur(6px);opacity:.7;">12</div><div class="db-stat-lbl">مستخدمون</div></div>
     </div>
     <div class="db-stat">
@@ -562,7 +659,7 @@
     <div class="col-lg-3">
         <div class="db-panel">
             <div class="db-panel-head">
-                <h3 class="db-panel-title"><i class="fas fa-shield-heart" style="color:#ef4444;"></i> مؤشرات النظام</h3>
+                <h3 class="db-panel-title"><i class="fas fa-gauge-high" style="color:#ef4444;"></i> مؤشرات النظام</h3>
             </div>
             <div class="db-panel-body" style="filter:blur(4px);opacity:.5;">
                 <div class="db-ring-wrap mb-3">
@@ -574,7 +671,6 @@
                     <span class="db-ring-sub">نسبة تحصيل الفواتير</span>
                 </div>
                 <div class="db-status-row"><span class="db-status-label"><i class="fas fa-triangle-exclamation" style="color:#f59e0b;"></i> مخزون منخفض</span><span class="db-status-val db-status-val--warn">3</span></div>
-                <div class="db-status-row"><span class="db-status-label"><i class="fas fa-calendar-xmark" style="color:#ef4444;"></i> منتهي الصلاحية</span><span class="db-status-val db-status-val--ok">0</span></div>
                 <div class="db-status-row"><span class="db-status-label"><i class="fas fa-bolt" style="color:#10b981;"></i> سرعة النظام</span><span class="db-status-val db-status-val--ok">98%</span></div>
             </div>
         </div>
@@ -584,66 +680,6 @@
 {% endif %}
 
 {% include "store/partials/qr_print_modal.html" %}
-
-<!-- ══ QUICK ACTIONS — always visible ══════════════════════════════ -->
-<div class="row g-3 mb-2">
-    <div class="col-12">
-        <div class="db-panel">
-            <div class="db-panel-head">
-                <h3 class="db-panel-title">
-                    <i class="fas fa-bolt" style="color:#d97706;"></i>
-                    إجراءات سريعة
-                </h3>
-            </div>
-            <div class="db-panel-body">
-                <div class="db-actions-grid">
-                    <a href="{% url 'sales:invoice_create' %}" class="db-action db-action--indigo">
-                        <div class="db-action-icon"><i class="fas fa-plus"></i></div>
-                        <div>
-                            <span class="db-action-title">فاتورة جديدة</span>
-                            <span class="db-action-sub">تسجيل بيع جديد</span>
-                        </div>
-                    </a>
-                    <a href="{% url 'items:list' %}" class="db-action db-action--emerald">
-                        <div class="db-action-icon"><i class="fas fa-box"></i></div>
-                        <div>
-                            <span class="db-action-title">المنتجات</span>
-                            <span class="db-action-sub">إدارة الأصناف</span>
-                        </div>
-                    </a>
-                    <a href="{% url 'customers:create' %}" class="db-action db-action--sky">
-                        <div class="db-action-icon"><i class="fas fa-user-plus"></i></div>
-                        <div>
-                            <span class="db-action-title">عميل جديد</span>
-                            <span class="db-action-sub">إضافة عميل سريع</span>
-                        </div>
-                    </a>
-                    <a href="{% url 'sales:invoice_list' %}" class="db-action db-action--amber">
-                        <div class="db-action-icon"><i class="fas fa-list-check"></i></div>
-                        <div>
-                            <span class="db-action-title">الفواتير</span>
-                            <span class="db-action-sub">عرض جميع الفواتير</span>
-                        </div>
-                    </a>
-                    <a href="{% url 'purchases:order_list' %}" class="db-action db-action--violet">
-                        <div class="db-action-icon"><i class="fas fa-cart-shopping"></i></div>
-                        <div>
-                            <span class="db-action-title">أوامر الشراء</span>
-                            <span class="db-action-sub">إدارة المشتريات</span>
-                        </div>
-                    </a>
-                    <a href="{% url 'reports:reports' %}" class="db-action db-action--rose">
-                        <div class="db-action-icon"><i class="fas fa-chart-bar"></i></div>
-                        <div>
-                            <span class="db-action-title">التقارير</span>
-                            <span class="db-action-sub">تقارير وإحصاءات</span>
-                        </div>
-                    </a>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
 
 {% endblock %}
 
@@ -656,14 +692,17 @@
     const grid   = () => isDark() ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.06)';
     const tick   = () => isDark() ? '#94a3b8' : '#9ca3af';
     const fmt    = v  => Number(v).toLocaleString('en');
+    const rootStyle   = getComputedStyle(document.documentElement);
+    const primaryRgb  = rootStyle.getPropertyValue('--primary-rgb').trim() || '14, 116, 144';
+    const primaryHex  = rootStyle.getPropertyValue('--primary').trim() || '#0e6b64';
 
     /* ── Weekly Sales Area Chart ── */
     const wCtx = document.getElementById('weeklySalesChart');
     if (wCtx) {
         const ctx = wCtx.getContext('2d');
         const grad = ctx.createLinearGradient(0, 0, 0, 220);
-        grad.addColorStop(0, 'rgba(19,37,57,.22)');
-        grad.addColorStop(1, 'rgba(19,37,57,.01)');
+        grad.addColorStop(0, `rgba(${primaryRgb},.22)`);
+        grad.addColorStop(1, `rgba(${primaryRgb},.01)`);
 
         new Chart(wCtx, {
             type: 'line',
@@ -673,12 +712,12 @@
                     data: {{ stats.weekly_sales_json|safe }},
                     fill: true,
                     backgroundColor: grad,
-                    borderColor: 'var(--primary)',
+                    borderColor: primaryHex,
                     borderWidth: 2.5,
                     tension: 0.42,
                     pointRadius: 4,
                     pointHoverRadius: 7,
-                    pointBackgroundColor: 'var(--primary)',
+                    pointBackgroundColor: primaryHex,
                     pointBorderColor: '#fff',
                     pointBorderWidth: 2,
                 }]

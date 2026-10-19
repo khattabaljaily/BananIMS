@@ -1,11 +1,11 @@
 {% extends "layouts/dashboard.html" %}
-{% load static store_tags humanize %}
+{% load static store_tags humanize number_format %}
 
 {% block title %}تفاصيل الطلب {{ order.order_number }}{% endblock %}
 {% block page_header %}{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/store_manage_orders.css' %}?v=3.0">
+<link rel="stylesheet" href="{% static 'css/store_manage_orders.css' %}?v=2.0">
 {% endblock %}
 
 {% block content %}
@@ -25,14 +25,14 @@
         <a href="{% url 'store:manage_orders' %}" class="cx-btn-secondary">
           <i class="fas fa-arrow-right"></i><span>العودة</span>
         </a>
-        {% if order.status == 'pending' %}
+        {% if order.status == 'pending' and can_manage %}
         <button class="cx-btn-primary" onclick="approveOrder({{ order.pk }})">
           <i class="fas fa-check"></i><span>قبول وإنشاء فاتورة</span>
         </button>
         <button class="cx-btn-secondary" style="color:#ef4444;border-color:#fecaca;" onclick="rejectOrder({{ order.pk }})">
           <i class="fas fa-times"></i><span>رفض الطلب</span>
         </button>
-        {% elif order.status == 'approved' and order.sale_invoice %}
+        {% elif order.status == 'approved' and order.sale_invoice and can_manage %}
         <a href="/sales/{{ order.sale_invoice.pk }}/" class="cx-btn-primary">
           <i class="fas fa-file-invoice"></i><span>عرض الفاتورة</span>
         </a>
@@ -41,6 +41,15 @@
     </div>
   </div>
 </div>
+
+{% if shortages %}
+<div class="alert alert-warning mt-3">
+  <i class="fas fa-triangle-exclamation me-1"></i>
+  <strong>بعض الأصناف لم تعد متوفرة بالكمية المطلوبة في مخزن الفرع:</strong>
+  {% for sh in shortages %}«{{ sh.item.name }}» (مطلوب {{ sh.requested|qty }}، متاح {{ sh.available|qty }}){% if not forloop.last %}، {% endif %}{% endfor %}.
+  تواصل مع الزبون لتعديل الطلب، أو ارفضه.
+</div>
+{% endif %}
 
 <div class="st-detail-grid">
 
@@ -71,9 +80,9 @@
     </div>
     <!-- إجمالي الطلب خارج الجدول لضمان الظهور على الموبايل -->
     <div class="d-flex justify-content-end mt-3 px-2">
-      <div style="background:#f0f0ff;border-radius:12px;padding:.875rem 1.25rem;border:1px solid #afc4d2;min-width:240px;">
+      <div style="background:#f0f0ff;border-radius:12px;padding:.875rem 1.25rem;border:1px solid #a5f3fc;min-width:240px;">
         <div class="d-flex justify-content-between align-items-center gap-4">
-          <span style="font-size:.9rem;color:var(--indigo-700);font-weight:600;">الإجمالي النهائي</span>
+          <span style="font-size:.9rem;color:#164e63;font-weight:600;">الإجمالي النهائي</span>
           <strong style="font-size:1.15rem;color:var(--primary);" dir="ltr">
             {{ order.total_amount|format_price }} {{ order.tenant.currency|currency_ar }}
           </strong>
@@ -89,6 +98,12 @@
     <div class="cx-panel p-3">
       <div class="cx-panel-head"><i class="fas fa-user"></i> بيانات العميل</div>
       <div style="padding:1rem 1.1rem;">
+        {% if order.branch %}
+        <div class="st-detail-row">
+          <span class="st-detail-label">الفرع</span>
+          <span class="st-detail-value">{{ order.branch.name }}</span>
+        </div>
+        {% endif %}
         <div class="st-detail-row">
           <span class="st-detail-label">الاسم</span>
           <span class="st-detail-value">{{ order.customer_name }}</span>

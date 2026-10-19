@@ -302,7 +302,14 @@ const BananIMS = {
             if (existingError.length) {
                 existingError.html(messages.join('<br>'));
             } else {
-                field.last().after(`<div class="text-danger small mt-1 js-field-errors" data-field="${fieldName}">${messages.join('<br>')}</div>`);
+                // If the field is wrapped in a Bootstrap .input-group (e.g. the
+                // num-stepper +/- wrapper), insert after the whole group instead of
+                // right after the <input> — otherwise the error div becomes an extra
+                // flex child squeezed between the input and its trailing button,
+                // visually collapsing the input.
+                const inputGroup = field.last().closest('.input-group');
+                const insertAfter = inputGroup.length ? inputGroup : field.last();
+                insertAfter.after(`<div class="text-danger small mt-1 js-field-errors" data-field="${fieldName}">${messages.join('<br>')}</div>`);
             }
         });
     },
@@ -332,8 +339,8 @@ const BananIMS = {
                 iconClass = 'fa-check-circle'; iconColor = '#10b981'; iconBg = 'rgba(16,185,129,0.1)';
                 btnColor  = '#10b981'; btnLabel = confirmText || 'نعم، تأكيد';
             } else {
-                iconClass = 'fa-circle-question'; iconColor = '#132539'; iconBg = 'rgba(19,37,57,0.1)';
-                btnColor  = '#132539'; btnLabel = confirmText || 'نعم، متابعة';
+                iconClass = 'fa-circle-question'; iconColor = '#0e6b64'; iconBg = 'rgba(14,107,100,0.1)';
+                btnColor  = '#0e6b64'; btnLabel = confirmText || 'نعم، متابعة';
             }
 
             // Create a simple overlay modal that works on all devices
@@ -480,9 +487,9 @@ const BananIMS = {
     },
     
     // Format currency
-    formatCurrency: function(amount, currency = 'SDG') {
+    formatCurrency: function(amount, currency = '') {
         const formatted = this.formatMoney(amount);
-        return `${formatted} ${currency}`;
+        return currency ? `${formatted} ${currency}` : formatted;
     },
 
     // Convert Arabic numerals to English in a string
@@ -576,7 +583,8 @@ $.extend(true, $.fn.dataTable.defaults, {
     pageLength: 25,
     ordering: true,
     searching: true,
-    responsive: true
+    responsive: true,
+    autoWidth: false
 });
 
 // Initialize all data tables
@@ -654,6 +662,12 @@ $(document).ready(function() {
     BananIMS.consumeRememberedToast();
 
     // AJAX auth forms (login/register)
+    function shakeAuthErrors(form) {
+        const targets = form.find('.is-invalid, .js-form-errors:not(.d-none)');
+        targets.addClass('auth-shake');
+        setTimeout(function() { targets.removeClass('auth-shake'); }, 500);
+    }
+
     $('.js-auth-ajax').on('submit', function(e) {
         e.preventDefault();
 
@@ -677,7 +691,10 @@ $(document).ready(function() {
 
                 if (response.success) {
                     if (response.redirect_url) {
-                        window.location.href = response.redirect_url;
+                        form.closest('.auth-card').addClass('auth-card--success');
+                        setTimeout(function() {
+                            window.location.href = response.redirect_url;
+                        }, 260);
                     }
                     return;
                 }
@@ -691,10 +708,12 @@ $(document).ready(function() {
                     } else {
                         BananIMS.showFormError(form, 'يرجى مراجعة الحقول المحددة أدناه');
                     }
+                    shakeAuthErrors(form);
                     return;
                 }
 
                 BananIMS.showFormError(form, response.message || 'يرجى التحقق من الحقول المطلوبة');
+                shakeAuthErrors(form);
             },
             error: function(xhr) {
                 BananIMS.hideLoading(submitBtn, originalText);
@@ -715,10 +734,12 @@ $(document).ready(function() {
                     } else {
                         BananIMS.showFormError(form, 'يرجى مراجعة الحقول المحددة أدناه');
                     }
+                    shakeAuthErrors(form);
                     return;
                 }
 
                 BananIMS.showFormError(form, response.message || 'تعذر إرسال النموذج، حاول مرة أخرى');
+                shakeAuthErrors(form);
             }
         });
     });

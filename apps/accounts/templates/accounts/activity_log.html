@@ -3,18 +3,18 @@
 {% load humanize %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=4.0">
 <style>
-.act-hero { background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 60%, #3730a3 100%); color: #fff; border-radius: 16px; padding: 28px 32px 20px; margin-bottom: 28px; }
+.act-hero { background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 60%, var(--secondary) 100%); color: #fff; border-radius: 16px; padding: 28px 32px 20px; margin-bottom: 28px; }
 .act-hero h1 { font-size: 1.5rem; font-weight: 700; margin: 0 0 4px; }
 .act-hero p { margin: 0; opacity: .75; font-size: .9rem; }
 .act-stat { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,.15); border-radius: 20px; padding: 4px 14px; font-size: .82rem; font-weight: 600; margin-top: 14px; margin-left: 8px; }
 
-.act-filter-bar { background: var(--surface); border: 1px solid var(--border-color); border-radius: 12px; padding: 18px 20px; margin-bottom: 22px; }
 
 .act-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
 
 .act-card { background: var(--surface); border: 1px solid var(--border-color); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 10px; transition: box-shadow .2s, transform .2s; }
-.act-card:hover { box-shadow: 0 8px 24px rgba(19,37,57,.12); transform: translateY(-2px); }
+.act-card:hover { box-shadow: 0 8px 24px rgba(var(--primary-rgb),.12); transform: translateY(-2px); }
 
 .act-card-top { display: flex; align-items: flex-start; gap: 12px; }
 .act-icon { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0; }
@@ -23,7 +23,7 @@
 .act-icon--delete  { background: rgba(220,38,38,.15);  color: #dc2626; }
 .act-icon--confirm { background: rgba(5,150,105,.15);  color: #059669; }
 .act-icon--cancel  { background: rgba(234,88,12,.15);  color: #ea580c; }
-.act-icon--login   { background: rgba(124,58,237,.15); color: #7c3aed; }
+.act-icon--login   { background: rgba(var(--secondary-rgb),.15); color: var(--secondary); }
 .act-icon--other   { background: var(--surface-alt);   color: var(--text-tertiary); }
 
 .act-title { font-weight: 600; font-size: .92rem; line-height: 1.4; color: var(--text-primary); }
@@ -54,37 +54,41 @@
     <div class="act-hero">
         <h1>
             <i class="fas fa-clock-rotate-left me-2"></i>
-            {% if is_admin_view %}سجل نشاط المستخدمين{% else %}سجل نشاطاتي{% endif %}
+            {% if is_branch_manager_view %}سجل نشاط الفرع{% elif is_admin_view %}سجل نشاط المستخدمين{% else %}سجل نشاطاتي{% endif %}
         </h1>
-        <p>{% if is_admin_view %}كل إجراءات المستخدمين مسجّلة بالتفصيل{% else %}جميع إجراءاتك داخل النظام{% endif %}</p>
-        <span class="act-stat"><i class="fas fa-list-check"></i> {{ activities|length }} سجل</span>
+        <p>{% if is_branch_manager_view %}إجراءات مستخدمي فرعك مسجّلة بالتفصيل{% elif is_admin_view %}كل إجراءات المستخدمين مسجّلة بالتفصيل{% else %}جميع إجراءاتك داخل النظام{% endif %}</p>
+        <span class="act-stat"><i class="fas fa-list-check"></i> {{ total_count }} سجل</span>
     </div>
 
-    {% if is_admin_view %}
-    <!-- ══ FILTER BAR ══ -->
-    <div class="act-filter-bar">
-        <form method="get" class="row align-items-end g-3">
+    <!-- ══ FILTER BAR (نفس شريط فلترة التقارير) ══ -->
+    <div class="rpt-filters">
+        <form method="get" class="row g-3">
+            {% if is_admin_view %}
             <div class="col-md-4">
-                <label class="form-label fw-semibold mb-1" style="font-size:.85rem;">تصفية حسب المستخدم</label>
-                <select name="user" class="form-select form-select-sm" onchange="this.form.submit()">
+                <label class="form-label" for="actUser">المستخدم</label>
+                <select name="user" id="actUser" class="form-select">
                     <option value="">جميع المستخدمين</option>
                     {% for u in users %}
                     <option value="{{ u.id }}" {% if selected_user_id == u.id|stringformat:"s" %}selected{% endif %}>
-                        {{ u.get_full_name }}{% if not u.is_active %} (غير نشط){% endif %}
+                        {{ u.get_full_name|default:u.username }}{% if not u.is_active %} (غير نشط){% endif %}
                     </option>
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-auto">
-                {% if selected_user_id %}
-                <a href="{% url 'accounts:activity_log' %}" class="btn btn-sm btn-outline-secondary">
-                    <i class="fas fa-xmark me-1"></i>إعادة تعيين
-                </a>
-                {% endif %}
+            {% endif %}
+            <div class="col-md-3">
+                <label class="form-label" for="actDateFrom">من التاريخ</label>
+                <input type="date" id="actDateFrom" name="date_from" value="{{ date_from }}" class="form-control">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="actDateTo">إلى التاريخ</label>
+                <input type="date" id="actDateTo" name="date_to" value="{{ date_to }}" class="form-control">
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="rpt-filter-btn rpt-filter-btn--sales"><i class="fas fa-search me-1"></i>بحث</button>
             </div>
         </form>
     </div>
-    {% endif %}
 
     <!-- ══ CARDS GRID ══ -->
     <div class="act-grid">
@@ -130,6 +134,31 @@
         </div>
         {% endfor %}
     </div>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+    <nav class="mt-4 d-flex justify-content-center" aria-label="صفحات السجل">
+        <ul class="pagination pagination-sm mb-0">
+            {% if page_obj.has_previous %}
+            <li class="page-item"><a class="page-link" href="?{% if filter_qs %}{{ filter_qs }}&{% endif %}page={{ page_obj.previous_page_number }}">السابق</a></li>
+            {% else %}
+            <li class="page-item disabled"><span class="page-link">السابق</span></li>
+            {% endif %}
+            {% for n in page_obj.paginator.page_range %}
+            {% if n == 1 or n == page_obj.paginator.num_pages or n >= page_obj.number|add:'-2' and n <= page_obj.number|add:'2' %}
+            <li class="page-item{% if n == page_obj.number %} active{% endif %}"><a class="page-link" href="?{% if filter_qs %}{{ filter_qs }}&{% endif %}page={{ n }}">{{ n }}</a></li>
+            {% elif n == page_obj.number|add:'-3' or n == page_obj.number|add:'3' %}
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+            {% endif %}
+            {% endfor %}
+            {% if page_obj.has_next %}
+            <li class="page-item"><a class="page-link" href="?{% if filter_qs %}{{ filter_qs }}&{% endif %}page={{ page_obj.next_page_number }}">التالي</a></li>
+            {% else %}
+            <li class="page-item disabled"><span class="page-link">التالي</span></li>
+            {% endif %}
+        </ul>
+    </nav>
+    <p class="text-center text-muted mt-2 mb-0" style="font-size:.8rem;">صفحة {{ page_obj.number }} من {{ page_obj.paginator.num_pages }}</p>
+    {% endif %}
 
 </div>
 

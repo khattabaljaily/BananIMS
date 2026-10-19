@@ -1,13 +1,29 @@
+from django.conf import settings
 from django.db import models
 
 from apps.core.models import TenantMixin
 
 
 class Treasury(TenantMixin):
+    branch = models.ForeignKey(
+        'core.Branch',
+        on_delete=models.SET_NULL,
+        verbose_name='الفرع',
+        related_name='treasuries',
+        null=True,
+        blank=True,
+    )
     name = models.CharField('اسم الخزينة', max_length=200)
     code = models.CharField('الرمز', max_length=30, blank=True)
     is_default = models.BooleanField('افتراضية', default=False)
     is_system_default = models.BooleanField('افتراضية نظامية', default=False)
+    # خزينة الإدارة المركزية لنسخة المؤسسات (multi_branch) — branch=فارغ دائماً،
+    # مملوكة لمدير النشاط وحده، منفصلة عن أي خزينة فرع. راجع
+    # apps/core/signals.py::_ensure_head_office_treasuries.
+    is_head_office = models.BooleanField('خزينة الإدارة المركزية', default=False)
+    # الخزينة المحلية الرئيسية لفرع في نسخة المؤسسات (تُنشأ تلقائيًا مع الفرع)؛ لا تُحذف من الواجهة.
+    # راجع apps/core/signals.py::_ensure_branch_treasuries.
+    is_branch_main = models.BooleanField('خزينة الفرع الرئيسية', default=False)
     is_active = models.BooleanField('نشطة', default=True)
     current_balance = models.DecimalField('الرصيد الحالي', max_digits=14, decimal_places=2, default=0)
     notes = models.TextField('ملاحظات', blank=True)
@@ -73,12 +89,7 @@ class TreasuryTransfer(TenantMixin):
         Treasury, on_delete=models.PROTECT,
         related_name='transfers_in', verbose_name='إلى خزينة',
     )
-    from_amount = models.DecimalField('المبلغ المحوَّل', max_digits=14, decimal_places=4)
-    to_amount = models.DecimalField('المبلغ المستلَم', max_digits=14, decimal_places=4)
-    exchange_rate = models.DecimalField(
-        'سعر الصرف', max_digits=12, decimal_places=4, default=1,
-        help_text='وحدات العملة الهدف مقابل وحدة واحدة من عملة المصدر',
-    )
+    amount = models.DecimalField('المبلغ', max_digits=14, decimal_places=4)
     transfer_date = models.DateField('تاريخ التحويل')
     notes = models.TextField('ملاحظات', blank=True)
     from_movement = models.OneToOneField(
@@ -90,6 +101,16 @@ class TreasuryTransfer(TenantMixin):
         related_name='transfer_as_dest', null=True, blank=True,
     )
 
+    # إلغاء موثّق: السجل الأصلي يبقى للأبد (أرشيف/تدقيق)، والإلغاء يُسجَّل
+    # كحركتين عكسيتين جديدتين بدل حذف/تعديل الحركتين الأصليتين — نفس نمط
+    # cancel_expense/cancel_sale_invoice. راجع apps/treasury/services.py.
+    is_cancelled = models.BooleanField('ملغى', default=False)
+    cancelled_at = models.DateTimeField('تاريخ الإلغاء', null=True, blank=True)
+    cancelled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+', verbose_name='أُلغي بواسطة',
+    )
+
     class Meta:
         db_table = 'treasury_transfers'
         verbose_name = 'تحويل خزينة'
@@ -97,4 +118,4 @@ class TreasuryTransfer(TenantMixin):
         ordering = ['-transfer_date', '-created_at']
 
     def __str__(self):
-        return f'تحويل {self.from_amount} → {self.to_amount} ({self.transfer_date})'
+        return f'تحويل {self.amount} ({self.transfer_date})'

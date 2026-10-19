@@ -4,16 +4,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>اتفاقية الاستخدام — بنان IMS</title>
+  <title>اتفاقية الاستخدام — {{ app_name }}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
+    /* صفحة مستقلة لا تحمّل main.css — ألوان الهوية معرّفة هنا مباشرة */
+    :root{--primary:#0e6b64;--primary-hover:#0a534e;--secondary:#0ea5e9;--primary-rgb:14,116,144;--primary-hover-rgb:21,94,117;--secondary-rgb:14,165,233;--indigo-50:#ecfeff;--indigo-100:#cffafe;--indigo-500:#0e6b64;--indigo-600:#0a534e;--indigo-700:#164e63}
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --indigo:    #0a534e;
-      --indigo-dk: #3730a3;
-      --violet:    #7c3aed;
+      --indigo:    var(--primary-hover);
+      --indigo-dk: #164e63;
+      --violet:    var(--secondary);
       --slate-50:  #f8fafc;
       --slate-100: #f1f5f9;
       --slate-200: #e2e8f0;
@@ -24,6 +26,28 @@
     }
 
     html { scroll-behavior: smooth; }
+
+    .brand-mark {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5em;
+    }
+    .brand-mark__icon {
+      height: 24px;
+      width: auto;
+      display: block;
+    }
+    .brand-wordmark {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4em;
+      font-weight: 800;
+      font-size: 1.2rem;
+      letter-spacing: 0.01em;
+      line-height: 1;
+      color: var(--slate-900);
+      white-space: nowrap;
+    }
 
     body {
       font-family: 'Cairo', sans-serif;
@@ -69,8 +93,8 @@
       font-size: .75rem;
       font-weight: 600;
       color: var(--indigo);
-      background: #e4f2f0;
-      border: 1px solid #afc4d2;
+      background: #ecfeff;
+      border: 1px solid #a5f3fc;
       border-radius: 2rem;
       padding: .25rem .8rem;
     }
@@ -250,13 +274,13 @@
     }
 
     .callout {
-      background: #e4f2f0;
+      background: #ecfeff;
       border-right: 3px solid var(--indigo);
       border-radius: .5rem;
       padding: .75rem 1.1rem;
       margin-top: .85rem;
       font-size: .87rem;
-      color: #3730a3;
+      color: #164e63;
       line-height: 1.7;
     }
     .callout-warn {
@@ -276,7 +300,7 @@
     .accept-card-top {
       background: linear-gradient(135deg, #f5f3ff, #ede9fe);
       padding: 1.25rem 2rem;
-      border-bottom: 1px solid #ddd6fe;
+      border-bottom: 1px solid #cffafe;
       display: flex;
       align-items: center;
       gap: .75rem;
@@ -284,7 +308,7 @@
     .accept-card-top svg { flex-shrink: 0; }
     .accept-card-top p {
       font-size: .88rem;
-      color: #4c1d95;
+      color: #164e63;
       font-weight: 500;
       line-height: 1.5;
     }
@@ -324,7 +348,7 @@
       font-weight: 700;
       cursor: pointer;
       transition: opacity .2s, transform .15s, box-shadow .2s;
-      box-shadow: 0 4px 14px rgba(29,58,86,.35);
+      box-shadow: 0 4px 14px rgba(79,70,229,.35);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -333,7 +357,7 @@
     .btn-accept:hover:not(:disabled) {
       opacity: .92;
       transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(29,58,86,.4);
+      box-shadow: 0 6px 20px rgba(79,70,229,.4);
     }
     .btn-accept:disabled {
       opacity: .4;
@@ -389,11 +413,14 @@
   <!-- TOP BAR -->
   <header class="topbar">
     <div class="brand">
-      <img src="{% static 'img/logo/logo-color.png' %}" alt="بنان" height="34">
+      <span class="brand-mark">
+        <img src="{% static 'logo/logo-dark.png' %}" alt="" class="brand-mark__icon">
+        <span class="brand-wordmark">{{ app_name }}</span>
+      </span>
     </div>
     <div style="display:flex;align-items:center;gap:.75rem;">
       <span class="topbar-badge">الإصدار {{ terms_version }}</span>
-      <a href="/" style="display:inline-flex;align-items:center;gap:.4rem;font-size:.85rem;font-weight:600;color:var(--indigo);text-decoration:none;background:#e4f2f0;border:1px solid #afc4d2;border-radius:2rem;padding:.3rem .9rem;transition:background .2s;">
+      <a href="/" style="display:inline-flex;align-items:center;gap:.4rem;font-size:.85rem;font-weight:600;color:var(--indigo);text-decoration:none;background:#ecfeff;border:1px solid #a5f3fc;border-radius:2rem;padding:.3rem .9rem;transition:background .2s;">
         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
         الرئيسية
       </a>
@@ -404,7 +431,7 @@
   <div class="hero">
     <div class="hero-label">وثيقة رسمية معتمدة</div>
     <h1>اتفاقية الاستخدام وشروط الخدمة</h1>
-    <p>يُرجى قراءة هذه الاتفاقية بعناية. تحدد هذه الوثيقة حقوقك والتزاماتك عند استخدام نظام بنان.</p>
+    <p>يُرجى قراءة هذه الاتفاقية بعناية. تحدد هذه الوثيقة حقوقك والتزاماتك عند استخدام نظام {{ app_name }}.</p>
   </div>
 
   <!-- WAVE -->
@@ -436,9 +463,8 @@
             <h2>تعريف الأطراف</h2>
           </div>
           <p>
-            هذه الاتفاقية مبرمة بين <strong>بنان لتقنية المعلومات</strong>، كيان مسجَّل
-            لدى دولة قطر برقم <strong>247136</strong> (مزوّد الخدمة)، وبين <strong>المشترك</strong>
-            (أي شخص أو كيان تجاري يستخدم نظام بنان IMS).
+            هذه الاتفاقية مبرمة بين <strong>بنان لتقنية المعلومات</strong> ("الجهة المطوّرة للنظام" أو مزوّد الخدمة)، وبين <strong>المشترك</strong>
+            (أي شخص أو كيان تجاري يستخدم نظام {{ app_name }}).
             باستخدامك للنظام فأنت تُقرّ بأنك مفوَّض للموافقة على هذه الاتفاقية باسم نشاطك التجاري.
           </p>
         </div>
@@ -450,8 +476,8 @@
             <h2>الخدمة المقدمة</h2>
           </div>
           <p>
-            توفر بنان لتقنية المعلومات نظام إدارة مخزون وأعمال (SaaS) يشمل: إدارة المبيعات
-            والمشتريات، تتبع المخزون، إدارة العملاء والموردين، التقارير، وخدمات مساندة أخرى
+            توفر الجهة المطوّرة للنظام نظام إدارة مخزون ومبيعات (SaaS) مخصصاً للتجار وشركات بيع المنتجات، يشمل: إدارة المبيعات
+            والمشتريات، تتبع المخزون والأرقام التسلسلية، إدارة العملاء والموردين، التقارير، وخدمات مساندة أخرى
             وفقاً للباقة المشترك بها.
           </p>
           <div class="callout">
@@ -523,7 +549,7 @@
             <div class="section-num">٧</div>
             <h2>تعليق الخدمة وإنهاؤها</h2>
           </div>
-          <p>يحق لبنان لتقنية المعلومات تعليق أو إنهاء الخدمة في الحالات التالية:</p>
+          <p>يحق للجهة المطوّرة للنظام تعليق أو إنهاء الخدمة في الحالات التالية:</p>
           <ul>
             <li>عدم سداد رسوم الاشتراك بعد مرور فترة السماح.</li>
             <li>انتهاك أي بند من بنود هذه الاتفاقية.</li>
@@ -544,12 +570,12 @@
             تختلف سياسة النسخ الاحتياطي حسب باقة الاشتراك على النحو التالي:
           </p>
           <ul style="margin:.6rem 0 .6rem 1.2rem;line-height:2;">
-            <li><strong>الباقة الأساسية:</strong> نسخ احتياطي يدوي فقط — يُنشئ المشترك النسخة بنفسه وتُنزَّل مباشرة على جهازه. تقع على المشترك المسؤولية الكاملة عن حفظها وصونها، ولا تتحمل بنان لتقنية المعلومات أي مسؤولية عن ضياع البيانات في هذه الحالة.</li>
+            <li><strong>الباقة الأساسية:</strong> نسخ احتياطي يدوي فقط — يُنشئ المشترك النسخة بنفسه وتُنزَّل مباشرة على جهازه. تقع على المشترك المسؤولية الكاملة عن حفظها وصونها، ولا تتحمل الجهة المطوّرة للنظام أي مسؤولية عن ضياع البيانات في هذه الحالة.</li>
             <li><strong>الباقة الاحترافية:</strong> نسخ يدوي + نسخ آلي تلقائي مرة يومياً تُحفظ على خوادمنا.</li>
             <li><strong>باقة المؤسسات:</strong> نسخ يدوي + نسخ آلي تلقائي مرتين يومياً تُحفظ على خوادمنا.</li>
           </ul>
           <p>
-            تحرص بنان لتقنية المعلومات على سلامة النسخ الاحتياطية المحفوظة على خوادمها وتُعامَلها
+            تحرص الجهة المطوّرة للنظام على سلامة النسخ الاحتياطية المحفوظة على خوادمها وتُعامَلها
             بالعناية ذاتها التي تُعامَل بها بيانات أي مؤسسة احترافية. ويُنصح جميع المشتركين
             بالاحتفاظ بنسخ محلية إضافية من بياناتهم بصفة دورية.
           </p>
@@ -562,7 +588,7 @@
             <h2>حدود المسؤولية</h2>
           </div>
           <p>
-            نظام بنان أداة لإدارة الأعمال وليس مستشاراً مالياً أو قانونياً. القرارات التجارية
+            نظام {{ app_name }} أداة لإدارة الأعمال وليس مستشاراً مالياً أو قانونياً. القرارات التجارية
             المبنية على بيانات النظام هي مسؤولية المشترك الكاملة. لا تتجاوز المسؤولية القصوى
             لمزوّد الخدمة في أي حال مبلغ رسوم اشتراك شهر واحد.
           </p>
@@ -575,7 +601,7 @@
             <h2>تعديل الاتفاقية</h2>
           </div>
           <p>
-            تحتفظ بنان لتقنية المعلومات بحق تعديل هذه الاتفاقية في أي وقت. عند وجود
+            تحتفظ الجهة المطوّرة للنظام بحق تعديل هذه الاتفاقية في أي وقت. عند وجود
             تغييرات جوهرية يُرسَل إشعار بالبريد الإلكتروني المسجَّل أو يظهر تنبيه داخل النظام.
             استمرارك في استخدام النظام بعد التعديل يُعدّ قبولاً للشروط الجديدة.
           </p>
@@ -589,9 +615,9 @@
           </div>
           <p>
             تُقدَّم هذه الخدمة للمشتركين في جميع الدول العربية وتسري عليهم بالتساوي.
-            في حال نشوء أي خلاف، تسعى الطرفان أولاً إلى حلّه وديّاً بالتواصل المباشر.
+            في حال نشوء أي خلاف، يسعى الطرفان أولاً إلى حلّه وديّاً بالتواصل المباشر.
             وإن تعذّر ذلك، يحق للمشترك اللجوء إلى الجهات القانونية المختصة
-            <strong>في بلده</strong>، وتلتزم بنان لتقنية المعلومات بالتعاون الكامل
+            <strong>في بلده</strong>، وتلتزم الجهة المطوّرة للنظام بالتعاون الكامل
             مع هذه الجهات وفق ما تقتضيه القوانين المحلية المعمول بها.
           </p>
         </div>
@@ -604,7 +630,7 @@
         <span class="dot">·</span>
         <span>بنان لتقنية المعلومات</span>
         <span class="dot">·</span>
-        <span>رقم التسجيل: 247136</span>
+        <span>رقم التسجيل: 120370</span>
         {% if user.is_authenticated %}
         <span class="dot">·</span>
         <a href="/">العودة للنظام</a>
@@ -618,7 +644,7 @@
     {% if needs_acceptance %}
     <div class="accept-card">
       <div class="accept-card-top">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6d28d9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
         </svg>
         <p>بعد مراجعة الاتفاقية، يُرجى تأكيد موافقتك للمتابعة إلى النظام.</p>
@@ -633,7 +659,7 @@
             <input type="checkbox" id="termsCheck" onchange="toggleBtn()">
             <label for="termsCheck">
               قرأت اتفاقية الاستخدام كاملاً وأوافق على جميع بنودها.
-              أُقرّ بأن استمراري في استخدام <strong>نظام بنان IMS</strong>
+              أُقرّ بأن استمراري في استخدام <strong>نظام {{ app_name }}</strong>
               يُعدّ التزاماً قانونياً بهذه الاتفاقية.
             </label>
           </label>

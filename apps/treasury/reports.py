@@ -3,6 +3,7 @@
 ================
 """
 
+from apps.core.utils import BranchLabelMixin
 from datetime import timedelta
 from decimal import Decimal
 from django.utils import timezone
@@ -40,27 +41,35 @@ REFERENCE_TYPE_AR = {
     'employee_incentive_cancel': 'إلغاء حافز / خصم',
     'expense':                   'مصروف',
     'expense_cancel':            'إلغاء مصروف',
-    'manufacturing_order':       'أمر تصنيع',
     'opening_balance':           'رصيد افتتاحي',
     'stocktake':                 'جرد مخزون',
     'stock_transfer':            'تحويل مخزون',
+    'transfer':                  'تحويل بين خزائن',
+    'transfer_cancel':           'إلغاء تحويل',
+    'treasury_bank_transfer':    'تحويل مع حساب بنكي',
+    'branch_transfer': 'تحويل فروع',
+    'branch_transfer_cancel': 'إلغاء تحويل فروع',
+    'branch_transfer_return': 'إعادة فرق تحويل فروع',
 }
 
 
-class TreasuryReportGenerator:
+class TreasuryReportGenerator(BranchLabelMixin):
 
-    def __init__(self, tenant, start_date=None, end_date=None):
+    def __init__(self, tenant, start_date=None, end_date=None, branch=None, head_office=False):
         self.tenant = tenant
+        self.branch = branch
+        # مستخدم الإدارة بمفتاح تقارير الإدارة فقط: خزائن الإدارة المركزية وحساباتها البنكية وحدها.
+        self.head_office = head_office
         self.start_date = start_date or (timezone.localdate() - timedelta(days=30))
         self.end_date = end_date or timezone.localdate()
 
     def get_balances_report(self):
         """أرصدة جميع الخزائن لحظياً"""
-        treasuries = Treasury.objects.filter(tenant=self.tenant, is_active=True).order_by('name')
+        treasuries = Treasury.objects.filter(tenant=self.tenant, is_active=True).for_branch(self.branch, strict=True).order_by('name')
         data = []
         for t in treasuries:
             data.append({
-                'name': t.name,
+                'name': self._party(t),
                 'code': t.code,
                 'current_balance': format_number(float(t.current_balance), 2),
                 'current_balance_raw': float(t.current_balance),
@@ -81,6 +90,13 @@ class TreasuryReportGenerator:
         try:
             treasury = Treasury.objects.get(pk=treasury_id, tenant=self.tenant)
         except Treasury.DoesNotExist:
+            return None
+        # self.branch كان يُمرَّر للمُنشئ لكن لم يُستخدم هنا فعلياً — ثغرة
+        # IDOR عبر الفرع اكتشفتها أداة التدقيق check_branch_scoping: مستخدم
+        # بفرع يقدر يمرر treasury_id لفرع آخر ويحصل على كشف حسابه كاملاً.
+        if self.branch is not None and treasury.branch is not None and treasury.branch != self.branch:
+            return None
+        if self.head_office and not treasury.is_head_office:
             return None
 
         movements = TreasuryMovement.objects.filter(
@@ -125,11 +141,14 @@ class TreasuryReportGenerator:
 
     def get_movements_summary(self, treasury_id=None):
         """حركات خزينة محددة بالفترة مرتبة من الأقدم للأحدث"""
-        movements = TreasuryMovement.objects.filter(
+        from apps.core.utils import filter_by_branch_strict
+        movements = filter_by_branch_strict(TreasuryMovement.objects.filter(
             tenant=self.tenant,
             movement_date__gte=self.start_date,
             movement_date__lte=self.end_date,
-        ).select_related('treasury').order_by('movement_date', 'id')
+        ), self.branch, field='treasury__branch').select_related('treasury').order_by('movement_date', 'id')
+        if self.head_office:
+            movements = movements.filter(treasury__is_head_office=True)
 
         if treasury_id:
             movements = movements.filter(treasury_id=treasury_id)
@@ -146,7 +165,7 @@ class TreasuryReportGenerator:
             total_disbursements += Decimal(str(d))
             data.append({
                 'movement_date': m.movement_date,
-                'treasury_name': m.treasury.name,
+                'treasury_name': self._party(m.treasury),
                 'movement_type': m.get_movement_type_display(),
                 'movement_type_key': m.movement_type,
                 'description': m.description,
@@ -155,7 +174,7 @@ class TreasuryReportGenerator:
                 'running_balance': format_number(float(m.running_balance), 2),
             })
 
-        treasuries = Treasury.objects.filter(tenant=self.tenant, is_active=True).order_by('name')
+        treasuries = Treasury.objects.filter(tenant=self.tenant, is_active=True).for_branch(self.branch, strict=True).order_by('name')
 
         return {
             'period': {'start': self.start_date, 'end': self.end_date},

@@ -1,6 +1,7 @@
 from django.db import models
-from apps.core.models import TenantMixin
+from apps.core.models import TenantMixin, TenantManager, BranchScopedManager
 from apps.treasury.models import Treasury
+from apps.bank_accounts.models import BankAccount
 
 
 class ExpenseCategory(TenantMixin):
@@ -19,6 +20,10 @@ class ExpenseCategory(TenantMixin):
 
 
 class Expense(TenantMixin):
+    # عزل تلقائي بفرع الطلب (BranchScopedManager)؛ unscoped للتعامل عبر كل الفروع
+    objects = BranchScopedManager()
+    unscoped = TenantManager()
+
     STATUS_DRAFT = 'draft'
     STATUS_CONFIRMED = 'confirmed'
     STATUS_CANCELLED = 'cancelled'
@@ -54,12 +59,20 @@ class Expense(TenantMixin):
         null=True,
         blank=True,
     )
+    bank_account = models.ForeignKey(
+        BankAccount,
+        on_delete=models.PROTECT,
+        related_name='expenses',
+        verbose_name='الحساب البنكي',
+        null=True,
+        blank=True,
+    )
     reference_number = models.CharField('رقم المرجع', max_length=100, blank=True,
                                         help_text='رقم الحوالة أو أمر الدفع عند التحويل البنكي')
     notes = models.TextField('ملاحظات', blank=True)
     status = models.CharField('الحالة', max_length=15, choices=STATUS_CHOICES, default=STATUS_DRAFT)
 
-    # Treasury effect tracking
+    # Treasury / bank account effect tracking
     treasury_movement = models.OneToOneField(
         'treasury.TreasuryMovement',
         on_delete=models.SET_NULL,
@@ -67,6 +80,22 @@ class Expense(TenantMixin):
         blank=True,
         related_name='expense',
         verbose_name='حركة الخزينة',
+    )
+    bank_account_movement = models.OneToOneField(
+        'bank_accounts.BankAccountMovement',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='expense',
+        verbose_name='حركة الحساب البنكي',
+    )
+    branch = models.ForeignKey(
+        'core.Branch',
+        on_delete=models.SET_NULL,
+        related_name='expenses',
+        verbose_name='الفرع',
+        null=True,
+        blank=True,
     )
 
     class Meta:
@@ -86,7 +115,7 @@ class Expense(TenantMixin):
     def save(self, *args, **kwargs):
         if not self.code:
             last = (
-                Expense.objects.filter(tenant=self.tenant)
+                Expense.unscoped.filter(tenant=self.tenant)
                 .exclude(code='')
                 .order_by('-id')
                 .first()
@@ -96,6 +125,6 @@ class Expense(TenantMixin):
                 try:
                     next_num = int(last.code.split('-')[-1]) + 1
                 except ValueError:
-                    next_num = Expense.objects.filter(tenant=self.tenant).count() + 1
+                    next_num = Expense.unscoped.filter(tenant=self.tenant).count() + 1
             self.code = f'EXP-{next_num:05d}'
         super().save(*args, **kwargs)

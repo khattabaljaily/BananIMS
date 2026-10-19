@@ -53,7 +53,7 @@ ACTIVITY_MAP = {
     'customers:create':           ('إضافة عميل جديد',               'create'),
     'customers:update_api':       ('تعديل بيانات عميل',             'update'),
     'customers:delete_api':       ('حذف عميل',                       'delete'),
-    'customers:import_api':       ('استيراد عملاء من ملف',           'create'),
+    'data_import:customer_commit':('استيراد عملاء من ملف',           'create'),
     'customers:payments_create':  ('تسجيل دفعة من عميل',            'create'),
     'customers:payment_cancel':   ('إلغاء دفعة عميل',               'cancel'),
 
@@ -62,7 +62,7 @@ ACTIVITY_MAP = {
     'suppliers:create':           ('إضافة مورد جديد',               'create'),
     'suppliers:update_api':       ('تعديل بيانات مورد',             'update'),
     'suppliers:delete_api':       ('حذف مورد',                       'delete'),
-    'suppliers:import_api':       ('استيراد موردين من ملف',          'create'),
+    'data_import:supplier_commit':('استيراد موردين من ملف',          'create'),
     'suppliers:payments_create':  ('تسجيل دفعة للمورد',             'create'),
     'suppliers:payment_cancel':   ('إلغاء دفعة مورد',               'cancel'),
 
@@ -70,15 +70,13 @@ ACTIVITY_MAP = {
     'items:create_api':            ('إضافة منتج جديد',              'create'),
     'items:update_api':            ('تعديل بيانات منتج',            'update'),
     'items:delete_api':            ('حذف منتج',                      'delete'),
-    'items:import_api':            ('استيراد منتجات من ملف',        'create'),
+    'data_import:product_commit':  ('استيراد منتجات من ملف',        'create'),
     'items:category_create_api':   ('إضافة تصنيف جديد',            'create'),
     'items:category_update_api':   ('تعديل تصنيف',                  'update'),
     'items:category_delete_api':   ('حذف تصنيف',                    'delete'),
     'items:unit_create_api':       ('إضافة وحدة قياس',              'create'),
     'items:unit_update_api':       ('تعديل وحدة قياس',              'update'),
     'items:unit_delete_api':       ('حذف وحدة قياس',                'delete'),
-    'items:bom_create_ajax':       ('إنشاء وصفة تصنيع',             'create'),
-    'items:bom_delete':            ('حذف وصفة تصنيع',               'delete'),
     'items:category_import_api':   ('استيراد تصنيفات من ملف',       'create'),
 
     # ── Stocks ─────────────────────────────────────────────────────────────────
@@ -95,7 +93,6 @@ ACTIVITY_MAP = {
     'stocks:stocktake_save_counts': ('حفظ نتائج جرد المخزون',        'update'),
     'stocks:stocktake_confirm':    ('تأكيد جرد المخزون',            'confirm'),
     'stocks:stocktake_cancel':     ('إلغاء جرد المخزون',            'cancel'),
-    'stocks:manufacturing_create': ('إنشاء أمر تصنيع',              'create'),
 
     # ── Expenses ───────────────────────────────────────────────────────────────
     'expenses:create_api':         ('إضافة مصروف جديد',            'create'),
@@ -323,22 +320,6 @@ def _stocktake_details(kwargs):
         return f"معرف الجرد: {pk}"
 
 
-def _manufacturing_details(kwargs):
-    pk = kwargs.get('pk')
-    if not pk:
-        return ''
-    try:
-        from apps.stocks.models import ManufacturingOrder
-        mo = ManufacturingOrder.objects.select_related('item', 'stock').get(pk=pk)
-        return (
-            f"أمر التصنيع: {mo.order_number}\n"
-            f"المنتج: {mo.item.name}\n"
-            f"الكمية: {mo.quantity}"
-        )
-    except Exception:
-        return f"معرف أمر التصنيع: {pk}"
-
-
 def _expense_details(kwargs):
     pk = kwargs.get('pk')
     if not pk:
@@ -437,7 +418,6 @@ DETAIL_BUILDERS = {
     'stocks:transfer_delete':    _stock_transfer_details,
     'stocks:stocktake_confirm':  _stocktake_details,
     'stocks:stocktake_cancel':   _stocktake_details,
-    'stocks:manufacturing_create': None,
     'expenses:edit_api':         _expense_details,
     'expenses:confirm':          _expense_details,
     'expenses:cancel':           _expense_details,

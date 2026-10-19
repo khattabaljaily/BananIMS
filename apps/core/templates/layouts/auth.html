@@ -8,11 +8,11 @@
 <nav class="auth-nav">
     <div class="auth-nav-inner">
         <a class="auth-nav-brand" href="{% url 'core:pricing' %}">
-            <div class="auth-nav-logo-wrap">
-                <img src="{% static 'img/logo/logo-color.png' %}" alt="بنان" class="auth-nav-logo logo-light">
-                <img src="{% static 'img/logo/logo-white.png' %}" alt="بنان" class="auth-nav-logo logo-dark">
-            </div>
-            <span class="auth-nav-brand-text">بنان</span>
+            <span class="brand-mark">
+                <img src="{% static 'logo/logo-dark.png' %}" alt="" class="brand-mark__icon brand-mark__icon--dark">
+                <img src="{% static 'logo/logo-light.png' %}" alt="" class="brand-mark__icon brand-mark__icon--light">
+                <span class="brand-wordmark">{{ app_name }}</span>
+            </span>
         </a>
 
         <div class="auth-nav-actions">
@@ -24,125 +24,99 @@
                 <i class="fas fa-circle-info"></i>
                 <span>عن النظام</span>
             </a>
-            <div class="auth-nav-sep"></div>
-            <button class="auth-theme-btn" id="authThemeBtn" onclick="toggleAuthTheme()" title="تبديل المظهر" aria-label="تبديل المظهر">
-                <i class="fas fa-moon" id="authThemeIcon"></i>
-            </button>
         </div>
     </div>
 </nav>
 
-<!-- ══ Split Page ═══════════════════════════════════════ -->
-<div class="auth-split-page">
+<!-- ══ Aurora stage ══════════════════════════════════════ -->
+<div class="auth-page-v2">
+    <div class="auth-blobs" aria-hidden="true">
+        <span class="auth-blob auth-blob--1"></span>
+        <span class="auth-blob auth-blob--2"></span>
+        <span class="auth-blob auth-blob--3"></span>
+    </div>
 
-    <!-- Brand Panel (right in RTL) -->
-    <aside class="auth-brand-panel">
-        <!-- Background layers -->
-        <div class="auth-brand-mesh"></div>
-        <div class="auth-brand-orb auth-brand-orb--1"></div>
-        <div class="auth-brand-orb auth-brand-orb--2"></div>
-        <div class="auth-brand-orb auth-brand-orb--3"></div>
+    <div class="auth-particles" aria-hidden="true">
+        <span class="auth-particle" style="--i:0"></span>
+        <span class="auth-particle" style="--i:1"></span>
+        <span class="auth-particle" style="--i:2"></span>
+        <span class="auth-particle" style="--i:3"></span>
+        <span class="auth-particle" style="--i:4"></span>
+        <span class="auth-particle" style="--i:5"></span>
+        <span class="auth-particle" style="--i:6"></span>
+        <span class="auth-particle" style="--i:7"></span>
+        <span class="auth-particle" style="--i:8"></span>
+        <span class="auth-particle" style="--i:9"></span>
+        <span class="auth-particle" style="--i:10"></span>
+        <span class="auth-particle" style="--i:11"></span>
+        <span class="auth-particle" style="--i:12"></span>
+        <span class="auth-particle" style="--i:13"></span>
+        <span class="auth-particle" style="--i:14"></span>
+    </div>
 
-        <div class="auth-brand-inner">
-            <!-- Logo badge -->
-            <div class="auth-brand-logo-wrap">
-                <img src="{% static 'img/logo/logo-white.png' %}" alt="بنان" class="auth-brand-logo-img">
-            </div>
-
-            <!-- Headline -->
-            <h2 class="auth-brand-headline">BananIMS</h2>
-            <p class="auth-brand-tagline">منصة متكاملة لإدارة المخزون والمبيعات وتتبع الأنشطة التجارية</p>
-
-            <!-- Stats -->
-            <div class="auth-brand-stats">
-                <div class="auth-brand-stat">
-                    <span class="auth-brand-stat-value">10+</span>
-                    <span class="auth-brand-stat-label">أنواع نشاط</span>
+    <main class="auth-content-area">
+        <div class="auth-shell animate-fade-in">
+            {% block auth_illustration %}
+            <div class="auth-illustration">
+                <div class="auth-illu-mark">
+                    <img src="{% static 'logo/logo-dark.png' %}" alt="">
                 </div>
-                <div class="auth-brand-stat-sep"></div>
-                <div class="auth-brand-stat">
-                    <span class="auth-brand-stat-value">99.9%</span>
-                    <span class="auth-brand-stat-label">وقت التشغيل</span>
-                </div>
-                <div class="auth-brand-stat-sep"></div>
-                <div class="auth-brand-stat">
-                    <span class="auth-brand-stat-value">24/7</span>
-                    <span class="auth-brand-stat-label">دعم فني</span>
+                <span class="auth-illu-word">{{ app_name }}</span>
+                <h2 class="auth-illu-title">أعمالك، <em>أبسط وأذكى</em></h2>
+                <p class="auth-illu-desc">من المخزون إلى الفاتورة، ومن الشراء إلى التسليم — كل عملياتك مسجّلة في مكان واحد.</p>
+                <div class="auth-illu-feats">
+                    <div class="auth-illu-feat"><span class="fi"><i class="fas fa-robot"></i></span> الذكاء الاصطناعي</div>
+                    <div class="auth-illu-feat"><span class="fi"><i class="fas fa-cart-shopping"></i></span> المتجر الإلكتروني</div>
+                    <div class="auth-illu-feat"><span class="fi"><i class="fas fa-shield-halved"></i></span> الأمان والنسخ الاحتياطي</div>
                 </div>
             </div>
+            {% endblock %}
 
-            <!-- Features -->
-            <ul class="auth-brand-features">
-                <li class="auth-brand-feat">
-                    <span class="auth-brand-feat-icon">
-                        <i class="fas fa-boxes-stacked"></i>
-                    </span>
-                    <div class="auth-brand-feat-text">
-                        <strong>إدارة المخزون</strong>
-                        <span>تتبع المنتجات والكميات لحظة بلحظة</span>
-                    </div>
-                </li>
-                <li class="auth-brand-feat">
-                    <span class="auth-brand-feat-icon">
-                        <i class="fas fa-chart-line"></i>
-                    </span>
-                    <div class="auth-brand-feat-text">
-                        <strong>تقارير تحليلية</strong>
-                        <span>لوحات بيانات ذكية وتقارير مفصّلة</span>
-                    </div>
-                </li>
-                <li class="auth-brand-feat">
-                    <span class="auth-brand-feat-icon">
-                        <i class="fas fa-shield-halved"></i>
-                    </span>
-                    <div class="auth-brand-feat-text">
-                        <strong>أمان وحماية</strong>
-                        <span>صلاحيات دقيقة وحماية كاملة للبيانات</span>
-                    </div>
-                </li>
-            </ul>
-        </div>
-    </aside>
+            <div class="auth-card">
+                {% if messages %}
+                {% for message in messages %}
+                <div class="alert alert-{% if 'error' in message.tags or 'danger' in message.tags %}danger{% elif 'success' in message.tags %}success{% elif 'warning' in message.tags %}warning{% else %}info{% endif %} auth-alert d-flex align-items-center gap-2 mb-3">
+                    <i class="fas {% if 'error' in message.tags or 'danger' in message.tags %}fa-exclamation-circle{% elif 'success' in message.tags %}fa-check-circle{% elif 'warning' in message.tags %}fa-exclamation-triangle{% else %}fa-info-circle{% endif %}"></i>
+                    <span>{{ message }}</span>
+                </div>
+                {% endfor %}
+                {% endif %}
 
-    <!-- Form Panel (left in RTL) -->
-    <main class="auth-form-panel">
-        <div class="auth-card animate-fade-in">
+                {% block auth_content %}{% endblock %}
 
-            {% if messages %}
-            {% for message in messages %}
-            <div class="alert alert-{% if 'error' in message.tags or 'danger' in message.tags %}danger{% elif 'success' in message.tags %}success{% elif 'warning' in message.tags %}warning{% else %}info{% endif %} d-flex align-items-center gap-2 mb-3">
-                <i class="fas {% if 'error' in message.tags or 'danger' in message.tags %}fa-exclamation-circle{% elif 'success' in message.tags %}fa-check-circle{% elif 'warning' in message.tags %}fa-exclamation-triangle{% else %}fa-info-circle{% endif %}"></i>
-                <span>{{ message }}</span>
-            </div>
-            {% endfor %}
-            {% endif %}
-
-            {% block auth_content %}{% endblock %}
-
-            <div class="auth-footer">
-                {% block auth_links %}{% endblock %}
+                <div class="auth-footer">
+                    {% block auth_links %}{% endblock %}
+                </div>
             </div>
         </div>
     </main>
-
 </div>
 
 <script>
-function toggleAuthTheme() {
-    var html = document.documentElement;
-    var newTheme = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-    html.setAttribute('data-theme', newTheme);
-    localStorage.setItem('theme', newTheme);
-    var icon = document.getElementById('authThemeIcon');
-    if (icon) icon.className = newTheme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
-}
-
 (function() {
-    var saved = localStorage.getItem('theme');
-    var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-    document.documentElement.setAttribute('data-theme', theme);
-    var icon = document.getElementById('authThemeIcon');
-    if (icon && theme === 'dark') icon.className = 'fas fa-sun';
+    document.querySelectorAll('.input-toggle-pass').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var input = document.getElementById(btn.dataset.toggleTarget);
+            if (!input) return;
+            var icon = btn.querySelector('i');
+            var showing = input.type === 'text';
+            input.type = showing ? 'password' : 'text';
+            icon.className = showing ? 'fas fa-eye' : 'fas fa-eye-slash';
+            btn.setAttribute('aria-label', showing ? 'إظهار كلمة المرور' : 'إخفاء كلمة المرور');
+        });
+    });
+
+    document.addEventListener('click', function(e) {
+        var btn = e.target.closest('.btn-auth, .auth-card .btn');
+        if (!btn) return;
+        var rect = btn.getBoundingClientRect();
+        var ripple = document.createElement('span');
+        ripple.className = 'auth-ripple';
+        ripple.style.left = (e.clientX - rect.left) + 'px';
+        ripple.style.top = (e.clientY - rect.top) + 'px';
+        btn.appendChild(ripple);
+        ripple.addEventListener('animationend', function() { ripple.remove(); });
+    });
 })();
 </script>
 

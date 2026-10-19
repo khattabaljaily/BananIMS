@@ -29,10 +29,8 @@ urlpatterns = [
     path('units/api/<int:pk>/update/', views.unit_update_api, name='unit_update_api'),
     path('units/api/<int:pk>/delete/', views.unit_delete_api, name='unit_delete_api'),
 
-    # ------- Items Import/Export -------
+    # ------- Items Export -------
     path('api/export/', views.item_export_api, name='export_api'),
-    path('api/import/', views.item_import_api, name='import_api'),
-    path('api/template/', views.item_download_template, name='template_api'),
 
     # ------- Categories Import/Export -------
     path('categories/api/export/', views.category_export_api, name='category_export_api'),
@@ -44,17 +42,9 @@ urlpatterns = [
     path('categories/', views.category_list, name='category_list'),
     path('units/', views.unit_list, name='unit_list'),
 
-    # ------- BOM Recipes -------
-    path('bom/', views.bom_recipe_list, name='bom_list'),
-    path('bom/api/', views.bom_recipe_api, name='bom_api'),
-    path('bom/create/', views.bom_recipe_create_ajax, name='bom_create_ajax'),
-    path('bom/<int:pk>/', views.bom_recipe_detail, name='bom_detail'),
-    path('bom/<int:pk>/delete/', views.bom_recipe_delete_ajax, name='bom_delete'),
-
     # ------- Item Meta API -------
     path('api/meta/<int:pk>/', views.item_meta_api, name='item_meta_api'),
 
-    # ------- Item Batches -------
-    path('<int:pk>/batches/', views.item_batches, name='item_batches'),
+
 
 ]

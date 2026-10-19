@@ -62,7 +62,6 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    'whitenoise.runserver_nostatic',
     'django.contrib.staticfiles',
     'rest_framework',
     'corsheaders',
@@ -72,9 +71,13 @@ INSTALLED_APPS = [
     'apps.suppliers',
     'apps.agents',
     'apps.items',
+    'apps.data_import',
     'apps.purchases',
+    'apps.requisitions',
+    'apps.branch_transfers',
     'apps.sales',
     'apps.treasury',
+    'apps.bank_accounts',
     'apps.expenses',
     'apps.stocks',
     'apps.notifications',
@@ -87,7 +90,6 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -97,6 +99,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'apps.core.middleware.MaintenanceModeMiddleware',
     'apps.core.middleware.TenantMiddleware',
+    'apps.core.middleware.CentralPurchasingMiddleware',
     'apps.core.middleware.TermsMiddleware',
     'apps.core.middleware.TimezoneMiddleware',
     'apps.core.middleware.ActiveTenantMiddleware',
@@ -146,34 +149,21 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = 'ar'
-TIME_ZONE = 'Asia/Qatar'
+# صيغة الأرقام: النقطة للكسور (راجع PROJECT/formats/ar/formats.py).
+FORMAT_MODULE_PATH = ['PROJECT.formats']
+TIME_ZONE = 'Africa/Cairo'
 USE_I18N = True
 USE_TZ = True
 
 STATIC_URL  = '/static/'
-STATICFILES_DIRS = [BASE_DIR / 'static']
+# branding/ يُضاف كمصدر ملفات ثابتة إضافي — يجعل branding/logo/*.png و
+# branding/favicon/*.png قابلة للوصول عبر {% static 'logo/...' %} و
+# {% static 'favicon/...' %} بلا أي view أو رابط جديد. راجع branding/README.md.
+STATICFILES_DIRS = [BASE_DIR / 'static', BASE_DIR / 'branding']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 MEDIA_URL   = 'media/'
 MEDIA_ROOT  = BASE_DIR / 'media'
-
-if DEBUG:
-    # Serve straight from STATICFILES_DIRS with no content-hashed filenames,
-    # so `{% static %}` URLs stay stable across edits (no manifest needed).
-    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
-    # WhiteNoiseMiddleware reads files via the same finders (no collectstatic
-    # required) and re-checks them on every request, so edits show up on a
-    # normal refresh instead of requiring a hard refresh.
-    WHITENOISE_USE_FINDERS = True
-    WHITENOISE_AUTOREFRESH = True
-    # Force the browser to revalidate on every load instead of guessing its
-    # own cache lifetime — this is what actually eliminates the "hard
-    # refresh to see changes" problem in local dev.
-    WHITENOISE_MAX_AGE = 0
-else:
-    # Content-hashed filenames: the URL itself changes when a file's content
-    # changes, so it's safe for WhiteNoise to send far-future cache headers —
-    # browsers never need a hard refresh to see a deployed change.
-    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -195,6 +185,7 @@ EMAIL_HOST_USER     = _email_noreply.get('USER', '')
 EMAIL_HOST_PASSWORD = _email_noreply.get('PASSWORD', '')
 EMAIL_USE_SSL       = str(_email_cfg.get('EMAIL_USE_SSL', 'True')).lower() == 'true'
 EMAIL_USE_TLS       = False
+EMAIL_TIMEOUT       = int(_email_cfg.get('EMAIL_TIMEOUT', 10))
 DEFAULT_FROM_EMAIL  = f'BANAN <{EMAIL_HOST_USER}>'
 
 REST_FRAMEWORK = {
@@ -205,6 +196,48 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
     'PAGE_SIZE': 25,
+}
+
+# ─────────────────────────────────────────────
+# Logging — server errors go to logs/errors.log (readable without sudo)
+# ─────────────────────────────────────────────
+LOG_DIR = BASE_DIR / 'logs'
+LOG_DIR.mkdir(exist_ok=True)
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{asctime} {levelname} {name} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+        },
+        'error_file': {
+            'level': 'ERROR',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': LOG_DIR / 'errors.log',
+            'maxBytes': 5 * 1024 * 1024,
+            'backupCount': 3,
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'handlers': ['console', 'error_file'],
+        'level': 'WARNING',
+    },
+    'loggers': {
+        'django.request': {
+            'handlers': ['console', 'error_file'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+    },
 }
 
 # ─────────────────────────────────────────────

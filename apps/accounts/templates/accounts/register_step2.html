@@ -1,14 +1,30 @@
 {% extends "layouts/auth.html" %}
-{% load humanize %}
+{% load static humanize %}
+
+{% block auth_illustration %}
+<div class="auth-illustration">
+    <div class="auth-illu-mark">
+        <img src="{% static 'logo/logo-dark.png' %}" alt="">
+    </div>
+    <span class="auth-illu-word">{{ app_name }}</span>
+    <h2 class="auth-illu-title">بيانات <em>نشاطك</em></h2>
+    <p class="auth-illu-desc">نستخدم هذه البيانات لتخصيص لوحة تحكمك: العملة والتوقيت ونوع نشاطك.</p>
+    <div class="auth-illu-feats">
+        <div class="auth-illu-feat"><span class="fi"><i class="fas fa-robot"></i></span> الذكاء الاصطناعي</div>
+        <div class="auth-illu-feat"><span class="fi"><i class="fas fa-cart-shopping"></i></span> المتجر الإلكتروني</div>
+        <div class="auth-illu-feat"><span class="fi"><i class="fas fa-shield-halved"></i></span> الأمان والنسخ الاحتياطي</div>
+    </div>
+</div>
+{% endblock %}
 
 {% block auth_content %}
-<div class="text-center mb-4">
-    <h1 class="auth-title">معلومات النشاط التجاري</h1>
-    <p class="auth-subtitle">الخطوة الثانية: عرف نشاطك وبيانات المتجر</p>
+<div class="text-center mb-2">
+    <h1 class="auth-title">بيانات النشاط</h1>
+    <p class="auth-subtitle">الخطوة الثانية: عرّف نشاطك وبيانات المتجر</p>
 </div>
 
 <!-- Progress Steps -->
-<div class="progress-steps mb-4">
+<div class="progress-steps mb-4" style="--step-fill:50%">
     <div class="progress-step completed">
         <div class="progress-step-circle">
             <i class="fas fa-check"></i>
@@ -19,7 +35,7 @@
         <div class="progress-step-circle">
             <i class="fas fa-store"></i>
         </div>
-        <span class="progress-step-label">النشاط التجاري</span>
+        <span class="progress-step-label">بيانات النشاط</span>
     </div>
     <div class="progress-step">
         <div class="progress-step-circle">
@@ -35,53 +51,54 @@
     <div class="alert alert-danger auth-alert js-form-errors d-none mb-3"></div>
 
     <div class="auth-form-grid auth-form-grid-compact">
-        <div class="mb-3">
-            {{ form.business_type.label_tag }}
-            {{ form.business_type }}
-            {% if form.business_type.errors %}
-            <div class="text-danger small mt-1 js-field-errors" data-field="business_type">{{ form.business_type.errors }}</div>
-            {% endif %}
-        </div>
-        
-        <div class="mb-3">
+        <div class="mb-2 field-start">
             {{ form.business_name.label_tag }}
-            {{ form.business_name }}
+            <div class="input-icon-field">
+                <i class="fas fa-building input-icon"></i>
+                {{ form.business_name }}
+            </div>
             {% if form.business_name.errors %}
             <div class="text-danger small mt-1 js-field-errors" data-field="business_name">{{ form.business_name.errors }}</div>
             {% endif %}
         </div>
-        
-        <div class="mb-3">
+
+        <div class="mb-2 field-end">
             {{ form.phone.label_tag }}
-            {{ form.phone }}
+            <div class="input-icon-field">
+                <i class="fas fa-phone input-icon"></i>
+                {{ form.phone }}
+            </div>
             {% if form.phone.errors %}
             <div class="text-danger small mt-1 js-field-errors" data-field="phone">{{ form.phone.errors }}</div>
             {% endif %}
         </div>
-        
-        <div class="mb-3">
+
+        <div class="mb-2 field-start">
             {{ form.city.label_tag }}
-            {{ form.city }}
+            <div class="input-icon-field">
+                <i class="fas fa-city input-icon"></i>
+                {{ form.city }}
+            </div>
             {% if form.city.errors %}
             <div class="text-danger small mt-1 js-field-errors" data-field="city">{{ form.city.errors }}</div>
             {% endif %}
         </div>
 
-        <div class="mb-3">
+        <div class="mb-2 field-end">
             {{ form.country.label_tag }}
-            {{ form.country }}
+            <div class="input-icon-field">
+                <i class="fas fa-globe-americas input-icon"></i>
+                {{ form.country }}
+            </div>
             {% if form.country.errors %}
             <div class="text-danger small mt-1 js-field-errors" data-field="country">{{ form.country.errors }}</div>
             {% endif %}
+            <small class="text-muted d-block mt-1">
+                المنطقة الزمنية: <span id="countryTimezonePreview">{{ timezone_preview }}</span>
+            </small>
         </div>
 
-        <div class="mb-3">
-            <label class="form-label">المنطقة الزمنية</label>
-            <input id="countryTimezonePreview" class="form-control" readonly value="{{ timezone_preview }}">
-            <small class="text-muted">سيتم ضبط المنطقة الزمنية تلقائياً حسب البلد</small>
-        </div>
-
-        <div class="mb-3 field-span-2">
+        <div class="mb-2 field-span-2">
             {{ form.address.label_tag }}
             {{ form.address }}
             {% if form.address.errors %}
@@ -113,30 +130,21 @@
 {% block extra_js %}
 <script>
     const COUNTRY_TIMEZONE_MAP = {{ country_timezone_map_json|safe }};
-    const COUNTRY_CURRENCY_MAP = {{ country_currency_map_json|safe }};
     const countrySelect = document.querySelector('select[name="country"]');
     const timezonePreview = document.getElementById('countryTimezonePreview');
 
     function updateTimezonePreview() {
         if (!countrySelect || !timezonePreview) return;
         const selected = countrySelect.value;
-        const timezone = COUNTRY_TIMEZONE_MAP[selected] || COUNTRY_TIMEZONE_MAP['قطر'];
-        timezonePreview.value = timezone;
-    }
-
-    function storeSuggestedCurrency() {
-        if (!countrySelect) return;
-        const code = COUNTRY_CURRENCY_MAP[countrySelect.value];
-        if (code) sessionStorage.setItem('reg_suggested_currency', code);
+        const timezone = COUNTRY_TIMEZONE_MAP[selected] || timezonePreview.textContent;
+        timezonePreview.textContent = timezone;
     }
 
     if (countrySelect) {
         countrySelect.addEventListener('change', function () {
             updateTimezonePreview();
-            storeSuggestedCurrency();
         });
         updateTimezonePreview();
-        storeSuggestedCurrency();
     }
 </script>
 {% endblock %}

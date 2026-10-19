@@ -1,5 +1,5 @@
 /* 
- * BananIMS - Core Design System
+ * BANAN - Core Design System
  * Version: 3.0
  * Date: April 28, 2026
  * Purpose: Fonts + Colors + Basic Variables ONLY
@@ -48,21 +48,25 @@
    ========================================== */
 
 :root {
-    /* Light Mode Colors */
+    /* Light Mode Colors — Deep Teal / Sky palette */
     --primary: #0e6b64;
     --primary-hover: #0a534e;
     --secondary: #e8a33d;
     --secondary-hover: #cf8c26;
+    /* RGB triples of the above, for rgba(var(--x-rgb), alpha) tints */
+    --primary-rgb: 14, 107, 100;
+    --primary-hover-rgb: 10, 83, 78;
+    --secondary-rgb: 232, 163, 61;
     --success: #16a34a;
     --warning: #f97316;
     --danger: #e5484d;
     --info: #2f8fd1;
-
+    
     /* Background */
     --bg-primary: #ffffff;
     --bg-secondary: #f5f7f6;
     --bg-tertiary: #eef2f1;
-
+    
     /* Surface */
     --surface: #ffffff;
     --surface-hover: #f7faf9;
@@ -77,6 +81,7 @@
     --text-primary: #10201d;
     --text-secondary: #3f5350;
     --text-tertiary: #71857f;
+    --text-heading: #111827;
     --text-main: #10201d;
     --text-inverse: #ffffff;
     --input-bg: #eef4f3;
@@ -85,6 +90,41 @@
     --text-muted: #5c6f6b;
     --surface-alt: #f2f7f6;
     --border-medium: #c9d6d3;
+    /* Previous (teal/emerald) tint scale, kept for easy rollback:
+    --indigo-50: #e4f2f0;
+    --indigo-100: #cbe6e2;
+    --indigo-500: #0e6b64;
+    --indigo-600: #0a534e;
+    --indigo-700: #073e3a;
+    */
+    /* Previous (burgundy) tint scale, kept for easy rollback:
+    --indigo-50: #e4f2f0;
+    --indigo-100: #cbe6e2;
+    --indigo-500: #0e6b64;
+    --indigo-600: #0a534e;
+    --indigo-700: #073e3a;
+    */
+    /* Previous (slate/cyan) tint scale, kept for easy rollback:
+    --indigo-50: #e4f2f0;
+    --indigo-100: #cbe6e2;
+    --indigo-500: #0e6b64;
+    --indigo-600: #0a534e;
+    --indigo-700: #073e3a;
+    */
+    /* Previous (charcoal/gold) tint scale, kept for easy rollback:
+    --indigo-50: #e4f2f0;
+    --indigo-100: #cbe6e2;
+    --indigo-500: #0e6b64;
+    --indigo-600: #0a534e;
+    --indigo-700: #073e3a;
+    */
+    /* Previous (olive/chartreuse) tint scale, kept for easy rollback:
+    --indigo-50: #e4f2f0;
+    --indigo-100: #cbe6e2;
+    --indigo-500: #0e6b64;
+    --indigo-600: #0a534e;
+    --indigo-700: #073e3a;
+    */
     --indigo-50: #e4f2f0;
     --indigo-100: #cbe6e2;
     --indigo-500: #0e6b64;
@@ -124,22 +164,79 @@
     --transition: 150ms ease-in-out;
 }
 
+/* Brand mark — logo icon + "BANAN" wordmark, used in every nav/header position */
+.brand-mark {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    text-decoration: none;
+}
+
+.brand-mark__icon {
+    height: 40px;
+    width: auto;
+    display: block;
+    flex-shrink: 0;
+}
+
+.brand-mark__icon--dark  { display: block; }
+.brand-mark__icon--light { display: none; }
+[data-theme="dark"] .brand-mark__icon--dark  { display: none; }
+[data-theme="dark"] .brand-mark__icon--light { display: block; }
+
+/* Forces the white mark regardless of site theme — for panels with a fixed colored background */
+.brand-mark--inverse .brand-mark__icon--dark  { display: none; }
+.brand-mark--inverse .brand-mark__icon--light { display: block; }
+
+/* Forces the dark mark + dark text regardless of site theme — for headers
+   that keep a fixed light/white background even when data-theme is dark
+   (e.g. the marketing pages' topbars). */
+.brand-mark--on-light .brand-mark__icon--dark  { display: block !important; }
+.brand-mark--on-light .brand-mark__icon--light { display: none !important; }
+.brand-mark--on-light .brand-wordmark { color: #111827; }
+
+.brand-mark--lg .brand-mark__icon { height: 44px; }
+
+.brand-wordmark {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    font-weight: 800;
+    font-size: 1.2rem;
+    letter-spacing: 0.01em;
+    line-height: 1;
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+
+.brand-wordmark--inverse {
+    color: #fff;
+}
+
+.brand-wordmark--lg {
+    font-size: 1.7rem;
+}
+
 /* Dark Mode */
 [data-theme="dark"] {
     --primary: #3aa89c;
     --primary-hover: #4fbcb0;
     --secondary: #f0b354;
     --secondary-hover: #f6c576;
+    /* RGB triples of the above, for rgba(var(--x-rgb), alpha) tints */
+    --primary-rgb: 58, 168, 156;
+    --primary-hover-rgb: 79, 188, 176;
+    --secondary-rgb: 240, 179, 84;
     --success: #34d399;
     --warning: #fb923c;
     --danger: #f37b7f;
     --info: #5aa8e8;
-
+    
     /* Background */
     --bg-primary: #0b1615;
     --bg-secondary: #101f1d;
     --bg-tertiary: #16302c;
-
+    
     /* Surface */
     --surface: #16302c;
     --surface-hover: #1c3934;
@@ -150,11 +247,12 @@
     /* Border */
     --border-color: #24413c;
     --border-light: #1c3934;
-
+    
     /* Text */
     --text-primary: #eef5f3;
     --text-secondary: #b9cbc7;
     --text-tertiary: #82988f;
+    --text-heading: #f8fafc;
     --text-main: #eef5f3;
     --text-inverse: #0b1615;
     --input-bg: #1a332f;
@@ -163,12 +261,47 @@
     --text-muted: #82988f;
     --surface-alt: #1c3934;
     --border-medium: #2c4c46;
+    /* Previous (teal/emerald) tint scale, kept for easy rollback:
     --indigo-50: rgba(58,168,156,0.15);
     --indigo-100: rgba(58,168,156,0.25);
     --indigo-500: #3aa89c;
     --indigo-600: #4fbcb0;
     --indigo-700: #7fd6cb;
-
+    */
+    /* Previous (burgundy) tint scale, kept for easy rollback:
+    --indigo-50: rgba(58,168,156,0.15);
+    --indigo-100: rgba(58,168,156,0.25);
+    --indigo-500: #3aa89c;
+    --indigo-600: #4fbcb0;
+    --indigo-700: #7fd6cb;
+    */
+    /* Previous (slate/cyan) tint scale, kept for easy rollback:
+    --indigo-50: rgba(58,168,156,0.15);
+    --indigo-100: rgba(58,168,156,0.25);
+    --indigo-500: #3aa89c;
+    --indigo-600: #4fbcb0;
+    --indigo-700: #7fd6cb;
+    */
+    /* Previous (charcoal/gold) tint scale, kept for easy rollback:
+    --indigo-50: rgba(58,168,156,0.15);
+    --indigo-100: rgba(58,168,156,0.25);
+    --indigo-500: #3aa89c;
+    --indigo-600: #4fbcb0;
+    --indigo-700: #7fd6cb;
+    */
+    /* Previous (olive/chartreuse) tint scale, kept for easy rollback:
+    --indigo-50: rgba(58,168,156,0.15);
+    --indigo-100: rgba(58,168,156,0.25);
+    --indigo-500: #3aa89c;
+    --indigo-600: #4fbcb0;
+    --indigo-700: #7fd6cb;
+    */
+    --indigo-50: rgba(58,168,156,0.15);
+    --indigo-100: rgba(58,168,156,0.25);
+    --indigo-500: #3aa89c;
+    --indigo-600: #4fbcb0;
+    --indigo-700: #7fd6cb;
+    
     /* Shadows (subtle in dark mode) */
     --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
     --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
@@ -176,11 +309,11 @@
     --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6);
     --bg-card: var(--surface);
     --card-border-color: var(--border-color);
-
+    
     /* Sidebar */
     --sidebar-bg: #16302c;
     --sidebar-border: #24413c;
-
+    
     /* Navbar */
     --navbar-bg: rgba(22, 48, 44, 0.8);
     --navbar-border: #24413c;
@@ -255,6 +388,9 @@ input[type="tel"] {
     /* Bootstrap core */
     --bs-body-bg:             var(--bg-primary);
     --bs-body-color:          var(--text-primary);
+    --bs-secondary-color:     var(--text-secondary);
+    --bs-tertiary-color:      var(--text-tertiary);
+    --bs-emphasis-color:      var(--text-primary);
     --bs-border-color:        var(--border-color);
     --bs-border-color-translucent: rgba(255,255,255,0.1);
     --bs-secondary-bg:        var(--bg-secondary);

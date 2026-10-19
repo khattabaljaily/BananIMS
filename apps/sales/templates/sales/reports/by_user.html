@@ -3,7 +3,7 @@
 {% load humanize %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=5.0">
+<link rel="stylesheet" href="{% static 'css/reports_base.css' %}?v=4.1">
 {% endblock %}
 
 {% block page_header %}{% endblock %}
@@ -27,7 +27,7 @@
                 <button onclick="window.print()" class="rpt-hero-btn">
                     <i class="fas fa-print"></i> طباعة
                 </button>
-                <a href="{% url 'reports:by_user_report_export' %}?start_date={{ start_date|date:"Y-m-d" }}&end_date={{ end_date|date:"Y-m-d" }}{% if selected_user_id %}&user_id={{ selected_user_id }}{% endif %}" class="rpt-hero-btn">
+                <a href="{% url 'reports:by_user_report_export' %}?start_date={{ start_date|date:"Y-m-d" }}&end_date={{ end_date|date:"Y-m-d" }}{% if selected_user_id %}&user_id={{ selected_user_id }}{% endif %}{% if selected_branch %}&branch={{ selected_branch.id }}{% endif %}" class="rpt-hero-btn">
                     <i class="fas fa-download"></i> تصدير CSV
                 </a>
                 <a href="{% url 'reports:reports' %}" class="rpt-hero-btn">
@@ -59,6 +59,7 @@
                     {% endfor %}
                 </select>
             </div>
+            {% include 'components/report_branch_filter.html' %}
             <div class="col-md-2 d-flex align-items-end">
                 <button type="submit" class="rpt-filter-btn rpt-filter-btn--sales">
                     <i class="fas fa-search me-1"></i>بحث
@@ -94,7 +95,7 @@
                         <tbody>
                             {% for row in report.data %}
                             <tr>
-                                <td class="fw-bold" style="color:#667eea">{{ row.invoice_number }}</td>
+                                <td class="fw-bold" style="color:var(--primary)">{{ row.invoice_number }}</td>
                                 <td class="text-muted">{{ row.invoice_date|date:"Y-m-d" }}</td>
                                 <td>{{ row.customer_name }}</td>
                                 <td class="text-end text-muted">{{ row.total_quantity }}</td>
@@ -134,7 +135,7 @@
                                 </td>
                                 <td class="fw-bold">{{ row.user_name }}</td>
                                 <td class="text-center">{{ row.invoice_count }}</td>
-                                <td class="text-end fw-bold" style="color:#667eea">{{ row.total_amount }}</td>
+                                <td class="text-end fw-bold" style="color:var(--primary)">{{ row.total_amount }}</td>
                                 <td class="text-end text-muted">{{ row.avg_invoice_amount }}</td>
                             </tr>
                             {% endfor %}

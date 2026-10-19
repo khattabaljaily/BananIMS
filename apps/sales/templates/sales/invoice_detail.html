@@ -4,9 +4,9 @@
 {% load permission_tags %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/sales.css' %}?v=4.2">
-<link rel="stylesheet" href="{% static 'css/inv_detail.css' %}?v=2.0">
-<link rel="stylesheet" href="{% static 'css/print_invoice.css' %}?v=2.6">
+<link rel="stylesheet" href="{% static 'css/sales.css' %}?v=3.3">
+<link rel="stylesheet" href="{% static 'css/inv_detail.css' %}?v=1.1">
+<link rel="stylesheet" href="{% static 'css/print_invoice.css' %}?v=2.7">
 {% endblock %}
 
 {% block page_header %}{% endblock %}
@@ -121,7 +121,7 @@
     </div>
     {% if invoice.agent %}
     <div class="doc-card">
-        <div class="doc-card-icon" style="background:rgba(19,37,57,.12);color:var(--primary);"><i class="fas fa-id-badge"></i></div>
+        <div class="doc-card-icon" style="background:rgba(var(--primary-rgb),.12);color:var(--primary);"><i class="fas fa-id-badge"></i></div>
         <div class="doc-card-body">
             <span class="doc-card-label">المندوب</span>
             <span class="doc-card-value">{{ invoice.agent.name }}</span>
@@ -194,6 +194,7 @@
                         <td style="color:var(--text-tertiary);font-size:.75rem;font-weight:600">{{ forloop.counter }}</td>
                         <td>
                             <div class="doc-line-name">{{ line.item.name }}</div>
+                            {% if line.serial_number %}<div class="doc-line-serial" style="font-size:.78rem;color:var(--text-tertiary);direction:ltr;text-align:right;"><i class="fas fa-barcode"></i> {{ line.serial_number }}</div>{% endif %}
                             {% if line.variant %}<div class="doc-line-sku">{{ line.variant }}</div>{% endif %}
                             <div class="doc-line-sku">{{ line.item.sku }}</div>
                         </td>
@@ -334,9 +335,18 @@
                 </div>
                 <div class="mb-2">
                     <label class="cx-label" style="font-size:.78rem">الطريقة</label>
-                    <select id="payMethod" class="cx-input cx-input--sm">
+                    <select id="payMethod" class="cx-input cx-input--sm" onchange="togglePayBankAccount()">
                         <option value="cash">نقداً</option>
                         <option value="bank">تحويل بنكي</option>
+                    </select>
+                </div>
+                <div class="mb-2 sales-field-hidden" id="payBankAccountWrap">
+                    <label class="cx-label" style="font-size:.78rem">الحساب البنكي</label>
+                    <select id="payBankAccount" class="cx-input cx-input--sm">
+                        <option value="">— اختر الحساب البنكي —</option>
+                        {% for b in bank_accounts %}
+                        <option value="{{ b.id }}">{{ b.name }}</option>
+                        {% endfor %}
                     </select>
                 </div>
                 <div class="mb-2">
@@ -350,6 +360,7 @@
             {% endif %}
         </div>
     </div>
+
 </div>
 
 </div><!-- row -->
@@ -560,16 +571,23 @@ function submitCancel() {
 {% endif %}
 
 {% if can_pay %}
+function togglePayBankAccount() {
+    const method = document.getElementById('payMethod').value;
+    document.getElementById('payBankAccountWrap').classList.toggle('sales-field-hidden', method !== 'bank');
+}
+
 function doPayment() {
     const amount = document.getElementById('payAmount').value;
     const method = document.getElementById('payMethod').value;
     const reference = document.getElementById('payRef').value;
+    const bankAccountId = document.getElementById('payBankAccount')?.value || null;
     if (!amount || parseFloat(amount) <= 0) { showAlert('أدخل مبلغاً صحيحاً', 'warning'); return; }
+    if (method === 'bank' && !bankAccountId) { showAlert('اختر الحساب البنكي', 'warning'); return; }
 
     fetch(`/sales/${INVOICE_ID}/pay/`, {
         method: 'POST',
         headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount, method, reference })
+        body: JSON.stringify({ amount, method, reference, bank_account_id: bankAccountId })
     }).then(r => r.json()).then(data => {
         if (data.success) {
             sessionStorage.setItem('__bananFlash', JSON.stringify({
@@ -640,5 +658,6 @@ function submitEmail() {
         btn.innerHTML = '<i class="fas fa-paper-plane me-1"></i>إرسال';
     });
 }
+
 </script>
 {% endblock %}

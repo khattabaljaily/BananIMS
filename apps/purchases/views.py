@@ -5,12 +5,12 @@ from decimal import Decimal, InvalidOperation
 from apps.accounts.activity_service import log_activity
 
 from django.contrib.auth.decorators import login_required
-from apps.accounts.decorators import require_permission
+from apps.accounts.decorators import require_permission, require_scoped_permission, branch_scope_exempt
 from django.db import transaction
 from django.db.models import Q, Sum, Subquery, OuterRef
 from django.db.models.functions import Coalesce
 from django.db.models import DecimalField as DjDecimalField
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -21,6 +21,11 @@ from apps.purchases.models import PurchaseInvoice, PurchaseReturn, PurchaseRetur
 from apps.purchases.services import build_purchase_from_post, cancel_purchase_invoice, cancel_purchase_return, confirm_purchase_invoice, confirm_purchase_return, edit_confirmed_purchase_invoice
 from apps.stocks.models import Stock
 from apps.suppliers.models import Supplier
+from apps.core.utils import (
+    filter_by_branch_via, filter_by_branch_strict, enforce_branch_ownership, resolve_report_scope,
+    operational_money_accounts, is_central_request, scope_by_central_stock,
+    scoped_suppliers, scoped_money_accounts,
+)
 
 from .reports import PurchasesReportGenerator
 
@@ -76,15 +81,70 @@ def _parse_date(value):
     raise ValueError(f"Unrecognized date format: {value}")
 
 
+# ──────────────────────────────────────────────────────────────
+# نطاق الإدارة المركزية : فواتير المخزن المركزي والموردون المركزيون
+# تراها الإدارة وحدها، ولا تظهر في شاشات الفروع. التفاصيل: require_scoped_permission.
+# ──────────────────────────────────────────────────────────────
+
+def _scope_stocks(request, tenant):
+    qs = Stock.objects.for_tenant(tenant)
+    if is_central_request(request):
+        return qs.filter(is_central=True)
+    return qs.for_branch(getattr(request, 'branch', None)).exclude(is_central=True)
+
+
+def _scope_suppliers(request, tenant):
+    return scoped_suppliers(request, tenant)
+
+
+def _scope_banks(request, tenant):
+    from apps.bank_accounts.models import BankAccount
+    return scoped_money_accounts(BankAccount.objects.for_tenant(tenant), request)
+
+
+def _return_scope_or_404(request, purchase_return):
+    """مرتجع فاتورة المخزن المركزي لا يُفتح إلا من نطاق الإدارة المركزية، والعكس."""
+    inv = purchase_return.original_invoice
+    if bool(inv.stock_id and inv.stock.is_central) != is_central_request(request):
+        raise Http404
+
+
+def _central_aware_resolve_report_scope(request):
+    """
+    نطاق تقارير المشتريات والموردين: مثل resolve_report_scope، لكن في النمط المركزي كل المشتريات
+    للإدارة وبلا فرع، فلا معنى لفلتر الفروع ولا لقائمة اختيار فرع (يُرجع بلا فرع وبلا قائمة).
+    """
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
+    tenant = getattr(request, 'tenant', None)
+    if tenant is not None and tenant.is_central_purchasing() and getattr(request, 'branch', None) is None:
+        return None, False, branches_for_filter.none()
+    return branch, is_central_admin, branches_for_filter
+
+
+def _rfq_scope_or_404(request, rfq):
+    """طلب عرض سعر على المخزن المركزي لا يُفتح إلا من نطاق الإدارة (النمط المركزي)، والعكس."""
+    if bool(rfq.stock_id and rfq.stock.is_central) != is_central_request(request):
+        raise Http404
+
+
+def _invoice_scope_or_404(request, invoice):
+    """فاتورة المخزن المركزي لا تُفتح إلا من نطاق الإدارة المركزية، والعكس."""
+    is_central_invoice = bool(invoice.stock_id and invoice.stock.is_central)
+    if is_central_invoice != is_central_request(request):
+        raise Http404
+
+
 @login_required
-@require_permission('view_purchases')
+@require_scoped_permission('view_purchases')
 def order_list(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
 
-    qs = PurchaseInvoice.objects.filter(tenant=tenant)
+    qs = scope_by_central_stock(
+        filter_by_branch_via(PurchaseInvoice.objects.filter(tenant=tenant), getattr(request, 'branch', None)), request)
     context = {
+        'central_scope': is_central_request(request),
         'stats': {
             'total': qs.count(),
             'confirmed': qs.filter(status='confirmed').count(),
@@ -97,7 +157,7 @@ def order_list(request):
 
 
 @login_required
-@require_permission('view_purchases')
+@require_scoped_permission('view_purchases')
 def order_table_api(request):
     tenant = _ensure_tenant(request)
     if not tenant:
@@ -117,7 +177,9 @@ def order_table_api(request):
             .values('t')
         )
 
-        qs = PurchaseInvoice.objects.filter(tenant=tenant).select_related('supplier', 'stock')
+        qs = scope_by_central_stock(
+            filter_by_branch_via(PurchaseInvoice.objects.filter(tenant=tenant), getattr(request, 'branch', None)), request,
+        ).select_related('supplier', 'stock')
         total = qs.count()
 
         if status_filter:
@@ -183,7 +245,7 @@ def order_table_api(request):
 
 
 @login_required
-@require_permission('add_purchases')
+@require_scoped_permission('add_purchases')
 def order_create(request):
     tenant = _ensure_tenant(request)
     if not tenant:
@@ -192,26 +254,32 @@ def order_create(request):
     if request.method == 'POST':
         return _process_order_post(request, tenant, invoice=None)
 
+    from apps.bank_accounts.models import BankAccount
+    requisition, prefill = _requisition_prefill(request, tenant)
     context = {
-        'suppliers': Supplier.objects.for_tenant(tenant).filter(is_active=True).order_by('name'),
-        'stocks': Stock.objects.for_tenant(tenant).filter(is_active=True).order_by('-is_default', 'name'),
+        'central_scope': is_central_request(request),
+        'suppliers': _scope_suppliers(request, tenant).filter(is_active=True).order_by('name'),
+        'stocks': _scope_stocks(request, tenant).filter(is_active=True).order_by('-is_default', 'name'),
+        'bank_accounts': _scope_banks(request, tenant).filter(is_active=True).order_by('name'),
         'today': timezone.localdate().isoformat(),
         'action': 'create',
-        'existing_lines': '[]',
+        'existing_lines': json.dumps(prefill, ensure_ascii=False),
+        'requisition': requisition,
         'invoice': None,
-        'tenant_currency': (getattr(tenant, 'currency', '') or '').strip(),
     }
     return render(request, 'purchases/order_form.html', context)
 
 
 @login_required
-@require_permission('change_purchases')
+@require_scoped_permission('change_purchases')
 def order_edit(request, pk):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
 
-    invoice = get_object_or_404(PurchaseInvoice, pk=pk, tenant=tenant)
+    invoice = get_object_or_404(PurchaseInvoice.objects.select_related('stock'), pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, invoice, field='stock__branch')
+    _invoice_scope_or_404(request, invoice)
     if invoice.status not in ('draft', 'confirmed'):
         return redirect('purchases:order_detail', pk=pk)
 
@@ -237,21 +305,62 @@ def order_edit(request, pk):
             'units': units,
             'unit_id': unit_id,
             'unit_factor': str(line.unit_factor or 1),
-            'batch_number': line.batch_number or '',
             'serial_number': line.serial_number or '',
-            'expiry_date': line.expiry_date.isoformat() if line.expiry_date else '',
         })
 
+    from apps.bank_accounts.models import BankAccount
     context = {
         'invoice': invoice,
-        'suppliers': Supplier.objects.for_tenant(tenant).filter(is_active=True).order_by('name'),
-        'stocks': Stock.objects.for_tenant(tenant).filter(is_active=True).order_by('-is_default', 'name'),
+        'central_scope': is_central_request(request),
+        'suppliers': _scope_suppliers(request, tenant).filter(is_active=True).order_by('name'),
+        'stocks': _scope_stocks(request, tenant).filter(is_active=True).order_by('-is_default', 'name'),
+        'bank_accounts': _scope_banks(request, tenant).filter(is_active=True).order_by('name'),
         'today': timezone.localdate().isoformat(),
         'action': 'edit',
         'existing_lines': json.dumps(existing_lines, ensure_ascii=False),
-        'tenant_currency': (getattr(tenant, 'currency', '') or '').strip(),
     }
     return render(request, 'purchases/order_form.html', context)
+
+
+def _requisition_prefill(request, tenant):
+    """
+    أمر شراء لتلبية طلب شراء من فرع (?requisition=ID، النمط المركزي): يملأ البنود بالمتبقي
+    من الكميات المعتمدة وبآخر تكلفة للصنف؛ تعدّلها الإدارة قبل الحفظ.
+    """
+    req_id = request.GET.get('requisition')
+    if not req_id or not str(req_id).isdigit() or not tenant.is_central_purchasing():
+        return None, []
+    from apps.requisitions.models import PurchaseRequisition
+    from apps.requisitions.services import remaining_lines
+    requisition = PurchaseRequisition.objects.filter(tenant=tenant, pk=req_id, status='approved').first()
+    if requisition is None:
+        return None, []
+    payload = []
+    for line, remaining in remaining_lines(requisition):
+        item = line.item
+        units = [{'id': iu.id, 'name': iu.name, 'factor': str(iu.factor)}
+                 for iu in item.item_units.order_by('factor')]
+        base = next((u for u in units if abs(float(u['factor']) - 1) < 0.0001), units[0] if units else None)
+        payload.append({
+            'item_id': item.pk, 'item_name': item.name, 'item_sku': item.sku, 'quantity': str(remaining),
+            'unit_cost': str(item.cost_price or 0), 'tax_rate': str(item.tax_rate or 0),
+            'units': units, 'unit_id': base['id'] if base else '', 'unit_factor': base['factor'] if base else '1',
+        })
+    return requisition, payload
+
+
+def _link_requisition(tenant, invoice, header):
+    """يربط أمر الشراء الجديد بطلب الشراء الذي يلبّيه (للتتبّع فقط)."""
+    req_id = header.get('requisition_id')
+    if not req_id or not tenant.is_central_purchasing():
+        return
+    from apps.requisitions.models import PurchaseRequisition
+    try:
+        requisition = PurchaseRequisition.objects.filter(tenant=tenant, pk=int(req_id), status='approved').first()
+    except (TypeError, ValueError):
+        return
+    if requisition is not None:
+        PurchaseInvoice.objects.filter(pk=invoice.pk).update(requisition=requisition)
 
 
 def _process_order_post(request, tenant, invoice):
@@ -278,6 +387,7 @@ def _process_order_post(request, tenant, invoice):
         return _json_error('مبالغ الدفع يجب أن تكون أكبر من أو تساوي صفر')
 
     bank_reference = str(header.get('bank_reference') or '').strip()
+    bank_account_id = header.get('bank_account_id') or None
 
     if not lines_raw:
         return _json_error('لا يمكن حفظ أمر شراء بدون بنود')
@@ -290,14 +400,28 @@ def _process_order_post(request, tenant, invoice):
                 'quantity': Decimal(str(ld['quantity'])),
                 'unit_cost': Decimal(str(ld['unit_cost'] or '0')),
                 'tax_rate': Decimal(str(ld.get('tax_rate') or '0')),
+                'serial_number': str(ld.get('serial_number') or '').strip(),
+                'unit_factor': Decimal(str(ld.get('unit_factor') or 1)),
+                'unit_id': int(ld['unit_id']) if ld.get('unit_id') else None,
             })
         except (KeyError, InvalidOperation, ValueError):
             return _json_error('بيانات البنود غير صالحة')
 
     try:
         stock = Stock.objects.get(id=header.get('stock_id'), tenant=tenant)
-    except Stock.DoesNotExist:
-        return _json_error('المخزن المحدد غير موجود')
+    except (Stock.DoesNotExist, ValueError, TypeError):
+        return _json_error('يرجى اختيار المخزن')
+    enforce_branch_ownership(request, stock)
+    if bool(stock.is_central) != is_central_request(request):
+        return _json_error('المخزن المختار غير متاح في هذا النطاق')
+    # المورد والحساب البنكي يجب أن يكونا ضمن نطاق المستخدم (مركزي للإدارة، أو فرعه).
+    try:
+        if header.get('supplier_id') and not _scope_suppliers(request, tenant).filter(id=int(header['supplier_id'])).exists():
+            return _json_error('المورد المختار غير متاح في هذا النطاق')
+        if bank_account_id and not _scope_banks(request, tenant).filter(id=int(bank_account_id), is_active=True).exists():
+            return _json_error('الحساب البنكي المختار غير متاح في هذا النطاق')
+    except (ValueError, TypeError):
+        return _json_error('بيانات غير صالحة')
 
     try:
         if invoice is None:
@@ -307,8 +431,10 @@ def _process_order_post(request, tenant, invoice):
                 'cash_amount': cash_amount,
                 'bank_amount': bank_amount,
                 'bank_reference': bank_reference,
+                'bank_account_id': bank_account_id,
             }
             inv = build_purchase_from_post(tenant, stock, create_data, lines_data, request.user)
+            _link_requisition(tenant, inv, header)
         else:
             if invoice.status == 'confirmed':
                 confirmed_header = {
@@ -319,16 +445,29 @@ def _process_order_post(request, tenant, invoice):
                     'bank_reference': bank_reference,
                     'notes': header.get('notes', ''),
                 }
+                if bank_account_id:
+                    from apps.bank_accounts.models import BankAccount
+                    bank_account_obj = _scope_banks(request, tenant).get(id=bank_account_id, is_active=True)
+                    # مصدر السداد الفعلي (يُصرَف منه للمورد) — نفس منطق مصروفات
+                    # apps/expenses/views.py._process_expense_post، يجب التحقق من ملكيته
+                    enforce_branch_ownership(request, bank_account_obj)
+                    confirmed_header['bank_account'] = bank_account_obj
+                else:
+                    confirmed_header['bank_account'] = None
 
                 supplier_raw = header.get('supplier_id')
                 if supplier_raw:
-                    confirmed_header['supplier'] = Supplier.objects.get(id=supplier_raw, tenant=tenant)
+                    supplier_obj = Supplier.objects.get(id=supplier_raw, tenant=tenant)
+                    enforce_branch_ownership(request, supplier_obj)
+                    confirmed_header['supplier'] = supplier_obj
                 else:
                     confirmed_header['supplier'] = None
 
                 stock_raw = header.get('stock_id')
                 if stock_raw:
-                    confirmed_header['stock'] = Stock.objects.get(id=stock_raw, tenant=tenant)
+                    stock_obj = Stock.objects.get(id=stock_raw, tenant=tenant)
+                    enforce_branch_ownership(request, stock_obj)
+                    confirmed_header['stock'] = stock_obj
 
                 inv = edit_confirmed_purchase_invoice(invoice, confirmed_header, lines_data, request.user)
                 return JsonResponse({'success': True, 'redirect': f'/purchases/{inv.id}/'})
@@ -343,18 +482,32 @@ def _process_order_post(request, tenant, invoice):
                     quantity=ld['quantity'],
                     unit_cost=ld['unit_cost'],
                     tax_rate=ld['tax_rate'],
+                    unit_factor=ld['unit_factor'],
+                    serial_number=ld['serial_number'],
                 )
                 line.calculate()
                 line.save()
 
             supplier_raw = header.get('supplier_id')
-            invoice.supplier_id = int(supplier_raw) if supplier_raw else None
+            if supplier_raw:
+                supplier_obj = Supplier.objects.get(id=int(supplier_raw), tenant=tenant)
+                enforce_branch_ownership(request, supplier_obj)
+                invoice.supplier = supplier_obj
+            else:
+                invoice.supplier = None
             invoice.stock = stock
             invoice.invoice_date = header.get('invoice_date') or invoice.invoice_date
             invoice.payment_method = payment_method or invoice.payment_method
             invoice.cash_amount = cash_amount
             invoice.bank_amount = bank_amount
             invoice.bank_reference = bank_reference
+            if bank_account_id:
+                from apps.bank_accounts.models import BankAccount
+                bank_account_obj = _scope_banks(request, tenant).get(id=int(bank_account_id), is_active=True)
+                enforce_branch_ownership(request, bank_account_obj)
+                invoice.bank_account = bank_account_obj
+            else:
+                invoice.bank_account = None
             invoice.notes = header.get('notes', '')
             invoice.recalculate_totals()
             invoice.save()
@@ -377,7 +530,7 @@ def _process_order_post(request, tenant, invoice):
 
 
 @login_required
-@require_permission('view_purchases')
+@require_scoped_permission('view_purchases')
 def order_detail(request, pk):
     tenant = _ensure_tenant(request)
     if not tenant:
@@ -388,6 +541,8 @@ def order_detail(request, pk):
         pk=pk,
         tenant=tenant,
     )
+    enforce_branch_ownership(request, invoice, field='stock__branch')
+    _invoice_scope_or_404(request, invoice)
     lines = list(invoice.lines.select_related('item').prefetch_related('item__item_units').all())
     for ln in lines:
         iu_list = list(ln.item.item_units.order_by('factor'))
@@ -414,32 +569,37 @@ def order_detail(request, pk):
         'can_confirm': invoice.status == 'draft',
         'can_cancel': invoice.status == 'confirmed',
         'can_edit': invoice.status in ('draft', 'confirmed'),
-        'can_return': can_return,
+        'can_return': can_return and (not is_central_request(request) or request.user.has_perm_key('add_purchase_returns')),
+        'central_scope': is_central_request(request),
         'settings_obj': settings_obj,
         'tenant': tenant,
     })
 
 
 @login_required
-@require_permission('view_purchases')
+@require_scoped_permission('view_purchases')
 def order_print(request, pk):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
 
-    get_object_or_404(PurchaseInvoice.objects.only('id', 'tenant_id'), pk=pk, tenant=tenant)
+    invoice = get_object_or_404(PurchaseInvoice.objects.select_related('stock').only('id', 'tenant_id', 'branch_id', 'stock_id', 'stock__branch_id', 'stock__is_central'), pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, invoice, field='stock__branch')
+    _invoice_scope_or_404(request, invoice)
     return redirect(f"{reverse('purchases:order_detail', kwargs={'pk': pk})}?print=1")
 
 
 @login_required
-@require_permission('change_purchases')
+@require_scoped_permission('change_purchases')
 @require_POST
 def order_confirm_ajax(request, pk):
     tenant = _ensure_tenant(request)
     if not tenant:
         return _json_error('لا يوجد نشاط تجاري')
 
-    invoice = get_object_or_404(PurchaseInvoice, pk=pk, tenant=tenant)
+    invoice = get_object_or_404(PurchaseInvoice.objects.select_related('stock'), pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, invoice, field='stock__branch')
+    _invoice_scope_or_404(request, invoice)
     try:
         confirm_purchase_invoice(invoice, request.user)
         log_activity(request, 'تأكيد أمر شراء', f'{invoice.invoice_number} — {invoice.supplier.name}', 'create')
@@ -449,14 +609,16 @@ def order_confirm_ajax(request, pk):
 
 
 @login_required
-@require_permission('delete_purchases')
+@require_scoped_permission('delete_purchases')
 @require_POST
 def order_cancel_ajax(request, pk):
     tenant = _ensure_tenant(request)
     if not tenant:
         return _json_error('لا يوجد نشاط تجاري')
 
-    invoice = get_object_or_404(PurchaseInvoice, pk=pk, tenant=tenant)
+    invoice = get_object_or_404(PurchaseInvoice.objects.select_related('stock'), pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, invoice, field='stock__branch')
+    _invoice_scope_or_404(request, invoice)
     try:
         body = json.loads(request.body or '{}')
     except json.JSONDecodeError:
@@ -473,14 +635,17 @@ def order_cancel_ajax(request, pk):
 
 
 @login_required
-@require_permission('view_purchase_returns')
+@require_scoped_permission('view_purchase_returns')
 def return_list(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
 
-    qs = PurchaseReturn.objects.filter(tenant=tenant)
+    qs = scope_by_central_stock(
+        filter_by_branch_via(PurchaseReturn.objects.filter(tenant=tenant), getattr(request, 'branch', None), field='original_invoice__stock__branch'),
+        request, field='original_invoice__stock')
     context = {
+        'central_scope': is_central_request(request),
         'stats': {
             'total': qs.count(),
             'confirmed': qs.filter(status='confirmed').count(),
@@ -492,7 +657,7 @@ def return_list(request):
 
 
 @login_required
-@require_permission('view_purchase_returns')
+@require_scoped_permission('view_purchase_returns')
 def return_table_api(request):
     tenant = _ensure_tenant(request)
     if not tenant:
@@ -504,7 +669,10 @@ def return_table_api(request):
     search_value = request.GET.get('search[value]', '').strip()
     status_filter = request.GET.get('status', '')
 
-    qs = PurchaseReturn.objects.filter(tenant=tenant).select_related(
+    qs = scope_by_central_stock(
+        filter_by_branch_via(PurchaseReturn.objects.filter(tenant=tenant), getattr(request, 'branch', None), field='original_invoice__stock__branch'),
+        request, field='original_invoice__stock',
+    ).select_related(
         'original_invoice', 'original_invoice__supplier'
     )
     total = qs.count()
@@ -550,14 +718,17 @@ def return_table_api(request):
 
 
 @login_required
-@require_permission('view_purchase_returns')
+@require_scoped_permission('view_purchase_returns')
 def return_lines_api(request, return_pk):
     """API: جلب بنود المرتجع (للمودال)"""
     tenant = _ensure_tenant(request)
     if not tenant:
         return _json_error('لا يوجد نشاط تجاري')
 
-    purchase_return = get_object_or_404(PurchaseReturn, pk=return_pk, tenant=tenant)
+    purchase_return = get_object_or_404(
+        PurchaseReturn.objects.select_related('original_invoice__stock'), pk=return_pk, tenant=tenant)
+    enforce_branch_ownership(request, purchase_return)
+    _return_scope_or_404(request, purchase_return)
     lines = purchase_return.lines.select_related('item').all()
 
     data = []
@@ -573,16 +744,18 @@ def return_lines_api(request, return_pk):
 
 
 @login_required
-@require_permission('add_purchase_returns')
+@require_scoped_permission('add_purchase_returns')
 def return_create(request, invoice_pk):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
 
     invoice = get_object_or_404(
-        PurchaseInvoice, pk=invoice_pk, tenant=tenant,
+        PurchaseInvoice.objects.select_related('stock'), pk=invoice_pk, tenant=tenant,
         status__in=['confirmed', 'partially_returned']
     )
+    enforce_branch_ownership(request, invoice, field='stock__branch')
+    _invoice_scope_or_404(request, invoice)
     lines = invoice.lines.select_related('item').all()
     returnable_lines = [l for l in lines if l.returnable_quantity > 0]
 
@@ -594,10 +767,12 @@ def return_create(request, invoice_pk):
     return render(request, 'purchases/return_form.html', {
         'invoice': invoice,
         'returnable_lines': returnable_lines,
+        'central_scope': is_central_request(request),
         'today': timezone.localdate().isoformat(),
     })
 
 
+@branch_scope_exempt('invoice تحقّقت ملكيته بالفعل في return_create() المستدعية قبل استدعاء هذه الدالة؛ بنود invoice.lines هنا مفلترة عبر invoice المُتحقَّق منه')
 def _process_return_post(request, tenant, invoice):
     try:
         body = json.loads(request.body)
@@ -665,16 +840,18 @@ def _process_return_post(request, tenant, invoice):
 
 
 @login_required
-@require_permission('view_purchase_returns')
+@require_scoped_permission('view_purchase_returns')
 def return_detail(request, pk):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
 
     purchase_return = get_object_or_404(
-        PurchaseReturn.objects.select_related('original_invoice', 'original_invoice__supplier'),
+        PurchaseReturn.objects.select_related('original_invoice', 'original_invoice__supplier', 'original_invoice__stock'),
         pk=pk, tenant=tenant,
     )
+    enforce_branch_ownership(request, purchase_return)
+    _return_scope_or_404(request, purchase_return)
     lines = purchase_return.lines.select_related('item', 'invoice_line')
     return render(request, 'purchases/return_detail.html', {
         'purchase_return': purchase_return,
@@ -685,14 +862,17 @@ def return_detail(request, pk):
 
 
 @login_required
-@require_permission('add_purchase_returns')
+@require_scoped_permission('add_purchase_returns')
 @require_POST
 def return_confirm_ajax(request, pk):
     tenant = _ensure_tenant(request)
     if not tenant:
         return _json_error('لا يوجد نشاط تجاري')
 
-    purchase_return = get_object_or_404(PurchaseReturn, pk=pk, tenant=tenant)
+    purchase_return = get_object_or_404(
+        PurchaseReturn.objects.select_related('original_invoice__stock'), pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, purchase_return)
+    _return_scope_or_404(request, purchase_return)
     try:
         confirm_purchase_return(purchase_return, request.user)
         log_activity(request, 'تأكيد مرتجع مشتريات', f'{purchase_return.return_number}', 'create')
@@ -702,14 +882,17 @@ def return_confirm_ajax(request, pk):
 
 
 @login_required
-@require_permission('add_purchase_returns')
+@require_scoped_permission('add_purchase_returns')
 @require_POST
 def return_cancel_ajax(request, pk):
     tenant = _ensure_tenant(request)
     if not tenant:
         return _json_error('لا يوجد نشاط تجاري')
 
-    purchase_return = get_object_or_404(PurchaseReturn, pk=pk, tenant=tenant)
+    purchase_return = get_object_or_404(
+        PurchaseReturn.objects.select_related('original_invoice__stock'), pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, purchase_return)
+    _return_scope_or_404(request, purchase_return)
     try:
         cancel_purchase_return(purchase_return, request.user)
         log_activity(request, 'إلغاء مرتجع مشتريات', f'{purchase_return.return_number}', 'delete')
@@ -729,6 +912,7 @@ def purchases_summary_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = _central_aware_resolve_report_scope(request)
 
     # Get date range from request
     start_date = _parse_date(request.GET.get('start_date'))
@@ -740,7 +924,7 @@ def purchases_summary_report(request):
         end_date = timezone.localdate()
 
     # Generate report
-    generator = PurchasesReportGenerator(tenant, start_date, end_date)
+    generator = PurchasesReportGenerator(tenant, start_date, end_date, branch=branch)
     report_data = generator.get_summary_report()
 
     # Chart data: daily trend for the selected period
@@ -757,6 +941,9 @@ def purchases_summary_report(request):
         'report_type': 'summary',
         'chart_labels': chart_labels,
         'chart_amounts': chart_amounts,
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -770,6 +957,7 @@ def purchases_summary_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = _central_aware_resolve_report_scope(request)
 
     # Get date range
     start_date = _parse_date(request.GET.get('start_date'))
@@ -781,7 +969,7 @@ def purchases_summary_report_export(request):
         end_date = timezone.localdate()
 
     # Generate report
-    generator = PurchasesReportGenerator(tenant, start_date, end_date)
+    generator = PurchasesReportGenerator(tenant, start_date, end_date, branch=branch)
     report_data = generator.get_summary_report()
 
     # Create CSV
@@ -812,6 +1000,7 @@ def purchases_by_supplier_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = _central_aware_resolve_report_scope(request)
 
     # Get date range
     start_date = _parse_date(request.GET.get('start_date'))
@@ -826,17 +1015,18 @@ def purchases_by_supplier_report(request):
     supplier_id = request.GET.get('supplier_id')
 
     # Generate report
-    generator = PurchasesReportGenerator(tenant, start_date, end_date)
+    generator = PurchasesReportGenerator(tenant, start_date, end_date, branch=branch)
     report_data = generator.get_by_supplier_report(supplier_id=supplier_id)
 
     # suppliers list for filter dropdown
     from apps.suppliers.models import Supplier
-    suppliers = Supplier.objects.filter(tenant=tenant).order_by('name')
+    suppliers = Supplier.objects.filter(tenant=tenant).for_branch(branch).order_by('name')
 
     selected_supplier = None
     if supplier_id:
         try:
             selected_supplier = Supplier.objects.get(tenant=tenant, id=supplier_id)
+            enforce_branch_ownership(request, selected_supplier)
         except Supplier.DoesNotExist:
             selected_supplier = None
 
@@ -849,6 +1039,9 @@ def purchases_by_supplier_report(request):
         'selected_supplier': selected_supplier,
         'section': 'purchases_reports',
         'report_type': 'by_supplier',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -862,6 +1055,7 @@ def purchases_by_supplier_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = _central_aware_resolve_report_scope(request)
 
 
     # Get date range
@@ -877,7 +1071,7 @@ def purchases_by_supplier_report_export(request):
     supplier_id = request.GET.get('supplier_id')
 
     # Generate report
-    generator = PurchasesReportGenerator(tenant, start_date, end_date)
+    generator = PurchasesReportGenerator(tenant, start_date, end_date, branch=branch)
     report_data = generator.get_by_supplier_report(supplier_id=supplier_id)
 
     # Create CSV
@@ -897,7 +1091,8 @@ def purchases_by_supplier_report_export(request):
         try:
             from apps.suppliers.models import Supplier
             sup = Supplier.objects.get(tenant=tenant, id=supplier_id)
-        except Exception:
+            enforce_branch_ownership(request, sup)
+        except Supplier.DoesNotExist:
             sup = None
 
         if sup:
@@ -939,17 +1134,18 @@ def purchases_by_item_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = _central_aware_resolve_report_scope(request)
 
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
     item_id = request.GET.get('item_id') or None
 
-    generator = PurchasesReportGenerator(tenant, start_date, end_date)
+    generator = PurchasesReportGenerator(tenant, start_date, end_date, branch=branch)
     report_data = generator.get_by_item_report(item_id=item_id)
 
     items = Item.objects.filter(
         tenant=tenant,
-        purchase_lines__invoice__status='confirmed',
+        purchase_lines__invoice__status__in=PurchaseInvoice.EFFECTIVE_STATUSES,
     ).distinct().order_by('name')
 
     return render(request, 'purchases/reports/by_item.html', {
@@ -960,6 +1156,9 @@ def purchases_by_item_report(request):
         'selected_item_id': item_id,
         'section': 'purchases_reports',
         'report_type': 'by_item',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -973,12 +1172,13 @@ def purchases_by_item_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = _central_aware_resolve_report_scope(request)
 
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
     item_id = request.GET.get('item_id') or None
 
-    generator = PurchasesReportGenerator(tenant, start_date, end_date)
+    generator = PurchasesReportGenerator(tenant, start_date, end_date, branch=branch)
     report_data = generator.get_by_item_report(item_id=item_id)
 
     response = HttpResponse(content_type='text/csv; charset=utf-8')
@@ -1009,6 +1209,7 @@ def purchases_by_date_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = _central_aware_resolve_report_scope(request)
 
     # Get date range
     start_date = _parse_date(request.GET.get('start_date'))
@@ -1021,7 +1222,7 @@ def purchases_by_date_report(request):
         end_date = timezone.localdate()
 
     # Generate report
-    generator = PurchasesReportGenerator(tenant, start_date, end_date)
+    generator = PurchasesReportGenerator(tenant, start_date, end_date, branch=branch)
     report_data = generator.get_by_date_report(group_by)
 
     return render(request, 'purchases/reports/by_date.html', {
@@ -1031,6 +1232,9 @@ def purchases_by_date_report(request):
         'group_by': group_by,
         'section': 'purchases_reports',
         'report_type': 'by_date',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -1044,6 +1248,7 @@ def purchases_by_date_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = _central_aware_resolve_report_scope(request)
 
     # Get date range
     start_date = _parse_date(request.GET.get('start_date'))
@@ -1056,7 +1261,7 @@ def purchases_by_date_report_export(request):
         end_date = timezone.localdate()
 
     # Generate report
-    generator = PurchasesReportGenerator(tenant, start_date, end_date)
+    generator = PurchasesReportGenerator(tenant, start_date, end_date, branch=branch)
     report_data = generator.get_by_date_report(group_by)
 
     # Create CSV
@@ -1093,14 +1298,15 @@ def purchases_supplier_statement(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = _central_aware_resolve_report_scope(request)
 
     supplier_id = request.GET.get('supplier_id')
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
 
-    generator = PurchasesReportGenerator(tenant, start_date, end_date)
+    generator = PurchasesReportGenerator(tenant, start_date, end_date, branch=branch)
     report = generator.get_supplier_statement(supplier_id) if supplier_id else None
-    suppliers = Supplier.objects.filter(tenant=tenant).order_by('name')
+    suppliers = Supplier.objects.filter(tenant=tenant).for_branch(branch).order_by('name')
 
     return render(request, 'purchases/reports/supplier_statement.html', {
         'report': report,
@@ -1109,6 +1315,9 @@ def purchases_supplier_statement(request):
         'start_date': start_date,
         'end_date': end_date,
         'section': 'purchases_reports',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -1120,12 +1329,13 @@ def purchases_supplier_statement_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = _central_aware_resolve_report_scope(request)
 
     supplier_id = request.GET.get('supplier_id')
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
 
-    report = PurchasesReportGenerator(tenant, start_date, end_date).get_supplier_statement(supplier_id) if supplier_id else None
+    report = PurchasesReportGenerator(tenant, start_date, end_date, branch=branch).get_supplier_statement(supplier_id) if supplier_id else None
     response = HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = f'attachment; filename="supplier_statement_{end_date}.csv"'
     response.write('﻿')
@@ -1146,12 +1356,16 @@ def purchases_supplier_balances(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = _central_aware_resolve_report_scope(request)
 
-    report = PurchasesReportGenerator(tenant).get_supplier_balances()
+    report = PurchasesReportGenerator(tenant, branch=branch).get_supplier_balances()
 
     return render(request, 'purchases/reports/supplier_balances.html', {
         'report': report,
         'section': 'purchases_reports',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -1163,8 +1377,9 @@ def purchases_supplier_balances_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = _central_aware_resolve_report_scope(request)
 
-    report = PurchasesReportGenerator(tenant).get_supplier_balances()
+    report = PurchasesReportGenerator(tenant, branch=branch).get_supplier_balances()
     response = HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = 'attachment; filename="supplier_balances.csv"'
     response.write('﻿')
@@ -1181,13 +1396,14 @@ def purchases_payments_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = _central_aware_resolve_report_scope(request)
 
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
     supplier_id = request.GET.get('supplier_id') or None
 
-    report = PurchasesReportGenerator(tenant, start_date, end_date).get_payments_report(supplier_id=supplier_id or None)
-    suppliers = Supplier.objects.filter(tenant=tenant).order_by('name')
+    report = PurchasesReportGenerator(tenant, start_date, end_date, branch=branch).get_payments_report(supplier_id=supplier_id or None)
+    suppliers = Supplier.objects.filter(tenant=tenant).for_branch(branch).order_by('name')
 
     return render(request, 'purchases/reports/payments.html', {
         'report': report,
@@ -1196,6 +1412,9 @@ def purchases_payments_report(request):
         'suppliers': suppliers,
         'selected_supplier_id': supplier_id or '',
         'section': 'purchases_reports',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -1207,18 +1426,19 @@ def purchases_payments_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = _central_aware_resolve_report_scope(request)
 
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
 
-    report = PurchasesReportGenerator(tenant, start_date, end_date).get_payments_report()
+    report = PurchasesReportGenerator(tenant, start_date, end_date, branch=branch).get_payments_report()
     response = HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = f'attachment; filename="purchase_payments_{end_date}.csv"'
     response.write('﻿')
     writer = csv.writer(response)
     writer.writerow(['تاريخ الدفع', 'رقم الفاتورة', 'المورد', 'طريقة الدفع', 'المبلغ', 'رقم مرجعي'])
     for row in report['data']:
-        writer.writerow([row['payment_date'], row['invoice_number'], row['supplier_name'], row['payment_method'], row['amount'], row['reference_number']])
+        writer.writerow([row['payment_date'], row['invoice_number'], row['supplier_name'], row['payment_method'], row['amount'], row['notes']])
     return response
 
 
@@ -1228,17 +1448,21 @@ def purchases_returns_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = _central_aware_resolve_report_scope(request)
 
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
 
-    report = PurchasesReportGenerator(tenant, start_date, end_date).get_returns_report()
+    report = PurchasesReportGenerator(tenant, start_date, end_date, branch=branch).get_returns_report()
 
     return render(request, 'purchases/reports/returns.html', {
         'report': report,
         'start_date': start_date,
         'end_date': end_date,
         'section': 'purchases_reports',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -1250,11 +1474,12 @@ def purchases_returns_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = _central_aware_resolve_report_scope(request)
 
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
 
-    report = PurchasesReportGenerator(tenant, start_date, end_date).get_returns_report()
+    report = PurchasesReportGenerator(tenant, start_date, end_date, branch=branch).get_returns_report()
     response = HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = f'attachment; filename="purchase_returns_{end_date}.csv"'
     response.write('﻿')
@@ -1275,16 +1500,20 @@ def purchases_by_user_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = _central_aware_resolve_report_scope(request)
 
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
     user_id = request.GET.get('user_id') or None
 
-    generator = PurchasesReportGenerator(tenant, start_date, end_date)
+    generator = PurchasesReportGenerator(tenant, start_date, end_date, branch=branch)
     report = generator.get_by_user_report(user_id=user_id)
 
     from django.contrib.auth import get_user_model
-    user_ids = PurchaseInvoice.objects.filter(tenant=tenant, status='confirmed').values_list('created_by', flat=True).distinct()
+    user_ids = filter_by_branch_strict(
+        PurchaseInvoice.objects.filter(tenant=tenant, status__in=PurchaseInvoice.EFFECTIVE_STATUSES),
+        branch,
+    ).values_list('created_by', flat=True).distinct()
     users = get_user_model().objects.filter(pk__in=user_ids).order_by('first_name', 'last_name')
 
     return render(request, 'purchases/reports/by_user.html', {
@@ -1294,6 +1523,9 @@ def purchases_by_user_report(request):
         'users': users,
         'selected_user_id': user_id,
         'section': 'purchases_reports',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -1305,12 +1537,13 @@ def purchases_by_user_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = _central_aware_resolve_report_scope(request)
 
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
     user_id = request.GET.get('user_id') or None
 
-    report = PurchasesReportGenerator(tenant, start_date, end_date).get_by_user_report(user_id=user_id)
+    report = PurchasesReportGenerator(tenant, start_date, end_date, branch=branch).get_by_user_report(user_id=user_id)
     response = HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = f'attachment; filename="purchases_by_user_{end_date}.csv"'
     response.write('\ufeff')
@@ -1343,16 +1576,17 @@ def purchases_price_history_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = _central_aware_resolve_report_scope(request)
 
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
     item_id = request.GET.get('item_id') or None
 
-    report = PurchasesReportGenerator(tenant, start_date, end_date).get_price_history_report(item_id=item_id)
+    report = PurchasesReportGenerator(tenant, start_date, end_date, branch=branch).get_price_history_report(item_id=item_id)
 
     items = Item.objects.filter(
         tenant=tenant,
-        purchase_lines__invoice__status='confirmed',
+        purchase_lines__invoice__status__in=PurchaseInvoice.EFFECTIVE_STATUSES,
     ).distinct().order_by('name')
 
     return render(request, 'purchases/reports/price_history.html', {
@@ -1362,6 +1596,9 @@ def purchases_price_history_report(request):
         'items': items,
         'selected_item_id': item_id,
         'section': 'purchases_reports',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -1374,12 +1611,13 @@ def purchases_price_history_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = _central_aware_resolve_report_scope(request)
 
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
     item_id = request.GET.get('item_id') or None
 
-    report = PurchasesReportGenerator(tenant, start_date, end_date).get_price_history_report(item_id=item_id)
+    report = PurchasesReportGenerator(tenant, start_date, end_date, branch=branch).get_price_history_report(item_id=item_id)
     response = HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = f'attachment; filename="price_history_{end_date}.csv"'
     response.write('﻿')
@@ -1409,13 +1647,15 @@ def purchases_price_history_report_export(request):
 # ============================================================
 
 @login_required
-@require_permission('view_purchases')
+@require_scoped_permission('view_purchases', None)
 def rfq_list(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
 
-    qs = PurchaseRFQ.objects.filter(tenant=tenant)
+    qs = scope_by_central_stock(
+        filter_by_branch_via(PurchaseRFQ.objects.filter(tenant=tenant), getattr(request, 'branch', None), field='stock__branch'),
+        request)
     STATUS_LABELS = dict(PurchaseRFQ.STATUS_CHOICES)
     stats = {
         'total':     qs.count(),
@@ -1424,14 +1664,14 @@ def rfq_list(request):
         'received':  qs.filter(status='received').count(),
         'converted': qs.filter(status='converted').count(),
     }
-    suppliers = Supplier.objects.for_tenant(tenant).filter(is_active=True)
+    suppliers = scoped_suppliers(request, tenant).filter(is_active=True)
     return render(request, 'purchases/rfq_list.html', {
         'stats': stats, 'suppliers': suppliers, 'STATUS_LABELS': STATUS_LABELS,
     })
 
 
 @login_required
-@require_permission('view_purchases')
+@require_scoped_permission('view_purchases', None)
 def rfq_table_api(request):
     tenant = _ensure_tenant(request)
     if not tenant:
@@ -1443,7 +1683,9 @@ def rfq_table_api(request):
     search    = request.GET.get('search[value]', '').strip()
     status_f  = request.GET.get('status', '').strip()
 
-    qs = PurchaseRFQ.objects.filter(tenant=tenant).select_related('supplier', 'stock')
+    qs = scope_by_central_stock(
+        filter_by_branch_via(PurchaseRFQ.objects.filter(tenant=tenant), getattr(request, 'branch', None), field='stock__branch'),
+        request).select_related('supplier', 'stock')
     total = qs.count()
 
     if status_f:
@@ -1487,14 +1729,14 @@ def rfq_table_api(request):
 
 
 @login_required
-@require_permission('add_purchases')
+@require_scoped_permission('add_purchases', None)
 def rfq_create(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
 
-    suppliers = Supplier.objects.for_tenant(tenant).filter(is_active=True)
-    stocks    = Stock.objects.for_tenant(tenant).filter(is_active=True)
+    suppliers = scoped_suppliers(request, tenant).filter(is_active=True)
+    stocks    = _scope_stocks(request, tenant).filter(is_active=True)
     items     = Item.objects.for_tenant(tenant).filter(is_active=True).exclude(item_type='service')
 
     if request.method == 'POST':
@@ -1520,14 +1762,16 @@ def rfq_create(request):
             return JsonResponse({'success': False, 'errors': errors}, status=400, json_dumps_params={'ensure_ascii': False})
 
         try:
-            stock = Stock.objects.for_tenant(tenant).get(pk=stock_id)
+            stock = _scope_stocks(request, tenant).get(pk=stock_id)
         except Stock.DoesNotExist:
             return JsonResponse({'success': False, 'message': 'المخزن غير موجود'}, status=400, json_dumps_params={'ensure_ascii': False})
+        enforce_branch_ownership(request, stock)
 
         supplier = None
         if supplier_id:
             try:
-                supplier = Supplier.objects.for_tenant(tenant).get(pk=supplier_id)
+                supplier = scoped_suppliers(request, tenant).get(pk=supplier_id)
+                enforce_branch_ownership(request, supplier)
             except Supplier.DoesNotExist:
                 pass
 
@@ -1566,7 +1810,7 @@ def rfq_create(request):
 
 
 @login_required
-@require_permission('view_purchases')
+@require_scoped_permission('view_purchases', None)
 def rfq_detail(request, pk):
     tenant = _ensure_tenant(request)
     if not tenant:
@@ -1577,16 +1821,20 @@ def rfq_detail(request, pk):
         .prefetch_related('lines__item__unit'),
         tenant=tenant, pk=pk
     )
+    enforce_branch_ownership(request, rfq, field='stock__branch')
+    _rfq_scope_or_404(request, rfq)
     return render(request, 'purchases/rfq_detail.html', {'rfq': rfq})
 
 
 @login_required
-@require_permission('add_purchases')
+@require_scoped_permission('add_purchases', None)
 @require_POST
 def rfq_send_ajax(request, pk):
     tenant = _ensure_tenant(request)
     try:
         rfq = PurchaseRFQ.objects.get(tenant=tenant, pk=pk)
+        enforce_branch_ownership(request, rfq, field='stock__branch')
+        _rfq_scope_or_404(request, rfq)
         if rfq.status != 'draft':
             return JsonResponse({'success': False, 'message': 'يمكن إرسال المسودات فقط'}, status=400, json_dumps_params={'ensure_ascii': False})
         rfq.status = 'sent'
@@ -1598,7 +1846,7 @@ def rfq_send_ajax(request, pk):
 
 
 @login_required
-@require_permission('add_purchases')
+@require_scoped_permission('add_purchases', None)
 def rfq_receive_ajax(request, pk):
     """Mark as received and save quoted prices from lines."""
     if request.method != 'POST':
@@ -1607,6 +1855,8 @@ def rfq_receive_ajax(request, pk):
     tenant = _ensure_tenant(request)
     try:
         rfq = PurchaseRFQ.objects.get(tenant=tenant, pk=pk)
+        enforce_branch_ownership(request, rfq, field='stock__branch')
+        _rfq_scope_or_404(request, rfq)
         if rfq.status not in ('sent', 'draft'):
             return JsonResponse({'success': False, 'message': 'الحالة الحالية لا تسمح بهذا الإجراء'}, status=400, json_dumps_params={'ensure_ascii': False})
 
@@ -1636,12 +1886,14 @@ def rfq_receive_ajax(request, pk):
 
 
 @login_required
-@require_permission('add_purchases')
+@require_scoped_permission('add_purchases', None)
 @require_POST
 def rfq_accept_ajax(request, pk):
     tenant = _ensure_tenant(request)
     try:
         rfq = PurchaseRFQ.objects.get(tenant=tenant, pk=pk)
+        enforce_branch_ownership(request, rfq, field='stock__branch')
+        _rfq_scope_or_404(request, rfq)
         if rfq.status not in ('received', 'sent', 'draft'):
             return JsonResponse({'success': False, 'message': 'الحالة لا تسمح بالقبول'}, status=400, json_dumps_params={'ensure_ascii': False})
         rfq.status = 'accepted'
@@ -1653,12 +1905,14 @@ def rfq_accept_ajax(request, pk):
 
 
 @login_required
-@require_permission('add_purchases')
+@require_scoped_permission('add_purchases', None)
 @require_POST
 def rfq_reject_ajax(request, pk):
     tenant = _ensure_tenant(request)
     try:
         rfq = PurchaseRFQ.objects.get(tenant=tenant, pk=pk)
+        enforce_branch_ownership(request, rfq, field='stock__branch')
+        _rfq_scope_or_404(request, rfq)
         if rfq.status in ('converted', 'cancelled'):
             return JsonResponse({'success': False, 'message': 'لا يمكن رفض هذا الطلب'}, status=400, json_dumps_params={'ensure_ascii': False})
         rfq.status = 'rejected'
@@ -1670,12 +1924,14 @@ def rfq_reject_ajax(request, pk):
 
 
 @login_required
-@require_permission('add_purchases')
+@require_scoped_permission('add_purchases', None)
 @require_POST
 def rfq_cancel_ajax(request, pk):
     tenant = _ensure_tenant(request)
     try:
         rfq = PurchaseRFQ.objects.get(tenant=tenant, pk=pk)
+        enforce_branch_ownership(request, rfq, field='stock__branch')
+        _rfq_scope_or_404(request, rfq)
         if rfq.status == 'converted':
             return JsonResponse({'success': False, 'message': 'لا يمكن إلغاء طلب محوَّل'}, status=400, json_dumps_params={'ensure_ascii': False})
         rfq.status = 'cancelled'
@@ -1687,13 +1943,15 @@ def rfq_cancel_ajax(request, pk):
 
 
 @login_required
-@require_permission('add_purchases')
+@require_scoped_permission('add_purchases', None)
 @require_POST
 def rfq_convert_ajax(request, pk):
     """Convert accepted RFQ to a purchase invoice (draft)."""
     tenant = _ensure_tenant(request)
     try:
         rfq = PurchaseRFQ.objects.get(tenant=tenant, pk=pk)
+        enforce_branch_ownership(request, rfq, field='stock__branch')
+        _rfq_scope_or_404(request, rfq)
         if rfq.status not in ('accepted', 'received'):
             return JsonResponse({'success': False, 'message': 'يجب قبول عرض الأسعار أولاً'}, status=400, json_dumps_params={'ensure_ascii': False})
 

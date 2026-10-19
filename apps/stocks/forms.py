@@ -6,7 +6,7 @@ class StockForm(forms.ModelForm):
     class Meta:
         model = Stock
         fields = [
-            'name', 'code', 'stock_type', 'address', 'notes', 'is_active', 'is_default',
+            'name', 'code', 'branch', 'address', 'notes', 'is_active', 'is_default', 'is_central',
         ]
         widgets = {
             'name': forms.TextInput(attrs={
@@ -17,18 +17,72 @@ class StockForm(forms.ModelForm):
                 'class': 'form-control',
                 'placeholder': 'يُولَّد تلقائياً إن تُرك فارغاً',
             }),
-            'stock_type': forms.Select(attrs={'class': 'form-select'}),
+            'branch': forms.Select(attrs={'class': 'form-select'}),
             'address': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
             'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'is_default': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'is_central': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
         labels = {
             'name': 'اسم المخزن',
             'code': 'الرمز',
-            'stock_type': 'نوع المخزن',
+            'branch': 'الفرع',
             'address': 'العنوان / الموقع',
             'notes': 'ملاحظات',
             'is_active': 'نشط',
             'is_default': 'مخزن افتراضي',
+            'is_central': 'مخزن مركزي للإدارة',
         }
+
+    def __init__(self, *args, tenant=None, branch=None, show_central_toggle=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['branch'].required = False
+        if tenant:
+            from apps.core.models import Branch
+            self.fields['branch'].queryset = Branch.objects.filter(tenant=tenant, is_active=True)
+            # نسخة المؤسسات: كل مخزن يتبع فرعاً — لا مخازن بلا فرع.
+            if tenant.is_enterprise():
+                self.fields['branch'].required = True
+        else:
+            from apps.core.models import Branch
+            self.fields['branch'].queryset = Branch.objects.none()
+
+        self.tenant = tenant
+        # المخزن المركزي: للمستخدم المركزي (مدير النشاط) فقط، في نسخة المؤسسات،
+        # مخزن مركزي واحد لكل مشترك. يظهر الحقل: عند الإنشاء (إن لم يوجد مركزي)، وعند تعديل
+        # المخزن المركزي نفسه (لإلغاء مركزيته)، وفي نموذج الصفحة (show_central_toggle) ليتحكم
+        # به الـ JS؛ أما فرض القواعد فهنا في clean.
+        editing = bool(self.instance and self.instance.pk)
+        central_user = bool(tenant and tenant.has_central_warehouse() and branch is None)
+        can_make_central = central_user and (
+            show_central_toggle
+            or (editing and self.instance.is_central)
+            or (not editing and not Stock.objects.filter(tenant=tenant, is_central=True).exists())
+        )
+        if not can_make_central:
+            del self.fields['is_central']
+        elif self.data and str(self.data.get('is_central', '')).lower() in ('on', 'true', '1'):
+            self.fields['branch'].required = False
+
+        # مستخدم مربوط بفرع: المخزن يُختم تلقائياً بفرعه — لا داعي لإظهار
+        # حقل اختيار الفرع (راجع BRANCH_SCOPING.md §3 نقطة 4).
+        if branch is not None:
+            self.fields['branch'].initial = branch.pk
+            del self.fields['branch']
+
+    def clean(self):
+        cleaned = super().clean()
+        # إلغاء مركزية مخزن موجود: مسموح فقط إن لم تكن له سجلات مرتبطة (فواتير/شحنات/حركات/كميات).
+        # تحويل مخزن عادي إلى مركزي غير مسموح (الحقل لا يظهر أصلًا لغير المركزي عند التعديل).
+        if ('is_central' in self.fields and self.instance.pk and self.instance.is_central
+                and not cleaned.get('is_central') and self.instance.has_linked_records()):
+            self.add_error(
+                'is_central',
+                'لا يمكن إلغاء المركزية: للمخزن فواتير أو شحنات أو حركات أو كميات مرتبطة به.')
+        if cleaned.get('is_central'):
+            # مخزن الإدارة المركزية: بلا فرع، وغير افتراضي (الافتراضي للشراء التلقائي في الفروع).
+            cleaned['branch'] = None
+            cleaned['is_default'] = False
+            self._errors.pop('branch', None)
+        return cleaned

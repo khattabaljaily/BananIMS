@@ -3,7 +3,7 @@
 {% load humanize %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/tenants.css' %}?v=3.1">
+<link rel="stylesheet" href="{% static 'css/tenants.css' %}?v=2.2">
 {% endblock %}
 
 {% block page_header %}{% endblock %}
@@ -52,6 +52,11 @@
             <strong id="kpiExpired">{{ stats.expired }}</strong>
             <span>منتهي</span>
         </span>
+        <span class="cx-stat-badge cx-stat-badge--pending">
+            <i class="fas fa-hourglass-half"></i>
+            <strong id="kpiPending">{{ stats.pending }}</strong>
+            <span>قيد الاعتماد</span>
+        </span>
     </div>
 </div>
 
@@ -67,7 +72,6 @@
         <div class="cx-toolbar-end">
             <select id="planFilter" class="cx-select-filter">
                 <option value="">كل الباقات</option>
-                <option value="trial">تجريبي</option>
                 <option value="basic">أساسي</option>
                 <option value="pro">احترافي</option>
                 <option value="enterprise">مؤسسات</option>
@@ -78,6 +82,7 @@
                 <button type="button" class="cx-filter-tab" data-status="active">نشط</button>
                 <button type="button" class="cx-filter-tab" data-status="suspended">معلق</button>
                 <button type="button" class="cx-filter-tab" data-status="expired">منتهي</button>
+                <button type="button" class="cx-filter-tab" data-status="pending">قيد الاعتماد</button>
             </div>
         </div>
     </div>
@@ -174,6 +179,7 @@
                         <div class="col-md-4">
                             <label class="cx-label" for="id_subscription_plan">{{ form.subscription_plan.label }}</label>
                             {{ form.subscription_plan }}
+                            <small class="text-muted d-block mt-1">حدود النسخة والمخازن والفروع والمستخدمين تُشتق تلقائياً من الباقة المختارة</small>
                         </div>
                         <div class="col-md-4">
                             <label class="cx-label" for="id_subscription_start">{{ form.subscription_start.label }}</label>
@@ -216,6 +222,9 @@
                         <div class="col-md-3">
                             <label class="cx-label" for="id_tax_value">نسبة الضريبة %</label>
                             <input type="number" id="id_tax_value" name="tax_value" class="form-control" min="0" max="100" step="0.01" placeholder="0">
+                        </div>
+                        <div class="col-12">
+                            <div class="alert alert-warning d-none" id="planDowngradeWarning" style="font-size:.85rem;"></div>
                         </div>
                     </div>
 
@@ -475,6 +484,46 @@
     </div>
 </div>
 
+<!-- ══════════════════════════ APPROVE MODAL ══════════════════════════ -->
+<div class="modal fade" id="approveTenantModal" tabindex="-1" aria-hidden="true" dir="rtl">
+    <div class="modal-dialog modal-dialog-centered cx-confirm-dialog">
+        <div class="modal-content cx-confirm-modal">
+            <div class="cx-confirm-body">
+                <div class="cx-confirm-icon cx-confirm-icon--success">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <h5 class="cx-confirm-title">اعتماد الحساب؟</h5>
+                <p class="cx-confirm-desc">
+                    سيتم تفعيل حساب <strong id="approveTenantName"></strong> بالباقة
+                    <strong id="approveTenantPlan"></strong>
+                    <br>وسيصله بريد إلكتروني بتفعيل الحساب.
+                </p>
+                <input type="hidden" id="approveTenantId" value="">
+                <div class="mt-3 text-start">
+                    <label class="form-label fw-bold small text-muted">نوع الحساب</label>
+                    <select id="approveDemoSelect" class="form-select form-select-sm mb-2">
+                        <option value="1" selected>تجريبي</option>
+                        <option value="0">حقيقي (مشترك فعلي)</option>
+                    </select>
+                    <label class="form-label fw-bold small text-muted">مدة الاشتراك من اليوم</label>
+                    <select id="approveDaysSelect" class="form-select form-select-sm">
+                        <option value="30">30 يوماً (شهر)</option>
+                        <option value="90">90 يوماً (3 أشهر)</option>
+                        <option value="180">180 يوماً (6 أشهر)</option>
+                        <option value="365">365 يوماً (سنة)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="cx-confirm-footer">
+                <button type="button" class="cx-btn-ghost" data-bs-dismiss="modal">إلغاء</button>
+                <button type="button" class="cx-btn-success" id="confirmApproveBtn">
+                    اعتماد
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- ══════════════════════════ DELETE MODAL ══════════════════════════ -->
 <div class="modal fade" id="deleteTenantModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered cx-confirm-dialog">
@@ -512,7 +561,7 @@
                 <h5 class="cx-confirm-title">تجديد الاشتراك</h5>
                 <p class="cx-confirm-desc">تجديد اشتراك <strong id="renewTenantName"></strong></p>
                 <input type="hidden" id="renewTenantId" value="">
-                <div class="mt-3 text-end">
+                <div class="mt-3 text-start">
                     <label class="form-label fw-bold small text-muted">عدد أيام التجديد</label>
                     <select id="renewDaysSelect" class="form-select form-select-sm mb-2">
                         <option value="30">30 يوماً (شهر)</option>
@@ -523,7 +572,6 @@
                     <label class="form-label fw-bold small text-muted">الباقة (اختياري)</label>
                     <select id="renewPlanSelect" class="form-select form-select-sm">
                         <option value="">— بدون تغيير —</option>
-                        <option value="trial">تجريبي</option>
                         <option value="basic">أساسي</option>
                         <option value="pro">احترافي</option>
                         <option value="enterprise">مؤسسات</option>
@@ -588,13 +636,43 @@
     const urlUpdate   = "{% url 'core:tenant_update_api' 0 %}";
     const urlDelete   = "{% url 'core:tenant_delete_api' 0 %}";
     const urlSuspend  = "{% url 'core:tenant_suspend_api' 0 %}";
+    const urlApprove  = "{% url 'core:tenant_approve_api' 0 %}";
     const urlRenew    = "{% url 'core:tenant_renew_api' 0 %}";
     const urlLoginAs  = "{% url 'accounts:login_as_tenant_api' 0 %}";
+    const PLAN_LIMITS = {{ plan_limits_json|safe }};
 
     function apiUrl(tpl, id) { return tpl.replace('/0/', '/' + id + '/'); }
 
+    // نوع النسخة والحدود الرقمية كلها مشتقة إجبارياً من الباقة المختارة —
+    // الحقول معطّلة بالواجهة (للعرض فقط)، والتحقق الحقيقي مفروض أيضاً من
+    // السيرفر في TenantForm.clean() بغض النظر عمّا يُرسَل.
+    let currentUsage = { branch_count: 0, stock_count: 0, user_count: 0 };
+
+    function applyPlanLimitsToForm() {
+        const limits = PLAN_LIMITS[$('#id_subscription_plan').val()] || PLAN_LIMITS['basic'];
+        $('#id_max_stocks').val(limits.max_stocks);
+        $('#id_max_branches').val(limits.max_branches);
+        $('#id_max_users').val(limits.max_users);
+        $('#id_version_type').val(limits.allowed_version_types[limits.allowed_version_types.length - 1]);
+
+        // تحذير مبكر (غير مانع) لو الاستخدام الحالي يتجاوز حدود الباقة
+        // المختارة — التحقق الفعلي المانع يبقى دائماً من السيرفر (clean())،
+        // هذا فقط يوفر على مدير المنصة محاولة حفظ ستُرفَض.
+        const $warn = $('#planDowngradeWarning');
+        const overflows = [];
+        if (currentUsage.branch_count > limits.max_branches) overflows.push(`الفروع (${currentUsage.branch_count} > ${limits.max_branches})`);
+        if (currentUsage.stock_count > limits.max_stocks) overflows.push(`المخازن (${currentUsage.stock_count} > ${limits.max_stocks})`);
+        if (currentUsage.user_count > limits.max_users) overflows.push(`المستخدمين (${currentUsage.user_count} > ${limits.max_users})`);
+        if (overflows.length) {
+            $warn.text('تعذّر حفظ هذه الباقة لاحقاً بسبب تجاوز الاستخدام الحالي للحد المسموح: ' + overflows.join('، ') + ' — يرجى تقليل العدد أولاً.').removeClass('d-none');
+        } else {
+            $warn.addClass('d-none').text('');
+        }
+    }
+    $('#id_subscription_plan').on('change', applyPlanLimitsToForm);
+
     /* ── Append modals to body to avoid stacking context issues ── */
-    ['tenantModal','viewTenantModal','suspendTenantModal','renewTenantModal','deleteTenantModal','loginAsTenantModal'].forEach(function(id) {
+    ['tenantModal','viewTenantModal','suspendTenantModal','approveTenantModal','renewTenantModal','deleteTenantModal','loginAsTenantModal'].forEach(function(id) {
         const el = document.getElementById(id);
         if (el && el.parentElement !== document.body) document.body.appendChild(el);
     });
@@ -602,6 +680,7 @@
     const tenantModal  = new bootstrap.Modal(document.getElementById('tenantModal'));
     const viewModal    = new bootstrap.Modal(document.getElementById('viewTenantModal'));
     const suspendModal = new bootstrap.Modal(document.getElementById('suspendTenantModal'));
+    const approveModal = new bootstrap.Modal(document.getElementById('approveTenantModal'));
     const deleteModal  = new bootstrap.Modal(document.getElementById('deleteTenantModal'));
     const renewModal   = new bootstrap.Modal(document.getElementById('renewTenantModal'));
     const loginAsModal = new bootstrap.Modal(document.getElementById('loginAsTenantModal'));
@@ -613,7 +692,7 @@
     let activePlan   = '';
 
     /* ── Mobile card builder ── */
-    const CARD_PLAN_CLS = { trial: 'plan-trial', basic: 'plan-basic', pro: 'plan-pro', enterprise: 'plan-enterprise' };
+    const CARD_PLAN_CLS = { basic: 'plan-basic', pro: 'plan-pro', enterprise: 'plan-enterprise' };
     const CARD_EXP_CLS  = { expired: 'tnr-exp--expired', soon: 'tnr-exp--soon', ok: 'tnr-exp--ok', lifetime: 'tnr-exp--lifetime' };
 
     function buildCards(api) {
@@ -628,12 +707,17 @@
         rows.each(function (r) {
             const planCls    = CARD_PLAN_CLS[r.subscription_plan_key] || '';
             const expCls     = CARD_EXP_CLS[r.exp_status] || '';
-            const statusHtml = r.is_active
-                ? '<span class="cxr-status cxr-status--on"><span class="cxr-status-dot"></span>نشط</span>'
-                : '<span class="cxr-status cxr-status--off"><span class="cxr-status-dot"></span>معلق</span>';
+            const statusHtml = !r.is_approved
+                ? '<span class="cxr-status cxr-status--pending"><span class="cxr-status-dot"></span>قيد الاعتماد</span>'
+                : (r.is_active
+                    ? '<span class="cxr-status cxr-status--on"><span class="cxr-status-dot"></span>نشط</span>'
+                    : '<span class="cxr-status cxr-status--off"><span class="cxr-status-dot"></span>معلق</span>');
             const demoBadge  = r.is_demo ? '<span class="tnr-badge tnr-badge--demo">تجريبي</span>' : '';
             const suspIcon   = r.is_active ? 'fa-pause' : 'fa-play';
             const suspTitle  = r.is_active ? 'تعليق' : 'تفعيل';
+            const approveBtn = !r.is_approved
+                ? `<button class="cxr-act cxr-act--approve js-approve-tenant" data-id="${r.id}" data-name="${r.name}" data-plan="${r.subscription_plan}" data-demo="${r.is_demo}" title="اعتماد"><i class="fas fa-check"></i></button>`
+                : '';
             const storeBtn   = r.store_slug
                 ? `<a class="cxr-act cxr-act--store" href="/store/${r.store_slug}/" target="_blank" title="زيارة المتجر${r.store_enabled ? '' : ' (معطّل)'}"><i class="fas fa-store"></i></a>`
                 : '';
@@ -653,6 +737,7 @@
                 </div>
                 <div class="cx-card-footer">
                     <div class="cxr-actions">
+                        ${approveBtn}
                         <button class="cxr-act cxr-act--view js-view-tenant"    data-id="${r.id}" title="عرض"><i class="fas fa-eye"></i></button>
                         <button class="cxr-act js-edit-tenant"                   data-id="${r.id}" title="تعديل"><i class="fas fa-pen-to-square"></i></button>
                         <button class="cxr-act cxr-act--warn js-suspend-tenant" data-id="${r.id}" data-name="${r.name}" data-active="${r.is_active}" title="${suspTitle}"><i class="fas ${suspIcon}"></i></button>
@@ -708,7 +793,7 @@
             {
                 data: 'subscription_plan_key',
                 render: function (key, _, r) {
-                    const cls = { trial: 'plan-trial', basic: 'plan-basic', pro: 'plan-pro', enterprise: 'plan-enterprise' }[key] || '';
+                    const cls = { basic: 'plan-basic', pro: 'plan-pro', enterprise: 'plan-enterprise' }[key] || '';
                     return `<span class="tnr-plan ${cls}">${r.subscription_plan}</span>`;
                 }
             },
@@ -722,9 +807,11 @@
             },
             {
                 data: 'is_active',
-                render: a => a
-                    ? `<span class="cxr-status cxr-status--on"><span class="cxr-status-dot"></span>نشط</span>`
-                    : `<span class="cxr-status cxr-status--off"><span class="cxr-status-dot"></span>معلق</span>`
+                render: (a, __, r) => !r.is_approved
+                    ? `<span class="cxr-status cxr-status--pending"><span class="cxr-status-dot"></span>قيد الاعتماد</span>`
+                    : (a
+                        ? `<span class="cxr-status cxr-status--on"><span class="cxr-status-dot"></span>نشط</span>`
+                        : `<span class="cxr-status cxr-status--off"><span class="cxr-status-dot"></span>معلق</span>`)
             },
             {
                 data: null, orderable: false, searchable: false,
@@ -734,7 +821,11 @@
                     const storeBtn     = r.store_slug
                         ? `<a class="cxr-act cxr-act--store" href="/store/${r.store_slug}/" target="_blank" title="زيارة المتجر${r.store_enabled ? '' : ' (معطّل)'}"><i class="fas fa-store"></i></a>`
                         : '';
+                    const approveBtn  = !r.is_approved
+                        ? `<button class="cxr-act cxr-act--approve js-approve-tenant" data-id="${r.id}" data-name="${r.name}" data-plan="${r.subscription_plan}" data-demo="${r.is_demo}" title="اعتماد"><i class="fas fa-check"></i></button>`
+                        : '';
                     return `<div class="cxr-actions">
+                        ${approveBtn}
                         <button class="cxr-act cxr-act--view js-view-tenant"    data-id="${r.id}" title="عرض"><i class="fas fa-eye"></i></button>
                         <button class="cxr-act js-edit-tenant"                   data-id="${r.id}" title="تعديل"><i class="fas fa-pen-to-square"></i></button>
                         <button class="cxr-act cxr-act--warn js-suspend-tenant" data-id="${r.id}" data-name="${r.name}" data-active="${r.is_active}" title="${suspendLabel}"><i class="fas ${suspendIcon}"></i></button>
@@ -777,7 +868,6 @@
         dt.ajax.reload();
     });
 
-    /* ── Form helpers ── */
     function resetForm() {
         $form[0].reset();
         $idInput.val('');
@@ -787,6 +877,7 @@
         $('#admin_full_name, #admin_username, #admin_email, #admin_password, #admin_password2').val('');
         $('#admin_username').prop('readonly', false);
         $('#adminUserSectionNote').text('سيُنشأ حساب مدير تلقائياً');
+        $('#planDowngradeWarning').addClass('d-none').text('');
         BananIMS.clearFormErrors($form);
     }
 
@@ -801,8 +892,11 @@
         $('#admin_username, #admin_password, #admin_password2').attr('required', 'required');
         $('#adminPassHint').addClass('d-none');
         $('.js-pass-required').show();
-        // ضبط timezone وcurrency بناءً على البلد الافتراضي المختار
-        $('#id_country').trigger('change');
+        // لا دولة افتراضية: يختارها المشرف وتُشتق منها المنطقة الزمنية والعملة
+        $('#id_timezone').val('');
+        if (window._setCurrencyDisplay) window._setCurrencyDisplay('');
+        currentUsage = { branch_count: 0, stock_count: 0, user_count: 0 };
+        applyPlanLimitsToForm();
         tenantModal.show();
     }
 
@@ -826,13 +920,16 @@
                 $('#id_city').val(d.city || '');
                 $('#id_country').val(d.country || '');
                 $('#id_address').val(d.address || '');
-                $('#id_subscription_plan').val(d.subscription_plan || 'trial');
+                $('#id_subscription_plan').val(d.subscription_plan || 'basic');
                 $('#id_subscription_start').val(d.subscription_start || '');
                 $('#id_subscription_expires').val(d.subscription_expires || '');
                 $('#id_version_type').val(d.version_type || 'single_store');
-                $('#id_max_users').val(d.max_users || 5);
-                $('#id_max_stocks').val(d.max_stocks || 1);
-                $('#id_max_branches').val(d.max_branches || 1);
+                currentUsage = {
+                    branch_count: d.branch_count || 0,
+                    stock_count: d.stock_count || 0,
+                    user_count: d.user_count || 0,
+                };
+                applyPlanLimitsToForm();
                 $('#id_timezone').val(d.timezone || '');
                 if (window._setCurrencyDisplay) window._setCurrencyDisplay(d.currency || '');
                 $('#id_is_active').prop('checked', !!d.is_active);
@@ -993,6 +1090,32 @@
         });
     });
 
+    /* ── Approve ── */
+    $('#confirmApproveBtn').on('click', function () {
+        const id = $('#approveTenantId').val();
+        if (!id) return;
+        const payload = {
+            is_demo: $('#approveDemoSelect').val() === '1',
+            days: parseInt($('#approveDaysSelect').val(), 10),
+        };
+        $.ajax({
+            url: apiUrl(urlApprove, id), method: 'POST',
+            headers: { 'X-CSRFToken': getCookie('csrftoken') },
+            contentType: 'application/json',
+            data: JSON.stringify(payload),
+            success: function (resp) {
+                if (resp.success) {
+                    approveModal.hide();
+                    dt.ajax.reload(null, false);
+                    BananIMS.toast(resp.message || 'تم الاعتماد', 'success');
+                    return;
+                }
+                BananIMS.toast(resp.message || 'تعذرت العملية', 'error');
+            },
+            error: function (xhr) { BananIMS.toast(_xhrMsg(xhr, 'تعذرت العملية'), 'error'); }
+        });
+    });
+
     /* ── Delete ── */
     $('#confirmDeleteTenantBtn').on('click', function () {
         const id = $('#deleteTenantId').val();
@@ -1025,6 +1148,15 @@
     $(document).on('click', '.js-edit-tenant',    function () { openEdit($(this).data('id')); });
     $(document).on('click', '.js-suspend-tenant', function () {
         openSuspend($(this).data('id'), $(this).data('name'), $(this).data('active'));
+    });
+    $(document).on('click', '.js-approve-tenant', function () {
+        $('#approveTenantId').val($(this).data('id'));
+        $('#approveTenantName').text($(this).data('name'));
+        $('#approveTenantPlan').text($(this).data('plan') || '');
+        const isDemo = $(this).data('demo');
+        $('#approveDemoSelect').val((isDemo === false || isDemo === 'False') ? '0' : '1');
+        $('#approveDaysSelect').val('30');
+        approveModal.show();
     });
     $(document).on('click', '.js-delete-tenant', function () {
         $('#deleteTenantId').val($(this).data('id'));
@@ -1142,16 +1274,15 @@
     const CCY_AR   = JSON.parse(document.getElementById('ccy-ar-data').textContent);
 
     function setCurrency(code) {
-        if (!code) return;
-        $('#id_currency').val(code);
-        $('#currency_display').val((CCY_AR[code] || code) + ' — ' + code);
+        $('#id_currency').val(code || '');
+        $('#currency_display').val(code ? (CCY_AR[code] || code) + ' — ' + code : '');
     }
 
     function syncFromCountry() {
         var country = $('#id_country').val();
         var tz  = CTZ[country];
         var cur = CCY[country];
-        if (tz)  $('#id_timezone').val(tz);
+        $('#id_timezone').val(tz || '');
         setCurrency(cur);
     }
 

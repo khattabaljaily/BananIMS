@@ -2,7 +2,7 @@
 {% load static humanize %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/admin_reports.css' %}?v=2.1">
+<link rel="stylesheet" href="{% static 'css/admin_reports.css' %}?v=1.2">
 {% endblock %}
 
 {% block page_title %}نشاط المشتركين{% endblock %}
@@ -265,13 +265,13 @@
                 datasets: [{
                     label: 'عدد العمليات',
                     data: {{ daily_counts_json|safe }},
-                    borderColor: 'var(--primary)',
-                    backgroundColor: 'rgba(19,37,57,0.08)',
+                    borderColor: getComputedStyle(document.documentElement).getPropertyValue('--primary').trim(),
+                    backgroundColor: `rgba(${getComputedStyle(document.documentElement).getPropertyValue('--primary-rgb').trim()},0.08)`,
                     borderWidth: 2,
                     tension: 0.35,
                     fill: true,
                     pointRadius: 4,
-                    pointBackgroundColor: 'var(--primary)',
+                    pointBackgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--primary').trim(),
                 }]
             },
             options: {

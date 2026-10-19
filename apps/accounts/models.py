@@ -7,7 +7,10 @@ from pathlib import Path
 from django.db import models
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from apps.core.models import Tenant, TenantQuerySet
-from .permissions import get_permission_keys, load_permission_schema
+from .permissions import (
+    get_permission_keys, get_branch_supervisor_permission_keys, BRANCH_BLOCKED_KEYS,
+    get_enterprise_owner_permission_keys, load_permission_schema, get_central_mode_admin_only_keys,
+)
 
 
 class UserQuerySet(TenantQuerySet):
@@ -65,10 +68,26 @@ class User(AbstractUser):
         blank=True
     )
     
+    # Branch Relationship (للنسخة multi_branch — كل مستخدم مربوط بفرع واحد فقط)
+    branch = models.ForeignKey(
+        'core.Branch',
+        on_delete=models.SET_NULL,
+        verbose_name='الفرع',
+        related_name='users',
+        null=True,
+        blank=True,
+    )
+
     # Profile
     phone = models.CharField('رقم الهاتف', max_length=20, blank=True)
     avatar = models.ImageField('الصورة الشخصية', upload_to='users/avatars/', blank=True, null=True)
     is_tenant_admin    = models.BooleanField('مدير النشاط', default=False)
+
+    # Branch Supervisor (للنسخة multi_branch — يحصل تلقائياً على كل صلاحيات
+    # الفرع، ما عدا صلاحيات مدير النشاط الحصرية: إعدادات المنشأة،
+    # المستخدمين، مجموعات الصلاحيات، إدارة الفروع، والمتجر الإلكتروني —
+    # راجع permissions.py::get_branch_supervisor_permission_keys)
+    is_branch_supervisor = models.BooleanField('مشرف الفرع', default=False)
 
     # Platform staff (admin assistants — tenant=None, not full superuser)
     is_platform_staff   = models.BooleanField('مساعد منصة', default=False)
@@ -116,22 +135,64 @@ class User(AbstractUser):
             return perm in (self.platform_permissions or [])
         return False
 
+    def _central_purchasing(self):
+        """مشترك نسخة المؤسسات (شراء مركزي): المشتريات والموردون من اختصاص الإدارة لا الفروع."""
+        return bool(self.tenant_id and self.tenant.is_central_purchasing())
+
     def get_permission_keys(self):
-        if self.is_superuser or self.is_tenant_admin:
+        if self.is_superuser:
             return set(get_permission_keys())
-        keys = set()
-        for group in self.permission_groups.filter(is_active=True):
-            keys.update(group.get_permission_keys())
+        central = self._central_purchasing()
+        if self.is_tenant_admin:
+            if self.tenant_id and self.tenant.is_enterprise():
+                return set(get_enterprise_owner_permission_keys(central))
+            return set(get_permission_keys())
+        if self.is_branch_supervisor and self.branch_id:
+            keys = set(get_branch_supervisor_permission_keys(central))
+        else:
+            keys = set()
+            enterprise = bool(self.tenant_id and self.tenant.is_enterprise())
+            owner_keys = set(get_enterprise_owner_permission_keys(central)) if enterprise else None
+            for group in self.permission_groups.filter(is_active=True):
+                group_keys = set(group.get_permission_keys())
+                if enterprise and group.scope == 'admin':
+                    group_keys &= owner_keys  # راجع التعليق في has_perm_key
+                keys.update(group_keys)
+        if self.branch_id:
+            keys -= BRANCH_BLOCKED_KEYS
+            if central:
+                keys -= get_central_mode_admin_only_keys()
         return keys
 
     def has_perm_key(self, permission_key):
         if not permission_key:
             return False
-        if self.is_superuser or self.is_tenant_admin:
+        if self.is_superuser:
             return True
+        central = self._central_purchasing()
+        if self.is_tenant_admin:
+            if self.tenant_id and self.tenant.is_enterprise():
+                return permission_key in get_enterprise_owner_permission_keys(central)
+            return True
+        # قيد مطلق: أي مستخدم مربوط بفرع لا يقدر أبداً على صلاحيات كتالوج
+        # المنتجات الحصرية (إضافة/تعديل/حذف/استيراد) — بصرف النظر عن مجموعة
+        # الصلاحيات المسندة له، لأن المنتج مورد مركزي مشترك بين كل الفروع.
+        if self.branch_id and permission_key in BRANCH_BLOCKED_KEYS:
+            return False
+        # الشراء المركزي: المشتريات والموردون وتقاريرهم للإدارة فقط، ومحظورة مطلقاً على مستخدم الفرع.
+        if self.branch_id and central and permission_key in get_central_mode_admin_only_keys():
+            return False
+        if self.is_branch_supervisor and self.branch_id:
+            return permission_key in get_branch_supervisor_permission_keys(central)
+        # مجموعة «إدارة النشاط» في نسخة المؤسسات لا تمنح إلا ما يملكه مدير النشاط نفسه —
+        # حتى لو حُفظ فيها سابقاً مفتاح صُنِّف لاحقاً عمليات فرع (مثل تقارير تفاصيل الفرع).
+        enterprise = bool(self.tenant_id and self.tenant.is_enterprise())
         for group in self.permission_groups.filter(is_active=True):
-            if group.has_permission(permission_key):
-                return True
+            if not group.has_permission(permission_key):
+                continue
+            if enterprise and group.scope == 'admin' and permission_key not in get_enterprise_owner_permission_keys(central):
+                continue
+            return True
         return False
 
 
@@ -139,17 +200,38 @@ class PermissionGroup(models.Model):
     """
     مجموعات الصلاحيات - لكل tenant صلاحياته الخاصة
     """
-    
+
+    # نطاق المجموعة — يُستخدم فقط لنسخة المؤسسات (multi_branch) لتقليص
+    # شجرة الفئات المعروضة/القابلة للحفظ عند بناء المجموعة: "فروع" تستبعد
+    # نفس فئات BRANCH_SUPERVISOR_EXCLUDED_CATEGORIES (permissions.py)، و
+    # "إدارة النشاط" تستبعد نفس فئات ENTERPRISE_OWNER_EXCLUDED_CATEGORIES —
+    # مطابقة تماماً لما هو مُنفَّذ فعلاً تلقائياً على مشرف الفرع ومدير
+    # النشاط. فارغ ('') = غير محدد، تُعرض كل الفئات (سلوك ما قبل هذه الميزة،
+    # لتوافق رجعي كامل مع المجموعات القديمة وكل النسخ غير Enterprise).
+    SCOPE_CHOICES = [
+        ('branch', 'فروع'),
+        ('admin', 'إدارة النشاط'),
+    ]
+
     tenant = models.ForeignKey(
         Tenant,
         on_delete=models.CASCADE,
         verbose_name='المشترك',
         related_name='permission_groups'
     )
-    
+
     name = models.CharField('اسم المجموعة', max_length=100)
     description = models.TextField('الوصف', blank=True)
-    
+    scope = models.CharField('نطاق المجموعة', max_length=10, choices=SCOPE_CHOICES, blank=True, default='')
+
+    # مجموعة "مدير النشاط" التلقائية (create_owner_group) تمثّل ملف صلاحيات
+    # صاحب الاشتراك نفسه — لا تُعرض في قائمة "مجموعة الصلاحيات" عند إضافة/
+    # تعديل مستخدم عادي (apps/accounts/forms.py::UserManagementForm) حتى لا
+    # يُمنح موظف عادي صلاحيات إدارية كاملة بالخطأ عبر خانة تبدو عادية. لو
+    # المدير يريد فعلاً مشاركة صلاحيات إدارية مع موظف آخر، ينشئ مجموعة
+    # scope='admin' منفصلة باسم واضح غير هذه.
+    is_owner_group = models.BooleanField('مجموعة مالك الاشتراك', default=False)
+
     # Permissions (JSON Format for flexibility)
     permissions = models.JSONField('الصلاحيات', default=dict)
     
@@ -192,10 +274,16 @@ class PermissionGroup(models.Model):
 
     @classmethod
     def create_owner_group(cls, tenant, name='مدير النشاط'):
-        default_keys = get_permission_keys()
+        is_enterprise = tenant.is_enterprise()
+        if is_enterprise:
+            default_keys = get_enterprise_owner_permission_keys(tenant.is_central_purchasing())
+        else:
+            default_keys = get_permission_keys()
         group = cls.objects.create(
             tenant=tenant,
             name=name,
+            scope='admin' if is_enterprise else '',
+            is_owner_group=True,
             permissions={ key: True for key in default_keys },
             is_active=True,
         )
@@ -239,6 +327,14 @@ class UserActivity(models.Model):
         blank=True,
         verbose_name='المستخدم',
         related_name='activities',
+    )
+    branch = models.ForeignKey(
+        'core.Branch',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name='الفرع',
+        related_name='user_activities',
     )
     title       = models.CharField('العنوان', max_length=200)
     action_type = models.CharField('نوع الإجراء', max_length=50, choices=ACTION_CHOICES, default=ACTION_OTHER)

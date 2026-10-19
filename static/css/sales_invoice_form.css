@@ -106,7 +106,7 @@
 }
 
 .sale-item-result:hover {
-  background: rgba(19,37,57, 0.05);
+  background: rgba(var(--primary-rgb), 0.05);
   transform: translateX(-4px);
 }
 
@@ -137,11 +137,11 @@
 }
 
 .sale-item-result__qty--ok {
-  color: var(--success);
+  color: #10b981;
 }
 
 .sale-item-result__qty--empty {
-  color: var(--danger);
+  color: #ef4444;
 }
 
 /* Empty State (no line items) */
@@ -159,7 +159,7 @@
 
 /* Notes Panel */
 .sales-panel-note {
-  background: linear-gradient(135deg, rgba(19,37,57, 0.04), rgba(59, 130, 246, 0.02));
+  background: linear-gradient(135deg, rgba(var(--primary-rgb), 0.04), rgba(59, 130, 246, 0.02));
   border-radius: 14px;
   padding: 0.75rem 1rem;
   margin-bottom: 1.25rem;
@@ -205,8 +205,8 @@
 .inv-unit-badge {
     display: inline-block;
     width: 100%;
-    background: var(--surface-alt, var(--bg-tertiary));
-    color: var(--text-secondary, var(--text-tertiary));
+    background: var(--surface-alt, #f3f4f6);
+    color: var(--text-secondary, #6b7280);
     border-radius: 6px;
     padding: .25rem .6rem;
     font-size: .72rem;

@@ -4,9 +4,10 @@ Forms للتسجيل وتسجيل الدخول
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 from django.core.exceptions import ValidationError
-from apps.core.constants import COUNTRY_CHOICES, DEFAULT_COUNTRY
-from apps.core.models import BusinessType, Tenant, Settings
+from apps.core.constants import COUNTRY_CHOICES
+from apps.core.models import Tenant, Settings, Branch
 from .models import PermissionGroup, User
+from .permissions import branch_assignable_permission_keys
 
 
 def apply_arabic_error_messages(form_instance):
@@ -128,13 +129,18 @@ class UserManagementForm(forms.ModelForm):
 
     class Meta:
         model = User
+        # ملاحظة: is_tenant_admin عمداً غير مدرج هنا — كل نشاط تجاري له مدير
+        # واحد فقط (يُعيَّن عند التسجيل)، ولا يجوز ترقية مستخدم آخر لمدير
+        # النشاط من شاشة إدارة المستخدمين هذه (لا حتى عبر POST مباشر، بما أن
+        # الحقل غير موجود في الفورم أصلاً).
         fields = [
             'username',
             'first_name',
             'last_name',
             'email',
             'phone',
-            'is_tenant_admin',
+            'branch',
+            'is_branch_supervisor',
             'is_active',
             'permission_groups',
         ]
@@ -144,7 +150,8 @@ class UserManagementForm(forms.ModelForm):
             'last_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'اسم العائلة'}),
             'email': forms.EmailInput(attrs={'class': 'form-control text-start', 'placeholder': 'example@email.com', 'dir': 'ltr'}),
             'phone': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '+000 000 000000'}),
-            'is_tenant_admin': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'branch': forms.Select(attrs={'class': 'form-select'}),
+            'is_branch_supervisor': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'permission_groups': forms.SelectMultiple(attrs={
                 'class': 'form-select',
@@ -154,13 +161,41 @@ class UserManagementForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         self.tenant = kwargs.pop('tenant', None)
+        # فرع مفروض: مدير الفرع (أو أي مستخدم مربوط بفرع) يضيف مستخدمين لفرعه
+        # فقط — لا يختار فرعاً ولا يعيّن مشرفاً (للفرع مشرف واحد يعيّنه مدير النشاط).
+        self.forced_branch = kwargs.pop('forced_branch', None)
+        # نطاق إدارة النشاط (نسخة المؤسسات): مدير النشاط يضيف موظفي الإدارة — بلا فرع
+        # ولا إشراف، ولا يُسند لهم إلا مجموعات «إدارة النشاط».
+        self.head_office = kwargs.pop('head_office', False)
         super().__init__(*args, **kwargs)
         apply_arabic_error_messages(self)
         if self.tenant is not None:
-            self.fields['permission_groups'].queryset = PermissionGroup.objects.filter(
+            # مجموعة "مدير النشاط" التلقائية (is_owner_group) تحمل كل صلاحيات
+            # مالك الاشتراك — تُستبعد هنا عمداً حتى لا تُمنح لموظف عادي عبر
+            # خانة تبدو كأي مجموعة أخرى (راجع PermissionGroup.is_owner_group).
+            groups = PermissionGroup.objects.filter(
+                tenant=self.tenant,
+                is_active=True,
+                is_owner_group=False,
+            ).order_by('name')
+            if self.head_office:
+                groups = groups.filter(scope='admin')
+            elif self.forced_branch is not None:
+                # لا يُمنح موظف الفرع مجموعة فيها صلاحيات إدارة النشاط (فروع،
+                # مستخدمو المنشأة، مجموعات الصلاحيات...) حتى لا يتصعّد.
+                allowed = branch_assignable_permission_keys(self.tenant.is_central_purchasing())
+                groups = groups.filter(pk__in=[
+                    g.pk for g in groups if set(g.get_permission_keys()) <= allowed
+                ])
+            self.fields['permission_groups'].queryset = groups
+            self.fields['branch'].queryset = Branch.objects.filter(
                 tenant=self.tenant,
                 is_active=True
             ).order_by('name')
+        self.fields['branch'].required = False
+        if self.forced_branch is not None or self.head_office:
+            del self.fields['branch']
+            del self.fields['is_branch_supervisor']
         for field_name, field in self.fields.items():
             if field_name in ['password', 'password_confirm']:
                 field.widget.attrs['autocomplete'] = 'new-password'
@@ -178,7 +213,11 @@ class UserManagementForm(forms.ModelForm):
 
     def clean_email(self):
         email = self.cleaned_data.get('email')
+        if not email:
+            return email
         qs = User.objects.filter(email=email)
+        if self.tenant is not None:
+            qs = qs.filter(tenant=self.tenant)
         if self.instance.pk:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
@@ -194,6 +233,39 @@ class UserManagementForm(forms.ModelForm):
                 raise ValidationError('كلمات المرور غير متطابقة')
         elif not self.instance.pk:
             raise ValidationError('كلمة المرور مطلوبة عند إنشاء مستخدم جديد')
+
+        is_branch_supervisor = cleaned_data.get('is_branch_supervisor')
+        branch = self.forced_branch or cleaned_data.get('branch')
+
+        # هذا الفورم لا يُستخدم أبداً لتعديل مدير النشاط نفسه (is_tenant_admin
+        # غير مدرج فيه أصلاً — راجع تعليق Meta.fields أعلاه)، فأي مستخدم يُنشأ/
+        # يُعدَّل هنا في نسخة المؤسسات هو بالضرورة موظف فرع، ويجب أن يتبع فرعاً
+        # محدداً — وإلا ورث request.branch = None فتصبح كل سجلاته (مصروفات،
+        # فواتير...) يتيمة بلا فرع، ظاهرة خطأً لكل الفروع (نفس فئة الخلل التي
+        # سبّبت خزينة يتيمة — راجع apps/core/signals.py).
+        # الاستثناء الوحيد: موظفو إدارة النشاط (head_office) — بلا فرع بالتصميم، ومجموعاتهم
+        # «إدارة النشاط» لا تحمل أي صلاحية من عمليات الفروع.
+        if (
+            self.tenant and self.tenant.is_enterprise() and not branch
+            and not self.head_office
+            and not getattr(self.instance, 'is_tenant_admin', False)
+        ):
+            raise ValidationError('يجب اختيار الفرع لهذا المستخدم — كل مستخدم في نسخة المؤسسات يجب أن يتبع فرعاً محدداً.')
+
+        if is_branch_supervisor:
+            if not branch:
+                raise ValidationError('يجب اختيار الفرع أولاً لتعيين المستخدم كمشرف عليه')
+            existing = User.objects.filter(
+                tenant=self.tenant, branch=branch, is_branch_supervisor=True,
+            )
+            if self.instance.pk:
+                existing = existing.exclude(pk=self.instance.pk)
+            other = existing.first()
+            if other:
+                raise ValidationError(
+                    f'الفرع "{branch.name}" لديه مشرف بالفعل ({other.get_full_name()}). '
+                    'يرجى إلغاء إشراف المستخدم الحالي أولاً قبل تعيين مشرف جديد.'
+                )
         return cleaned_data
 
     def save(self, commit=True):
@@ -203,6 +275,11 @@ class UserManagementForm(forms.ModelForm):
             user.set_password(password)
         if self.tenant and not user.tenant:
             user.tenant = self.tenant
+        if self.forced_branch is not None:
+            user.branch = self.forced_branch
+        if self.head_office:
+            user.branch = None
+            user.is_branch_supervisor = False
         if commit:
             user.save()
             # Manually handle M2M relationship since permission_groups is defined in form
@@ -220,25 +297,16 @@ class Step2BusinessForm(forms.Form):
         apply_arabic_error_messages(self)
         for field in self.fields.values():
             field.widget.attrs['autocomplete'] = 'off'
-    
-    business_type = forms.ModelChoiceField(
-        label='نوع النشاط التجاري',
-        queryset=BusinessType.objects.filter(is_active=True),
-        widget=forms.Select(attrs={
-            'class': 'form-select'
-        }),
-        empty_label='-- اختر نوع النشاط --'
-    )
-    
+
     business_name = forms.CharField(
         label='اسم النشاط التجاري',
         max_length=200,
         widget=forms.TextInput(attrs={
             'class': 'form-control',
-            'placeholder': 'مثال: اسم النشاط التجاري'
+            'placeholder': 'مثال: معرض النور للإلكترونيات أو شركة الأمل لقطع الغيار'
         })
     )
-    
+
     phone = forms.CharField(
         label='رقم الهاتف',
         max_length=20,
@@ -254,7 +322,7 @@ class Step2BusinessForm(forms.Form):
         required=False,
         widget=forms.Textarea(attrs={
             'class': 'form-control',
-            'rows': 3,
+            'rows': 2,
             'placeholder': 'أدخل العنوان الكامل'
         })
     )
@@ -269,10 +337,12 @@ class Step2BusinessForm(forms.Form):
         })
     )
 
+    # لا دولة مختارة مسبقاً — يختار المشترك دولته بنفسه.
     country = forms.ChoiceField(
         label='البلد',
-        choices=COUNTRY_CHOICES,
-        initial=DEFAULT_COUNTRY,
+        choices=[('', 'اختر الدولة')] + list(COUNTRY_CHOICES),
+        required=True,
+        initial='',
         widget=forms.Select(attrs={
             'class': 'form-select'
         })
@@ -287,9 +357,11 @@ class Step3SettingsForm(forms.Form):
         apply_arabic_error_messages(self)
         for field in self.fields.values():
             field.widget.attrs['autocomplete'] = 'off'
-    
+
     PLAN_CHOICES = (
-        ('trial', 'تجريبي'),
+        ('basic', 'أساسي'),
+        ('pro', 'احترافي'),
+        ('enterprise', 'مؤسسات'),
     )
 
     VERSION_CHOICES = (
@@ -299,9 +371,9 @@ class Step3SettingsForm(forms.Form):
     )
     
     subscription_plan = forms.ChoiceField(
-        label='الخطة',
+        label='الباقة المطلوبة',
         choices=PLAN_CHOICES,
-        initial='trial',
+        initial='basic',
         widget=forms.Select(attrs={
             'class': 'form-select'
         })
@@ -311,45 +383,14 @@ class Step3SettingsForm(forms.Form):
         label='نوع النسخة',
         choices=VERSION_CHOICES,
         initial='single_store',
-        widget=forms.Select(attrs={
-            'class': 'form-select'
-        })
-    )
-    
-    num_stocks = forms.IntegerField(
-        label='عدد المخازن',
-        min_value=1,
-        max_value=50,
-        initial=1,
         required=False,
-        widget=forms.NumberInput(attrs={
-            'class': 'form-control',
-            'min': '1',
-            'max': '50'
-        }),
-        help_text='حدد عدد المخازن التي تحتاجها (1-50)'
-    )
-    
-    timezone = forms.CharField(
-        label='المنطقة الزمنية',
-        widget=forms.TextInput(attrs={
-            'class': 'form-control',
-            'readonly': 'readonly',
-            'placeholder': 'ستُضبط تلقائياً حسب البلد'
+        widget=forms.Select(attrs={
+            'class': 'form-select',
+            'disabled': True,
+            'tabindex': '-1',
         })
     )
-    
-    currency = forms.CharField(
-        label='العملة',
-        max_length=3,
-        initial='QAR',
-        widget=forms.TextInput(attrs={
-            'class': 'form-control text-start',
-            'dir': 'ltr',
-            'placeholder': 'مثال: SDG'
-        })
-    )
-    
+
     tax_enabled = forms.BooleanField(
         label='تفعيل الضرائب',
         required=False,
@@ -359,20 +400,18 @@ class Step3SettingsForm(forms.Form):
     )
 
     def clean(self):
+        from apps.core.models import Tenant
         cleaned_data = super().clean()
-        version_type = cleaned_data.get('version_type')
-        num_stocks = cleaned_data.get('num_stocks')
-        
-        if version_type in ['multi_stock', 'multi_branch']:
-            if not num_stocks or num_stocks < 1:
-                self.add_error('num_stocks', 'يجب تحديد عدد المخازن للنسخة المختارة')
-            elif version_type == 'multi_stock' and num_stocks > 10:
-                self.add_error('num_stocks', 'للنسخة "محل واحد بمخازن متعددة" الحد الأقصى 10 مخازن')
-            elif version_type == 'multi_branch' and num_stocks > 50:
-                self.add_error('num_stocks', 'للنسخة "فروع متعددة" الحد الأقصى 50 مخزن')
-        else:
-            # للنسخة الفردية، اجعل num_stocks = 1
-            cleaned_data['num_stocks'] = 1
+        plan = cleaned_data.get('subscription_plan')
+
+        plan_limits = Tenant.PLAN_LIMITS.get(plan, Tenant.PLAN_LIMITS['basic'])
+
+        # نوع النسخة وحدود المخازن/الفروع/المستخدمين كلها إجبارية ومشتقة من
+        # الباقة مباشرة — الحقل معطّل بالواجهة، ويُفرض هنا بغض النظر عمّا وصل.
+        cleaned_data['version_type'] = plan_limits['allowed_version_types'][-1]
+        cleaned_data['max_stocks'] = plan_limits['max_stocks']
+        cleaned_data['max_branches'] = plan_limits['max_branches']
+        cleaned_data['max_users'] = plan_limits['max_users']
 
         return cleaned_data
 
@@ -397,21 +436,12 @@ class RegistrationRequestForm(forms.Form):
         })
     )
 
-    business_type = forms.ModelChoiceField(
-        label='نوع النشاط التجاري',
-        queryset=BusinessType.objects.filter(is_active=True),
-        widget=forms.Select(attrs={
-            'class': 'form-select'
-        }),
-        empty_label='-- اختر نوع النشاط --'
-    )
-
     business_name = forms.CharField(
         label='اسم النشاط التجاري',
         max_length=200,
         widget=forms.TextInput(attrs={
             'class': 'form-control',
-            'placeholder': 'مثال: اسم النشاط التجاري'
+            'placeholder': 'مثال: معرض النور للإلكترونيات أو شركة الأمل لقطع الغيار'
         })
     )
 

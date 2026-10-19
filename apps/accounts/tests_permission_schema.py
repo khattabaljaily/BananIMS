@@ -1,0 +1,55 @@
+"""
+اختبارات بنية ملف الصلاحيات (apps/accounts/permissions_schema.json) —
+مكمِّلة لـ tests_permission_matrix.py (الذي يختبر التطبيق الفعلي للصلاحيات
+ولا يلمس شكل الملف إطلاقاً)، هذا الملف يختبر تنظيم/ترتيب/اكتمال المصدر
+نفسه:
+
+  1. ترتيب الأقسام والمفاتيح يطابق ترتيب القائمة الجانبية بالضبط — أي
+     تغيير مستقبلي في هذا الترتيب (عرضي أو مقصود) يجب أن يُحدَّث هنا صراحة.
+  2. كل مفتاح صلاحية يستخدمه أي @require_permission/@require_any_permission/
+     @require_all_permissions في كامل المشروع موجود فعلاً في الملف (وإلا
+     فمدير النشاط لن يقدر يمنحه لأي مجموعة صلاحيات أبداً).
+"""
+from django.test import SimpleTestCase
+
+from apps.accounts.permissions import _load_structured_schema, get_permission_keys
+from apps.accounts.tests_permission_matrix import _discover_permission_protected_routes
+
+
+# المصدر الوحيد لترتيب القائمة الجانبية المعتمَد — أي تعديل عليه يجب أن يقابله
+# تعديل مطابق فعلاً في apps/core/templates/components/sidebar.html (وليس
+# العكس: هذا الاختبار يحمي الترتيب من انزلاق غير مقصود، لا يفرضه).
+EXPECTED_SECTION_ORDER = [
+    'dashboard', 'ai', 'tenant_settings', 'branches', 'head_office_finance',
+    'head_office_expenses', 'central_purchasing', 'store',
+    'permission_groups', 'admin_users', 'users', 'sales', 'purchases',
+    'purchase_requisitions', 'branch_requisitions', 'categories', 'items', 'stocks', 'stock_destructions', 'incoming_shipments', 'customers',
+    'suppliers', 'agents', 'employees', 'expenses', 'treasuries',
+    'bank_accounts', 'branch_transfers', 'employee_advances', 'employee_incentives',
+    'employee_salaries', 'sales_reports', 'purchases_reports',
+    'stocks_reports', 'accounts_reports', 'agents_reports', 'notifications',
+]
+
+
+class PermissionSchemaOrderTests(SimpleTestCase):
+    def test_section_order_matches_sidebar(self):
+        actual_order = [section['key'] for section in _load_structured_schema()]
+        self.assertEqual(actual_order, EXPECTED_SECTION_ORDER)
+
+
+class PermissionSchemaCoverageTests(SimpleTestCase):
+    def test_every_decorator_key_exists_in_schema(self):
+        routes = _discover_permission_protected_routes()
+        self.assertGreater(len(routes), 30, 'يجب اكتشاف عدد كبير من المسارات المحمية')
+
+        schema_keys = set(get_permission_keys())
+        missing = {}
+        for path, keys, _mode in routes:
+            for key in keys:
+                if key not in schema_keys:
+                    missing.setdefault(key, []).append(path)
+
+        self.assertFalse(
+            missing,
+            f'مفاتيح صلاحية مستخدمة في views لكنها غير موجودة في permissions_schema.json: {missing}'
+        )

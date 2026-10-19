@@ -25,6 +25,7 @@ class CustomerForm(forms.ModelForm):
             'email',
             'city',
             'address',
+            'branch',
             'opening_balance',
             'credit_limit',
             'notes',
@@ -32,10 +33,11 @@ class CustomerForm(forms.ModelForm):
         ]
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'مثال: أحمد محمد'}),
-            'phone': forms.TextInput(attrs={'class': 'form-control', 'type': 'tel', 'placeholder': 'مثال: 55512345'}),
+            'phone': forms.TextInput(attrs={'class': 'form-control', 'type': 'tel', 'placeholder': 'مثال: 0912345678'}),
             'email': forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'example@email.com'}),
-            'city': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'الدوحة'}),
+            'city': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'المدينة'}),
             'address': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'branch': forms.Select(attrs={'class': 'form-control'}),
             'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
@@ -45,9 +47,15 @@ class CustomerForm(forms.ModelForm):
             'email': 'البريد الإلكتروني',
             'city': 'المدينة',
             'address': 'العنوان',
+            'branch': 'الفرع',
             'notes': 'ملاحظات',
             'is_active': 'نشط',
         }
+
+    def __init__(self, *args, tenant=None, branch=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        from apps.core.utils import setup_branch_field
+        setup_branch_field(self, tenant, branch)
 
     def clean_opening_balance(self):
         value = self.cleaned_data.get('opening_balance')

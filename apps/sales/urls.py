@@ -43,6 +43,7 @@ urlpatterns = [
     path('api/item-info/', views.item_info_api, name='item_info_api'),
     path('api/customer-info/', views.customer_info_api, name='customer_info_api'),
     path('api/stock-items/', views.stock_items_api, name='stock_items_api'),
+    path('api/item-other-stocks/', views.item_other_stocks_api, name='item_other_stocks_api'),
 
     # ── POS ──────────────────────────────────────────────────
     path('pos/', views.pos_view, name='pos'),

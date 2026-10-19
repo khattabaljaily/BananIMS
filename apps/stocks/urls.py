@@ -1,5 +1,5 @@
 from django.urls import path, include
-from . import views
+from . import views, shipment_views
 
 app_name = 'stocks'
 
@@ -30,8 +30,23 @@ urlpatterns = [
     path('transfers/<int:pk>/', views.transfer_detail, name='transfer_detail'),
     path('transfers/<int:pk>/confirm/', views.transfer_confirm_ajax, name='transfer_confirm'),
     path('transfers/<int:pk>/cancel/', views.transfer_cancel_ajax, name='transfer_cancel'),
+    path('transfers/<int:pk>/receive/', views.transfer_receive_ajax, name='transfer_receive'),
+    path('transfers/<int:pk>/settle/', views.transfer_settle_ajax, name='transfer_settle'),
     path('transfers/<int:pk>/delete/', views.transfer_delete_draft_ajax, name='transfer_delete'),
     path('transfers/api/items/', views.transfer_items_api, name='transfer_items_api'),
+
+    # شحنات المخزن المركزي
+    path('shipments/', shipment_views.shipment_list, name='shipment_list'),
+    path('shipments/api/', shipment_views.shipment_table_api, name='shipment_api'),
+    path('shipments/create/', shipment_views.shipment_create, name='shipment_create'),
+    path('shipments/api/items/', shipment_views.shipment_items_api, name='shipment_items_api'),
+    path('shipments/return/', shipment_views.return_create, name='return_create'),
+    path('shipments/return/api/items/', shipment_views.return_items_api, name='return_items_api'),
+    path('shipments/<int:pk>/', shipment_views.shipment_detail, name='shipment_detail'),
+    path('shipments/<int:pk>/send/', shipment_views.shipment_send_ajax, name='shipment_send'),
+    path('shipments/<int:pk>/cancel/', shipment_views.shipment_cancel_ajax, name='shipment_cancel'),
+    path('shipments/<int:pk>/receive/', shipment_views.shipment_receive_ajax, name='shipment_receive'),
+
 
     # Stocktake
     path('stocktakes/', views.stocktake_list, name='stocktake_list'),
@@ -42,12 +57,12 @@ urlpatterns = [
     path('stocktakes/<int:pk>/confirm/', views.stocktake_confirm_ajax, name='stocktake_confirm'),
     path('stocktakes/<int:pk>/cancel/', views.stocktake_cancel_ajax, name='stocktake_cancel'),
 
-    # Manufacturing Orders
-    path('manufacturing/', views.manufacturing_list, name='manufacturing_list'),
-    path('manufacturing/api/', views.manufacturing_table_api, name='manufacturing_api'),
-    path('manufacturing/create/', views.manufacturing_create, name='manufacturing_create'),
-    path('manufacturing/<int:pk>/', views.manufacturing_detail, name='manufacturing_detail'),
-    path('manufacturing/<int:pk>/confirm/', views.manufacturing_confirm_ajax, name='manufacturing_confirm'),
-    path('manufacturing/<int:pk>/cancel/', views.manufacturing_cancel_ajax, name='manufacturing_cancel'),
-    path('manufacturing/<int:pk>/delete/', views.manufacturing_delete_ajax, name='manufacturing_delete'),
+    path('destructions/', views.destruction_list, name='destruction_list'),
+    path('destructions/api/', views.destruction_table_api, name='destruction_api'),
+    path('destructions/create/', views.destruction_create, name='destruction_create'),
+    path('destructions/<int:pk>/', views.destruction_detail, name='destruction_detail'),
+    path('destructions/<int:pk>/add-line/', views.destruction_add_line_ajax, name='destruction_add_line'),
+    path('destructions/<int:pk>/lines/<int:line_id>/remove/', views.destruction_remove_line_ajax, name='destruction_remove_line'),
+    path('destructions/<int:pk>/confirm/', views.destruction_confirm_ajax, name='destruction_confirm'),
+    path('destructions/<int:pk>/cancel/', views.destruction_cancel_ajax, name='destruction_cancel'),
 ]

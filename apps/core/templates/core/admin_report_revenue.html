@@ -2,7 +2,7 @@
 {% load static humanize %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/admin_reports.css' %}?v=2.1">
+<link rel="stylesheet" href="{% static 'css/admin_reports.css' %}?v=1.2">
 {% endblock %}
 
 {% block page_title %}الإيرادات الشهرية{% endblock %}
@@ -31,8 +31,8 @@
 <div class="rpt-alerts">
     <div class="rpt-alert-card rpt-alert-card--indigo">
         <div class="rpt-alert-card__num">{{ total_mrr }}</div>
-        <div class="rpt-alert-card__lbl">MRR المقدّر (دولار)</div>
-        <div class="rpt-alert-card__icon"><i class="fas fa-dollar-sign"></i></div>
+        <div class="rpt-alert-card__lbl">MRR المقدّر</div>
+        <div class="rpt-alert-card__icon"><i class="fas fa-coins"></i></div>
     </div>
     {% for key, data in plan_revenue.items %}
     <div class="rpt-alert-card {% if key == 'enterprise' %}rpt-alert-card--indigo{% elif key == 'pro' %}rpt-alert-card--blue{% elif key == 'basic' %}rpt-alert-card--green{% else %}rpt-alert-card--muted{% endif %}">
@@ -177,7 +177,7 @@
                 datasets: [{
                     label: 'مشترك جديد',
                     data: {{ monthly_new_json|safe }},
-                    backgroundColor: 'rgba(19,37,57,0.7)',
+                    backgroundColor: `rgba(${getComputedStyle(document.documentElement).getPropertyValue('--primary-rgb').trim()},0.7)`,
                     borderRadius: 6,
                 }]
             },
@@ -197,7 +197,8 @@
     if (rdCtx) {
         const labels = [];
         const data = [];
-        const colors = ['#94a3b8','#3b82f6','var(--primary)','#7c3aed'];
+        const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+        const colors = ['#94a3b8','#3b82f6', cssVar('--primary') || '#0e6b64', cssVar('--secondary') || '#0ea5e9'];
         const bkgColors = [];
         {% for key, d in plan_revenue.items %}
         labels.push('{{ key }}'); data.push({{ d.monthly }}); bkgColors.push(colors[{{ forloop.counter0 }}]);

@@ -22,6 +22,7 @@ from django.db import models
 from django.db.models import Sum
 
 from apps.core.models import TenantMixin
+from apps.bank_accounts.models import BankAccount
 
 
 # ============================================================
@@ -50,6 +51,10 @@ class SaleInvoice(TenantMixin):
         ('returned',            'مرتجعة كلياً'),
         ('partially_returned',  'مرتجعة جزئياً'),
     )
+
+    # الفواتير التي تمثّل بيعاً فعلياً تُحتسب في التقارير: المرتجع جزئياً أو
+    # كلياً يبقى بيعاً، ومرتجعاته تُعرض وتُطرح عبر SaleReturn وليس بإسقاط الفاتورة.
+    REVENUE_STATUSES = ('confirmed', 'partially_returned', 'returned')
 
     DELIVERY_TYPE_CHOICES = (
         ('immediate', 'تسليم فوري'),
@@ -91,6 +96,14 @@ class SaleInvoice(TenantMixin):
         on_delete=models.PROTECT,
         related_name='sale_invoices',
         verbose_name='المخزن'
+    )
+    branch = models.ForeignKey(
+        'core.Branch',
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='sale_invoices',
+        verbose_name='الفرع',
+        help_text='الفرع المرتبط مباشرة بالفاتورة (enterprise فقط؛ يُملأ تلقائياً من المخزن إن لم يُحدد)',
     )
     agent = models.ForeignKey(
         'agents.Agent',
@@ -156,6 +169,14 @@ class SaleInvoice(TenantMixin):
     bank_reference = models.CharField(
         'مرجع التحويل البنكي', max_length=100, blank=True
     )
+    bank_account = models.ForeignKey(
+        BankAccount,
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='sale_invoices',
+        verbose_name='الحساب البنكي',
+        help_text='الحساب البنكي المستلِم للجزء البنكي من الفاتورة',
+    )
 
     notes = models.TextField('ملاحظات', blank=True)
 
@@ -198,6 +219,13 @@ class SaleInvoice(TenantMixin):
         return f"{self.invoice_number} — {self.customer or 'زبون عابر'}"
 
     def save(self, *args, **kwargs):
+        # المخزن المركزي للإدارة  مخزن توزيع فقط: لا فواتير بيع عليه.
+        if self._state.adding and self.stock_id:
+            if type(self).stock.field.related_model.objects.filter(pk=self.stock_id, is_central=True).exists():
+                raise ValueError('لا يمكن البيع من المخزن المركزي: هو مخزن للتوزيع على الفروع فقط.')
+        # الفرع يُشتق من المخزن (نسخة المؤسسات) حتى لا تبقى فواتير بلا فرع
+        if self.branch_id is None and self.stock_id:
+            self.branch_id = type(self).stock.field.related_model.objects.filter(pk=self.stock_id).values_list('branch_id', flat=True).first()
         if not self.invoice_number:
             self.invoice_number = self._generate_number()
         super().save(*args, **kwargs)
@@ -331,10 +359,8 @@ class SaleInvoiceLine(TenantMixin):
         help_text='1 وحدة مستخدمة = unit_factor وحدة أساسية'
     )
 
-    # بيانات تتبع الدُفعة / المسلسل / الصلاحية (اختياري)
-    batch_number = models.CharField('رقم الدُفعة', max_length=100, blank=True)
+    # الرقم التسلسلي (اختياري)
     serial_number = models.CharField('الرقم التسلسلي', max_length=100, blank=True)
-    expiry_date = models.DateField('تاريخ الصلاحية', null=True, blank=True)
 
     class Meta:
         db_table = 'sale_invoice_lines'
@@ -445,6 +471,14 @@ class SaleReturn(TenantMixin):
         related_name='sale_returns',
         verbose_name='الفاتورة الأصلية'
     )
+    branch = models.ForeignKey(
+        'core.Branch',
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='sale_returns',
+        verbose_name='الفرع',
+        help_text='الفرع المرتبط مباشرة بالمرتجع (enterprise فقط؛ يُملأ تلقائياً من الفاتورة الأصلية إن لم يُحدد)',
+    )
     status = models.CharField(
         'الحالة', max_length=15, choices=STATUS_CHOICES, default='draft'
     )
@@ -475,6 +509,9 @@ class SaleReturn(TenantMixin):
         return f"{self.return_number} ← {self.original_invoice.invoice_number}"
 
     def save(self, *args, **kwargs):
+        # الفرع يُشتق من الفاتورة الأصلية (نسخة المؤسسات)
+        if self.branch_id is None and self.original_invoice_id:
+            self.branch_id = type(self).original_invoice.field.related_model.objects.filter(pk=self.original_invoice_id).values_list('branch_id', flat=True).first()
         if not self.return_number:
             self.return_number = self._generate_number()
         super().save(*args, **kwargs)
@@ -574,6 +611,7 @@ class StockMovement(TenantMixin):
         ('adjustment_out',     'تسوية — خروج'),
         ('opening_in',         'رصيد افتتاحي'),
         ('opening_correction', 'تصحيح رصيد افتتاحي'),
+        ('destruction_out',    'إتلاف — خروج'),
     )
 
     DIRECTION_CHOICES = (
@@ -737,7 +775,7 @@ class SaleQuote(TenantMixin):
         ('accepted',  'مقبول'),
         ('rejected',  'مرفوض'),
         ('converted', 'مُحوَّل لفاتورة'),
-        ('expired',   'منتهي الصلاحية'),
+        ('expired',   'انتهت مدته'),
         ('cancelled', 'ملغى'),
     )
 

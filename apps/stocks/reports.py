@@ -9,6 +9,7 @@
   - المخزن حسب الموقع (المخزن)
 """
 
+from apps.core.utils import BranchLabelMixin
 from decimal import Decimal
 from django.db.models import Sum, Count, F, Q
 from django.utils import timezone
@@ -30,19 +31,36 @@ def format_number(value, decimals=2):
         return str(value)
 
 
-class StocksReportGenerator:
+class StocksReportGenerator(BranchLabelMixin):
     """فئة شاملة لإنشاء تقارير المخزن"""
 
-    def __init__(self, tenant, start_date=None, end_date=None):
+    def __init__(self, tenant, start_date=None, end_date=None, branch=None, central=False):
         self.tenant = tenant
+        self.branch = branch
+        # central: نطاق المخزن المركزي وحده (للإدارة فقط) بدل فرع.
+        self.central = central
         self.start_date = start_date or (tz.localdate() - timedelta(days=30))
         self.end_date = end_date or tz.localdate()
 
+    def _scoped(self, qs, field='stock__branch'):
+        """فلترة نطاق التقرير: المخزن المركزي، أو فرع محدد، أو الكل."""
+        if self.central:
+            return qs.filter(**{field.replace('branch', 'is_central'): True})
+        from apps.core.utils import filter_by_branch_strict
+        return filter_by_branch_strict(qs, self.branch, field=field)
+
+    @property
+    def show_branch(self):
+        return not self.central and super().show_branch
+
+    def _scoped_stocks(self, qs):
+        return qs.filter(is_central=True) if self.central else qs.for_branch(self.branch, strict=True)
+
     def get_summary_report(self):
         """تقرير ملخص المخزن - إجمالي الكميات والقيمة"""
-        stock_quantities = StockQuantity.objects.filter(
+        stock_quantities = self._scoped(StockQuantity.objects.filter(
             tenant=self.tenant
-        ).select_related('item', 'stock')
+        ), 'stock__branch').select_related('item', 'stock')
 
         total_quantity = Decimal('0')
         total_reserved = Decimal('0')
@@ -82,7 +100,7 @@ class StocksReportGenerator:
 
         data = []
         for item in items:
-            stock_qty_list = item.stock_quantities.all()
+            stock_qty_list = self._scoped(item.stock_quantities.all(), 'stock__branch')
             
             total_qty = Decimal('0')
             total_reserved = Decimal('0')
@@ -124,7 +142,7 @@ class StocksReportGenerator:
         data = []
         for category in categories:
             items_in_category = category.items.all()
-            
+
             total_qty = Decimal('0')
             total_reserved = Decimal('0')
             total_available = Decimal('0')
@@ -134,10 +152,10 @@ class StocksReportGenerator:
 
             for item in items_in_category:
                 item_count += 1
-                stock_quantities = StockQuantity.objects.filter(
+                stock_quantities = self._scoped(StockQuantity.objects.filter(
                     tenant=self.tenant,
                     item=item
-                )
+                ), 'stock__branch')
                 
                 for sq in stock_quantities:
                     total_qty += sq.quantity or 0
@@ -171,6 +189,7 @@ class StocksReportGenerator:
             tenant=self.tenant,
             is_active=True
         )
+        stocks_qs = self._scoped_stocks(stocks_qs)
 
         if stock_id:
             stocks_qs = stocks_qs.filter(id=stock_id)
@@ -200,8 +219,7 @@ class StocksReportGenerator:
 
             data.append({
                 'stock_id': stock.id,
-                'stock_name': stock.name,
-                'stock_type': stock.get_stock_type_display(),
+                'stock_name': self._party(stock),
                 'item_count': item_count,
                 'total_quantity': float(total_qty),
                 'total_reserved': float(total_reserved),
@@ -216,11 +234,11 @@ class StocksReportGenerator:
 
     def get_item_movement_report(self, item_id=None, stock_id=None):
         """حركة الأصناف خلال فترة زمنية"""
-        movements = StockMovement.objects.filter(
+        movements = self._scoped(StockMovement.objects.filter(
             tenant=self.tenant,
             movement_date__gte=self.start_date,
             movement_date__lte=self.end_date,
-        ).select_related('item', 'stock').prefetch_related('item__item_units').order_by('-id')
+        ), 'stock__branch').select_related('item', 'stock').prefetch_related('item__item_units').order_by('-id')
 
         if item_id:
             movements = movements.filter(item_id=item_id)
@@ -233,11 +251,11 @@ class StocksReportGenerator:
         # Opening quantity: balance_after of last movement before start_date
         opening_qty = None
         if item_id:
-            pre_qs = StockMovement.objects.filter(
+            pre_qs = self._scoped(StockMovement.objects.filter(
                 tenant=self.tenant,
                 item_id=item_id,
                 movement_date__lt=self.start_date,
-            )
+            ), 'stock__branch')
             if stock_id:
                 pre_qs = pre_qs.filter(stock_id=stock_id)
             pre_mv = pre_qs.order_by('movement_date', 'id').last()
@@ -245,7 +263,9 @@ class StocksReportGenerator:
                 opening_qty = float(pre_mv.balance_after)
             else:
                 from apps.stocks.models import StockQuantity
-                sq_qs = StockQuantity.objects.filter(tenant=self.tenant, item_id=item_id)
+                sq_qs = self._scoped(
+                    StockQuantity.objects.filter(tenant=self.tenant, item_id=item_id), 'stock__branch',
+                )
                 if stock_id:
                     sq_qs = sq_qs.filter(stock_id=stock_id)
                 opening_qty = float(sq_qs.aggregate(s=Sum('opening_quantity'))['s'] or 0)
@@ -262,7 +282,7 @@ class StocksReportGenerator:
                 'movement_date': m.movement_date,
                 'item_name': m.item.name,
                 'item_unit': m.item.base_unit_name,
-                'stock_name': m.stock.name,
+                'stock_name': self._party(m.stock),
                 'movement_type': m.get_movement_type_display(),
                 'movement_type_key': m.movement_type,
                 'direction': m.direction,
@@ -277,7 +297,7 @@ class StocksReportGenerator:
 
         # Build item/stock filter options
         items = Item.objects.filter(tenant=self.tenant).order_by('name')
-        stocks = Stock.objects.filter(tenant=self.tenant).order_by('name')
+        stocks = self._scoped_stocks(Stock.objects.filter(tenant=self.tenant)).order_by('name')
 
         return {
             'period': {'start': self.start_date, 'end': self.end_date},
@@ -295,10 +315,10 @@ class StocksReportGenerator:
 
     def get_low_stock_report(self):
         """تنبيهات المخزون المنخفض — المنتجات التي وصلت أو تجاوزت حد الحد الأدنى"""
-        quantities = StockQuantity.objects.filter(
+        quantities = self._scoped(StockQuantity.objects.filter(
             tenant=self.tenant,
             min_quantity__gt=0,
-        ).select_related('item', 'stock').prefetch_related('item__item_units').order_by('item__name', 'stock__name')
+        ), 'stock__branch').select_related('item', 'stock').prefetch_related('item__item_units').order_by('item__name', 'stock__name')
 
         data = []
         for sq in quantities:
@@ -306,7 +326,7 @@ class StocksReportGenerator:
                 data.append({
                     'item_name': sq.item.name,
                     'item_unit': sq.item.base_unit_name,
-                    'stock_name': sq.stock.name,
+                    'stock_name': self._party(sq.stock),
                     'quantity': format_number(float(sq.quantity), 2),
                     'available': format_number(float(sq.available_quantity), 2),
                     'reserved': format_number(float(sq.reserved_quantity), 2),
@@ -325,10 +345,10 @@ class StocksReportGenerator:
         """تقرير تقييم المخزون — قيمة كل صنف بسعر التكلفة، مجمّعة حسب الفئة"""
         from apps.items.models import Category
 
-        quantities = StockQuantity.objects.filter(
+        quantities = self._scoped(StockQuantity.objects.filter(
             tenant=self.tenant,
             quantity__gt=0,
-        ).select_related('item', 'item__category', 'stock').prefetch_related('item__item_units')
+        ), 'stock__branch').select_related('item', 'item__category', 'stock').prefetch_related('item__item_units')
 
         category_data = {}
         grand_total_qty = Decimal('0')
@@ -399,18 +419,18 @@ class StocksReportGenerator:
         """تقرير الأصناف الراكدة — لها مخزون لكن لا حركة خروج في الفترة"""
         from django.db.models import Max
 
-        quantities = StockQuantity.objects.filter(
+        quantities = self._scoped(StockQuantity.objects.filter(
             tenant=self.tenant,
             quantity__gt=0,
-        ).select_related('item', 'item__category', 'stock').prefetch_related('item__item_units')
+        ), 'stock__branch').select_related('item', 'item__category', 'stock').prefetch_related('item__item_units')
 
         moving_item_ids = set(
-            StockMovement.objects.filter(
+            self._scoped(StockMovement.objects.filter(
                 tenant=self.tenant,
                 direction='out',
                 movement_date__gte=self.start_date,
                 movement_date__lte=self.end_date,
-            ).values_list('item_id', flat=True)
+            ), 'stock__branch').values_list('item_id', flat=True)
         )
 
         item_agg = {}
@@ -429,7 +449,7 @@ class StocksReportGenerator:
             item_agg[iid]['total_qty'] += sq.quantity or Decimal('0')
 
         last_movement_qs = (
-            StockMovement.objects.filter(tenant=self.tenant)
+            self._scoped(StockMovement.objects.filter(tenant=self.tenant), 'stock__branch')
             .values('item_id')
             .annotate(last_date=Max('movement_date'))
         )

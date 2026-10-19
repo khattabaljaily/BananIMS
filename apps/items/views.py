@@ -7,26 +7,19 @@ from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import Q, Sum
 from django.http import HttpResponseNotAllowed, HttpResponse, JsonResponse
-from django.views.decorators.http import require_POST
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 
 from decimal import Decimal
-from apps.accounts.decorators import require_permission
+from apps.accounts.decorators import require_permission, branch_scope_exempt
+from apps.core.utils import filter_by_branch_via
 from .forms import CategoryForm, ItemForm, UnitForm
-from .models import Category, Item, Unit, BOMRecipe, BOMLine, ItemBatch
+from .models import Category, Item, Unit
 from apps.sales.models import StockMovement
 from apps.stocks.models import StockQuantity
 
 
 def _ensure_tenant(request):
     return getattr(request, 'tenant', None)
-
-
-def _get_capabilities(tenant):
-    try:
-        return tenant.capabilities
-    except Exception:
-        return None
 
 
 def _serialize_errors(form):
@@ -49,14 +42,14 @@ def item_list(request):
     active = qs.filter(is_active=True).count()
     out_of_stock = qs.filter(is_active=True, min_quantity__gt=0).count()
 
-    caps = _get_capabilities(tenant)
-    from apps.core.utils import currency_symbol, CURRENCY_SYMBOLS
-    local_cur = tenant.currency or 'QAR'
+    from apps.core.utils import currency_symbol
+    from apps.suppliers.models import Supplier
+    local_cur = tenant.currency
     context = {
-        'item_form': ItemForm(tenant=tenant, capabilities=caps),
+        'item_form': ItemForm(tenant=tenant),
+        'suppliers': Supplier.objects.for_tenant(tenant).for_branch(getattr(request, 'branch', None)).filter(is_active=True).order_by('name'),
         'local_currency': local_cur,
         'local_currency_symbol': currency_symbol(local_cur),
-        'currency_symbols_json': CURRENCY_SYMBOLS,
         'stats': {
             'total': total,
             'active': active,
@@ -132,9 +125,10 @@ def item_table_api(request):
     search_value = request.GET.get('search[value]', '').strip()
     status_filter = request.GET.get('status', '').strip()
     category_id = request.GET.get('category', '').strip()
+    supplier_id = request.GET.get('supplier', '').strip()
 
     from .models import ItemUnit
-    qs = Item.objects.for_tenant(tenant).select_related('category').prefetch_related('item_units')
+    qs = Item.objects.for_tenant(tenant).select_related('category', 'supplier').prefetch_related('item_units')
     records_total = qs.count()
 
     if status_filter == 'active':
@@ -144,6 +138,9 @@ def item_table_api(request):
 
     if category_id:
         qs = qs.filter(category_id=category_id)
+
+    if supplier_id:
+        qs = qs.filter(supplier_id=supplier_id)
 
     if search_value:
         qs = qs.filter(
@@ -185,11 +182,11 @@ def item_table_api(request):
             'item_type': item.item_type,
             'barcode': item.barcode or '-',
             'category': item.category.name if item.category else '-',
+            'supplier': item.supplier.name if item.supplier else '-',
             'unit': _unit_label(item),
             'has_multiple_units': item.has_multiple_units,
             'cost_price': str(item.cost_price),
             'selling_price': str(item.selling_price),
-            'track_expiry': item.track_expiry,
             'track_serial': item.track_serial,
             'is_active': item.is_active,
         }
@@ -258,7 +255,7 @@ def item_create_api(request):
         return HttpResponseNotAllowed(['POST'])
 
     from django.db import IntegrityError
-    form = ItemForm(request.POST, request.FILES, tenant=tenant, capabilities=_get_capabilities(tenant))
+    form = ItemForm(request.POST, request.FILES, tenant=tenant)
     if form.is_valid():
         item = form.save(commit=False)
         item.tenant = tenant
@@ -268,6 +265,7 @@ def item_create_api(request):
             item.save()
         except IntegrityError:
             return JsonResponse({'success': False, 'message': 'رمز المنتج (SKU) مستخدم بالفعل، يرجى اختيار رمز آخر', 'errors': {'sku': ['رمز المنتج مستخدم بالفعل']}}, status=400)
+        form.save_m2m()
         _save_item_units(item, request.POST.get('units_json', ''), tenant)
         log_activity(request, 'إضافة منتج جديد',
                      f"المنتج: {item.name}\nكود: {item.sku or '—'}\nالنوع: {item.get_item_type_display()}", 'create')
@@ -292,7 +290,7 @@ def item_detail_api(request, pk):
         return JsonResponse({'success': False, 'message': 'لا يوجد نشاط تجاري'}, status=400)
 
     try:
-        item = Item.objects.for_tenant(tenant).select_related('category', 'unit', 'purchase_unit').get(pk=pk)
+        item = Item.objects.for_tenant(tenant).select_related('category', 'unit', 'purchase_unit', 'supplier').get(pk=pk)
     except Item.DoesNotExist:
         return JsonResponse({'success': False, 'message': 'المنتج غير موجود'}, status=404)
 
@@ -308,6 +306,8 @@ def item_detail_api(request, pk):
             'item_type': item.item_type,
             'category': item.category_id,
             'category_name': item.category.name if item.category else '',
+            'supplier': item.supplier_id,
+            'supplier_name': item.supplier.name if item.supplier else '',
             'unit': item.unit_id,
             'unit_name': item.unit.name if item.unit else '',
             'purchase_unit': item.purchase_unit_id,
@@ -318,9 +318,9 @@ def item_detail_api(request, pk):
             'tax_rate': str(item.tax_rate),
             'min_quantity': str(item.min_quantity),
             'max_quantity': str(item.max_quantity),
-            'track_expiry': item.track_expiry,
-            'track_batch': item.track_batch,
             'track_serial': item.track_serial,
+            'manufacturer': item.manufacturer,
+            'country_of_origin': item.country_of_origin,
             'description': item.description,
             'is_active': item.is_active,
             'is_sellable': item.is_sellable,
@@ -351,16 +351,19 @@ def item_transactions_api(request, pk):
         current_qty = 0
         movements = []
     else:
+        branch = getattr(request, 'branch', None)
         current_qty = (
-            StockQuantity.objects.for_tenant(tenant)
-            .filter(item=item)
+            filter_by_branch_via(
+                StockQuantity.objects.for_tenant(tenant).filter(item=item), branch, field='stock__branch',
+            )
             .aggregate(total=Sum('quantity'))['total']
             or 0
         )
 
         movements = (
-            StockMovement.objects.for_tenant(tenant)
-            .filter(item=item)
+            filter_by_branch_via(
+                StockMovement.objects.for_tenant(tenant).filter(item=item), branch, field='stock__branch',
+            )
             .select_related('stock')
             .order_by('-id')[:200]
         )
@@ -414,11 +417,12 @@ def item_update_api(request, pk):
     except Item.DoesNotExist:
         return JsonResponse({'success': False, 'message': 'المنتج غير موجود'}, status=404)
 
-    form = ItemForm(request.POST, request.FILES, instance=item, tenant=tenant, capabilities=_get_capabilities(tenant))
+    form = ItemForm(request.POST, request.FILES, instance=item, tenant=tenant)
     if form.is_valid():
         updated = form.save(commit=False)
         updated.updated_by = request.user
         updated.save()
+        form.save_m2m()
         _save_item_units(item, request.POST.get('units_json', ''), tenant)
         log_activity(request, 'تعديل منتج', updated.name, 'update')
         return JsonResponse({'success': True, 'message': 'تم تحديث المنتج بنجاح'})
@@ -451,9 +455,6 @@ def item_delete_api(request, pk):
 
     name = item.name
     try:
-        # BOMLine.component uses PROTECT; safe to remove before deletion
-        # (BOM lines are recipe definitions, not transactional records)
-        item.used_in_bom.all().delete()
         item.delete()
     except Exception as e:
         import logging
@@ -534,8 +535,6 @@ def item_search_api(request):
             'unit_name': unit_name,
             'unit_factor': unit_factor,
             'units': units,
-            'track_expiry': item.track_expiry,
-            'track_batch': item.track_batch,
             'track_serial': item.track_serial,
         })
     return JsonResponse({'results': results})
@@ -865,7 +864,7 @@ def item_export_api(request):
         'التصنيف', 'الوحدة', 'وحدة الشراء',
         'سعر التكلفة', 'سعر البيع', 'أدنى سعر بيع',
         'الحد الأدنى للمخزون', 'الحد الأقصى للمخزون',
-        'تتبع الصلاحية', 'تتبع الدفعات', 'تتبع السيريال',
+        'تتبع السيريال',
         'للبيع', 'للشراء', 'نشط',
     ])
     qs = Item.objects.for_tenant(tenant).select_related('category').prefetch_related('item_units').order_by('name')
@@ -878,164 +877,14 @@ def item_export_api(request):
             item.category.name if item.category else '',
             item.base_unit_name,
             '',
-            item.cost_price,
-            item.selling_price,
-            item.min_selling_price,
+            item.cost_price, item.selling_price, item.min_selling_price,
             item.min_quantity,
             item.max_quantity,
-            'نعم' if item.track_expiry else 'لا',
-            'نعم' if item.track_batch else 'لا',
             'نعم' if item.track_serial else 'لا',
             'نعم' if item.is_sellable else 'لا',
             'نعم' if item.is_purchasable else 'لا',
             'نعم' if item.is_active else 'لا',
         ])
-    return response
-
-
-_ITEM_FIELD_SCHEMA = [
-    {"field": "name",             "description": "اسم المنتج أو الصنف أو السلعة", "required": True},
-    {"field": "name_en",          "description": "الاسم الإنجليزي للمنتج"},
-    {"field": "barcode",          "description": "الباركود أو رمز المنتج أو رمز الشريط"},
-    {"field": "category",         "description": "التصنيف أو القسم أو الفئة"},
-    {"field": "unit",             "description": "وحدة القياس أو وحدة البيع"},
-    {"field": "purchase_unit",    "description": "وحدة الشراء"},
-    {"field": "cost_price",       "description": "سعر التكلفة أو سعر الشراء"},
-    {"field": "selling_price",    "description": "سعر البيع أو السعر"},
-    {"field": "min_selling_price","description": "أدنى سعر بيع أو أقل سعر مسموح"},
-    {"field": "min_quantity",     "description": "الحد الأدنى للمخزون أو أقل كمية"},
-    {"field": "max_quantity",     "description": "الحد الأقصى للمخزون أو أعلى كمية"},
-]
-
-
-@login_required
-@require_permission('import_items')
-def item_import_api(request):
-    import logging, traceback
-    from apps.core.io_utils import parse_uploaded_file, smart_get, safe_decimal
-    from apps.ai.services import smart_map_headers, match_category_name
-
-    tenant = _ensure_tenant(request)
-    if not tenant:
-        return JsonResponse({'success': False, 'message': 'لا يوجد نشاط تجاري'}, status=400)
-    if request.method != 'POST':
-        return HttpResponseNotAllowed(['POST'])
-    if 'file' not in request.FILES:
-        return JsonResponse({'success': False, 'message': 'لم يتم رفع أي ملف'}, status=400)
-
-    rows, err = parse_uploaded_file(request.FILES['file'])
-    if err:
-        return JsonResponse({'success': False, 'message': err}, status=400)
-
-    if not rows:
-        return JsonResponse({'success': False, 'message': 'الملف فارغ أو لا يحتوي على بيانات'}, status=400)
-
-    actual_headers = list(rows[0].keys())
-    try:
-        mapping = smart_map_headers(actual_headers, _ITEM_FIELD_SCHEMA)
-    except Exception:
-        mapping = {}
-
-    # Load existing categories & units once — avoid N+1 queries and enable AI matching
-    existing_cats = {c.name: c for c in Category.objects.for_tenant(tenant).only('id', 'name')}
-    existing_units = {u.name: u for u in Unit.objects.for_tenant(tenant).only('id', 'name')}
-
-    # Per-import caches so repeated names don't trigger repeated AI calls
-    cat_cache: dict = {}
-    unit_cache: dict = {}
-
-    def resolve_category(raw: str) -> Category | None:
-        if not raw:
-            return None
-        if raw in cat_cache:
-            return cat_cache[raw]
-
-        # 1. Exact match (case-insensitive)
-        raw_lower = raw.strip().lower()
-        for existing_name, cat in existing_cats.items():
-            if existing_name.strip().lower() == raw_lower:
-                cat_cache[raw] = cat
-                return cat
-
-        # 2. AI fuzzy match against existing names
-        matched = match_category_name(raw, list(existing_cats.keys()))
-        if matched:
-            cat_cache[raw] = existing_cats[matched]
-            return existing_cats[matched]
-
-        # 3. No match → create new category
-        new_cat, _ = Category.objects.for_tenant(tenant).get_or_create(
-            name=raw, defaults={'tenant': tenant}
-        )
-        existing_cats[raw] = new_cat
-        cat_cache[raw] = new_cat
-        return new_cat
-
-    def resolve_unit(raw: str) -> Unit | None:
-        if not raw:
-            return None
-        if raw in unit_cache:
-            return unit_cache[raw]
-
-        raw_lower = raw.strip().lower()
-        for existing_name, unit in existing_units.items():
-            if existing_name.strip().lower() == raw_lower:
-                unit_cache[raw] = unit
-                return unit
-
-        new_unit, _ = Unit.objects.for_tenant(tenant).get_or_create(
-            name=raw, defaults={'tenant': tenant}
-        )
-        existing_units[raw] = new_unit
-        unit_cache[raw] = new_unit
-        return new_unit
-
-    imported, errors = 0, []
-    for i, row in enumerate(rows, start=2):
-        try:
-            name = smart_get(row, 'name', mapping, 'الاسم', 'اسم المنتج', 'الصنف', 'name')
-            if not name:
-                errors.append(f'الصف {i}: اسم المنتج مطلوب')
-                continue
-
-            category = resolve_category(smart_get(row, 'category', mapping, 'التصنيف', 'القسم', 'الفئة', 'category'))
-            unit = resolve_unit(smart_get(row, 'unit', mapping, 'الوحدة', 'وحدة القياس', 'unit'))
-            purchase_unit = resolve_unit(smart_get(row, 'purchase_unit', mapping, 'وحدة الشراء', 'purchase_unit'))
-
-            Item.objects.create(
-                tenant=tenant,
-                name=name,
-                name_en=smart_get(row, 'name_en', mapping, 'الاسم الإنجليزي', 'name_en'),
-                barcode=smart_get(row, 'barcode', mapping, 'الباركود', 'barcode'),
-                category=category,
-                unit=unit,
-                purchase_unit=purchase_unit,
-                cost_price=safe_decimal(smart_get(row, 'cost_price', mapping, 'سعر التكلفة', 'التكلفة', 'cost_price', default='0')),
-                selling_price=safe_decimal(smart_get(row, 'selling_price', mapping, 'سعر البيع', 'السعر', 'selling_price', default='0')),
-                min_selling_price=safe_decimal(smart_get(row, 'min_selling_price', mapping, 'أدنى سعر بيع', 'min_selling_price', default='0')),
-                min_quantity=safe_decimal(smart_get(row, 'min_quantity', mapping, 'الحد الأدنى للمخزون', 'الحد الأدنى', 'min_quantity', default='0')),
-                max_quantity=safe_decimal(smart_get(row, 'max_quantity', mapping, 'الحد الأقصى للمخزون', 'الحد الأقصى', 'max_quantity', default='0')),
-                is_active=True,
-            )
-            imported += 1
-        except Exception as exc:
-            logging.getLogger('items').error('import row %d: %s\n%s', i, exc, traceback.format_exc())
-            errors.append(f'الصف {i}: {exc}')
-
-    msg = f'تم استيراد {imported} منتج بنجاح'
-    if errors:
-        msg += f'. {len(errors)} أخطاء'
-    return JsonResponse({'success': True, 'message': msg, 'imported': imported, 'errors': errors[:10]})
-
-
-@login_required
-@require_permission('import_items')
-def item_download_template(request):
-    from apps.core.io_utils import csv_response, csv_writer
-    response = csv_response('items_template.csv')
-    writer = csv_writer(response)
-    writer.writerow(['الاسم', 'التصنيف', 'الوحدة', 'سعر التكلفة', 'سعر البيع', 'الحد الأدنى للمخزون'])
-    writer.writerow(['منتج تجريبي', 'إلكترونيات', 'قطعة', '100', '150', '5'])
     return response
 
 
@@ -1077,7 +926,7 @@ _CATEGORY_FIELD_SCHEMA = [
 
 
 @login_required
-@require_permission('add_items')
+@require_permission('add_categories')
 def category_import_api(request):
     from apps.core.io_utils import parse_uploaded_file, smart_get, bool_from_str
     from apps.ai.services import smart_map_headers
@@ -1169,174 +1018,6 @@ def category_download_template(request):
 
 
 # ============================================================
-# BOM RECIPES — وصفات التصنيع
-# ============================================================
-
-@login_required
-@require_permission('view_items')
-def bom_recipe_list(request):
-    tenant = _ensure_tenant(request)
-    if not tenant:
-        return redirect('core:no_tenant')
-    recipes = BOMRecipe.objects.filter(tenant=tenant).select_related('item').order_by('item__name')
-    return render(request, 'items/bom_list.html', {'recipes': recipes})
-
-
-@login_required
-@require_permission('view_items')
-def bom_recipe_api(request):
-    """DataTable JSON for BOM recipe list."""
-    tenant = _ensure_tenant(request)
-    if not tenant:
-        return JsonResponse({'success': False, 'message': 'لا يوجد نشاط تجاري'}, status=400)
-
-    draw = int(request.GET.get('draw', 1))
-    start = int(request.GET.get('start', 0))
-    length = int(request.GET.get('length', 25))
-    search_value = request.GET.get('search[value]', '').strip()
-
-    qs = BOMRecipe.objects.filter(tenant=tenant).select_related('item')
-    records_total = qs.count()
-
-    if search_value:
-        qs = qs.filter(Q(item__name__icontains=search_value))
-
-    records_filtered = qs.count()
-    qs = qs[start:start + length]
-
-    data = [
-        {
-            'id': r.id,
-            'item_name': r.item.name,
-            'item_sku': r.item.sku,
-            'lines_count': r.lines.count(),
-            'is_active': r.is_active,
-            'total_cost': str(r.total_cost),
-        }
-        for r in qs
-    ]
-    return JsonResponse({'draw': draw, 'recordsTotal': records_total, 'recordsFiltered': records_filtered, 'data': data})
-
-
-@login_required
-@require_permission('view_items')
-def bom_recipe_detail(request, pk):
-    """GET: show recipe detail. POST (AJAX): save/delete a BOM line."""
-    tenant = _ensure_tenant(request)
-    if not tenant:
-        return redirect('core:no_tenant')
-
-    recipe = BOMRecipe.objects.filter(pk=pk, tenant=tenant).select_related('item').first()
-    if not recipe:
-        from django.http import Http404
-        raise Http404
-
-    if request.method == 'POST':
-        import json as _json
-        try:
-            payload = _json.loads(request.body)
-        except Exception:
-            payload = {}
-
-        action = payload.get('action', '')
-
-        if action == 'add_line':
-            component_id = payload.get('component_id')
-            quantity = payload.get('quantity', '1')
-            unit_id = payload.get('unit_id') or None
-            notes = payload.get('notes', '')
-            try:
-                from .models import ItemUnit
-                component = Item.objects.get(pk=component_id, tenant=tenant)
-                unit = ItemUnit.objects.get(pk=unit_id, item=component) if unit_id else None
-                from decimal import Decimal as D
-                line = BOMLine.objects.create(
-                    tenant=tenant,
-                    recipe=recipe,
-                    component=component,
-                    quantity=D(str(quantity)),
-                    unit=unit,
-                    notes=notes,
-                )
-                recipe.item.cost_price = recipe.total_cost
-                recipe.item.save(update_fields=['cost_price'])
-                return JsonResponse({'success': True, 'id': line.id, 'message': 'تم إضافة المكوّن'})
-            except Exception as e:
-                return JsonResponse({'success': False, 'message': str(e)}, status=400)
-
-        elif action == 'delete_line':
-            line_id = payload.get('line_id')
-            try:
-                line = BOMLine.objects.get(pk=line_id, recipe=recipe, tenant=tenant)
-                line.delete()
-                recipe.item.cost_price = recipe.total_cost
-                recipe.item.save(update_fields=['cost_price'])
-                return JsonResponse({'success': True, 'message': 'تم حذف المكوّن'})
-            except BOMLine.DoesNotExist:
-                return JsonResponse({'success': False, 'message': 'المكوّن غير موجود'}, status=404)
-
-        return JsonResponse({'success': False, 'message': 'إجراء غير معروف'}, status=400)
-
-    lines = recipe.lines.select_related('component', 'unit').order_by('id')
-    return render(request, 'items/bom_detail.html', {
-        'recipe': recipe,
-        'lines': lines,
-    })
-
-
-@login_required
-@require_permission('add_items')
-def bom_recipe_create_ajax(request):
-    """Create a BOM recipe for an item (AJAX POST)."""
-    tenant = _ensure_tenant(request)
-    if not tenant:
-        return JsonResponse({'success': False, 'message': 'لا يوجد نشاط تجاري'}, status=400)
-    if request.method != 'POST':
-        return HttpResponseNotAllowed(['POST'])
-
-    import json as _json
-    try:
-        payload = _json.loads(request.body)
-    except Exception:
-        payload = {}
-
-    item_id = payload.get('item_id')
-    try:
-        item = Item.objects.get(pk=item_id, tenant=tenant)
-    except Item.DoesNotExist:
-        return JsonResponse({'success': False, 'message': 'المنتج غير موجود'}, status=404)
-
-    if hasattr(item, 'bom_recipe'):
-        return JsonResponse({'success': False, 'message': 'توجد وصفة بالفعل لهذا المنتج', 'id': item.bom_recipe.pk})
-
-    recipe = BOMRecipe.objects.create(
-        tenant=tenant,
-        item=item,
-        notes=payload.get('notes', ''),
-        is_active=True,
-        created_by=request.user,
-        updated_by=request.user,
-    )
-    return JsonResponse({'success': True, 'id': recipe.pk, 'message': 'تم إنشاء الوصفة'})
-
-
-@login_required
-@require_permission('delete_items')
-@require_POST
-def bom_recipe_delete_ajax(request, pk):
-    """حذف وصفة تصنيع (AJAX POST)."""
-    tenant = _ensure_tenant(request)
-    if not tenant:
-        return JsonResponse({'success': False, 'message': 'لا يوجد نشاط تجاري'}, status=400)
-    try:
-        recipe = BOMRecipe.objects.get(pk=pk, tenant=tenant)
-        recipe.delete()
-        return JsonResponse({'success': True, 'message': 'تم حذف الوصفة بنجاح'})
-    except BOMRecipe.DoesNotExist:
-        return JsonResponse({'success': False, 'message': 'الوصفة غير موجودة'}, status=404)
-
-
-# ============================================================
 # ITEM META API — معلومات المنتج للنماذج الديناميكية
 # ============================================================
 
@@ -1361,8 +1042,6 @@ def item_meta_api(request, pk):
     return JsonResponse({
         'id': item.id,
         'name': item.name,
-        'track_expiry': item.track_expiry,
-        'track_batch': item.track_batch,
         'track_serial': item.track_serial,
         'cost_price': str(item.cost_price),
         'selling_price': str(item.selling_price),
@@ -1370,21 +1049,4 @@ def item_meta_api(request, pk):
         'unit_name': unit_name,
         'units': units,
     })
-
-
-# ============================================================
-# ITEM BATCHES — دفعات المنتج
-# ============================================================
-
-@login_required
-@require_permission('view_items')
-def item_batches(request, pk):
-    """قائمة دفعات منتج معين"""
-    tenant = _ensure_tenant(request)
-    if not tenant:
-        return redirect('core:no_tenant')
-    from django.shortcuts import get_object_or_404
-    item = get_object_or_404(Item, pk=pk, tenant=tenant)
-    batches = ItemBatch.objects.filter(tenant=tenant, item=item).select_related('stock').order_by('expiry_date')
-    return render(request, 'items/item_batches.html', {'item': item, 'batches': batches})
 

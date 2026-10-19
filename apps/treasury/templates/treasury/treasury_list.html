@@ -3,7 +3,9 @@
 {% load humanize %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/treasury.css' %}?v=2.0">
+<link rel="stylesheet" href="{% static 'css/treasury.css' %}?v=1.1">
+<style>[data-require-any-perm]{display:none!important}
+</style>
 {% endblock %}
 
 {% block page_header %}{% endblock %}
@@ -22,7 +24,7 @@
         </div>
         <div class="cx-hero-right">
             <div class="cx-hero-actions">
-                <button type="button" class="cx-btn-secondary" id="btnOpenTransfer" data-require-perm="transfer_treasuries">
+                <button type="button" class="cx-btn-secondary" id="btnOpenTransfer" data-require-any-perm="transfer_treasuries,transfer_head_office_treasury">
                     <i class="fas fa-exchange-alt"></i><span>تحويل بين الخزائن</span>
                 </button>
                 <button type="button" class="cx-btn-add" id="btnOpenCreateTreasury" data-require-perm="add_treasuries">
@@ -62,7 +64,6 @@
                     <th>الخزينة</th>
                     <th>الرمز</th>
                     <th>الرصيد الحالي</th>
-                    <th>العملة</th>
                     <th>الحالة</th>
                     <th>الافتراضية</th>
                     <th></th>
@@ -175,7 +176,7 @@
                 <div class="cx-modal-header">
                     <div>
                         <h5 class="cx-modal-title">
-                            <i class="fas fa-exchange-alt me-2" style="color:#d97706;"></i>
+                            <i class="fas fa-exchange-alt me-2"></i>
                             تحويل بين الخزائن
                         </h5>
                     </div>
@@ -183,6 +184,11 @@
                 </div>
                 <div class="cx-modal-body">
                     <div class="alert alert-danger d-none js-transfer-errors mb-3"></div>
+                    {% if current_tenant.version_type == 'multi_branch' %}
+                    <div class="alert alert-info py-2 small mb-3"><i class="fas fa-circle-info me-1"></i>
+                        التحويل هنا داخل {% if request.branch %}خزائن فرعك{% else %}خزائن الإدارة المركزية{% endif %} فقط.
+                    </div>
+                    {% endif %}
 
                     <div class="row g-3">
                         <div class="col-md-6">
@@ -208,7 +214,7 @@
                             </div>
                         </div>
                         <div class="col-md-6">
-                            <label class="cx-label">المبلغ ({{ local_currency_symbol }})</label>
+                            <label class="cx-label">المبلغ</label>
                             <div class="cx-field">
                                 <span class="cx-field__icon"><i class="fas fa-money-bill"></i></span>
                                 <input type="number" id="transferAmount" class="form-control cx-input" step="0.01" min="0.01" placeholder="0.00">
@@ -221,19 +227,13 @@
                                 <input type="date" id="transferDate" class="form-control cx-input">
                             </div>
                         </div>
-                        <div class="col-12">
+                        <div class="col-md-6">
                             <label class="cx-label">ملاحظات (اختياري)</label>
                             <div class="cx-field">
                                 <span class="cx-field__icon"><i class="fas fa-align-left"></i></span>
-                                <input type="text" id="transferNotes" class="form-control cx-input" placeholder="مثال: إيداع نقدي في البنك">
+                                <input type="text" id="transferNotes" class="form-control cx-input" placeholder="ملاحظات">
                             </div>
                         </div>
-                    </div>
-
-                    <!-- Summary -->
-                    <div class="xr-info-banner mt-3" id="transferSummary" style="display:none;">
-                        <div class="xr-info-banner__icon"><i class="fas fa-receipt"></i></div>
-                        <div class="xr-info-banner__text" id="transferSummaryText"></div>
                     </div>
                 </div>
                 <div class="cx-modal-footer">
@@ -246,6 +246,7 @@
         </div>
     </div>
 </div>
+
 
 <div class="modal fade" id="treasuryLedgerModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered cx-view-dialog cx-ledger-dialog">
@@ -271,10 +272,11 @@
                                 <th>المرجع / الوصف</th>
                                 <th>المبلغ</th>
                                 <th>الرصيد</th>
+                                <th></th>
                             </tr>
                         </thead>
                         <tbody id="treasuryLedgerBody">
-                            <tr><td colspan="5" class="text-center text-muted">لا توجد حركات</td></tr>
+                            <tr><td colspan="6" class="text-center text-muted">لا توجد حركات</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -292,6 +294,10 @@
 (function () {
     'use strict';
     const hasPerm = window.hasPerm || (function(){ return false; });
+    // أزرار تُظهرها أي صلاحية من قائمة (فرع أو إدارة).
+    document.querySelectorAll('[data-require-any-perm]').forEach(function (el) {
+        if (el.dataset.requireAnyPerm.split(',').some(k => hasPerm(k.trim()))) el.removeAttribute('data-require-any-perm');
+    });
 
     const TREASURY_TABLE_API = "{% url 'treasury:table_api' %}";
     const TREASURY_CREATE_API = "{% url 'treasury:create_api' %}";
@@ -372,6 +378,10 @@
                     document.getElementById('id_is_default').disabled = true;
                     document.getElementById('id_is_active').disabled = true;
                 }
+                if (d.is_head_office) {
+                    document.getElementById('id_is_default').disabled = true;
+                    document.getElementById('id_is_active').disabled = true;
+                }
 
                 document.getElementById('treasuryModalTitle').textContent = 'تعديل خزينة';
                 $submitBtn.html('<i class="fas fa-check me-1"></i>حفظ التعديلات');
@@ -408,7 +418,7 @@
                 tbody.innerHTML = resp.data.map(row => {
                     const key = row.movement_type_key || '';
                     let rowBg = 'transparent';
-                    let badgeStyle = 'background:rgba(19,37,57,.15);color:var(--primary-hover);';
+                    let badgeStyle = 'background:rgba(var(--primary-rgb),.15);color:var(--primary-hover);';
                     let amtColor = '#111827';
                     if (key === 'receipt') {
                         rowBg = 'rgba(17,153,142,.05)';
@@ -422,13 +432,16 @@
                     const refHtml = row.reference_type
                         ? `<span style="color:var(--primary);font-weight:600;">${row.reference_type}</span>${row.description ? ' — <span style="color:#6b7280;">' + row.description + '</span>' : ''}`
                         : (row.description ? `<span style="color:#6b7280;">${row.description}</span>` : '—');
+                    const cancelHtml = row.transfer_id
+                        ? `<button type="button" class="cx-btn-ghost js-cancel-transfer" data-transfer-id="${row.transfer_id}" style="font-size:.72rem;padding:.25rem .6rem;color:#dc2626;"><i class="fas fa-rotate-left me-1"></i>إلغاء</button>`
+                        : '';
                     return `<tr style="background:${rowBg};">
                         <td style="font-size:.8rem;color:#6b7280;">${row.movement_date || '—'}</td>
                         <td><span class="badge" style="${badgeStyle}font-size:.72rem;border-radius:6px;padding:.25rem .55rem;font-weight:700;">${row.movement_type || '—'}</span></td>
                         <td style="font-size:.8rem;">${refHtml}</td>
                         <td style="font-weight:700;color:${amtColor};">${BananIMS.formatMoney(row.amount || 0)}</td>
                         <td style="font-weight:700;color:var(--primary);">${BananIMS.formatMoney(row.running_balance || 0)}</td>
-                        <td style="font-size:.8rem;color:#6b7280;display:none;">${row.description || ''}</td>
+                        <td>${cancelHtml}</td>
                     </tr>`;
                 }).join('');
             })
@@ -437,7 +450,10 @@
             });
     }
 
+    let currentLedgerTreasuryId = null;
+
     function openTreasuryLedger(id) {
+        currentLedgerTreasuryId = id;
         fetch(`${TREASURY_DETAIL_API_BASE}${id}/detail/`)
             .then(r => r.json())
             .then(resp => {
@@ -452,6 +468,38 @@
             })
             .catch(() => BananIMS.toast('تعذر تحميل البيانات', 'error'));
     }
+
+    // إلغاء تحويل من داخل سجل الحركات (تفويض الحدث — الصفوف تُبنى ديناميكياً)
+    document.getElementById('treasuryLedgerBody')?.addEventListener('click', async function (e) {
+        const btn = e.target.closest('.js-cancel-transfer');
+        if (!btn) return;
+        const transferId = btn.dataset.transferId;
+        if (!(await BananIMS.confirmAction('هل أنت متأكد من إلغاء هذا التحويل؟ سيُسجَّل كحركتين عكسيتين جديدتين.', 'إلغاء التحويل', 'نعم، إلغاء التحويل'))) return;
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        fetch(`/treasury/api/transfer/${transferId}/cancel/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCookie('csrftoken'), 'X-Requested-With': 'XMLHttpRequest' },
+        })
+            .then(r => r.json().catch(() => ({ success: false, message: `خطأ من الخادم (${r.status})` })))
+            .then(resp => {
+                if (resp.success) {
+                    BananIMS.toast('تم إلغاء التحويل بنجاح', 'success');
+                    if (currentLedgerTreasuryId) loadTreasuryTransactions(currentLedgerTreasuryId);
+                    treasuryTable.ajax.reload(null, false);
+                } else {
+                    BananIMS.toast(resp.message || 'تعذر إلغاء التحويل', 'error');
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-rotate-left me-1"></i>إلغاء';
+                }
+            })
+            .catch(() => {
+                BananIMS.toast('تعذر الاتصال بالخادم', 'error');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-rotate-left me-1"></i>إلغاء';
+            });
+    });
 
     /* ── Mobile card renderer ───────────────────────────────── */
     function renderMobileTreasuryCards(rows) {
@@ -492,8 +540,8 @@
                 </div>
                 <div class="cx-treasury-card-actions">
                     <button class="cxr-act cxr-act--view js-view-treasury" data-id="${r.id}" aria-label="السجل" title="السجل"><i class="fas fa-list"></i></button>
-                    ${hasPerm('change_treasuries') ? `<button class="cxr-act js-edit-treasury" data-id="${r.id}" aria-label="تعديل" title="تعديل"><i class="fas fa-pen-to-square"></i></button>` : ''}
-                    ${hasPerm('delete_treasuries') ? (!r.is_system_default ? `<button class="cxr-act cxr-act--del js-delete-treasury" data-id="${r.id}" data-name="${r.name}" aria-label="حذف" title="حذف"><i class="fas fa-trash"></i></button>` : '') : ''}
+                    ${(r.is_head_office ? hasPerm('change_head_office_treasury') : hasPerm('change_treasuries')) ? `<button class="cxr-act js-edit-treasury" data-id="${r.id}" aria-label="تعديل" title="تعديل"><i class="fas fa-pen-to-square"></i></button>` : ''}
+                    ${hasPerm('delete_treasuries') ? (!r.is_system_default && !r.is_branch_main && !r.is_head_office ? `<button class="cxr-act cxr-act--del js-delete-treasury" data-id="${r.id}" data-name="${r.name}" aria-label="حذف" title="حذف"><i class="fas fa-trash"></i></button>` : '') : ''}
                 </div>
             </article>`;
         }).join('');
@@ -523,8 +571,7 @@
         columns: [
             { data: 'name' },
             { data: 'code' },
-            { data: 'current_balance', className: 'text-end', render: (v, _, row) => `${BananIMS.formatMoney(v || 0)} <span class="text-muted" style="font-size:.8rem;">${curSym(row.currency)}</span>` },
-            { data: 'currency', render: v => `<span class="cx-badge cx-badge--muted">${curSym(v)}</span>` },
+            { data: 'current_balance', className: 'text-end', render: v => BananIMS.formatMoney(v || 0) },
             { data: 'is_active', render: v => v ? '<span class="cx-badge cx-badge--success">نشطة</span>' : '<span class="cx-badge cx-badge--muted">موقوفة</span>' },
             { data: 'is_default', render: (v, _, row) => {
                 if (row.is_system_default) return '<span class="cx-badge cx-badge--info">خزينة النظام</span>';
@@ -536,10 +583,11 @@
                 searchable: false,
                 className: 'text-center',
                 render: function(_, __, row) {
-                    const canDelete = !row.is_system_default;
+                    const canDelete = !row.is_system_default && !row.is_branch_main && !row.is_head_office;
+                    const canEdit = row.is_head_office ? hasPerm('change_head_office_treasury') : hasPerm('change_treasuries');
                     return `<div class="cx-actions">
                         <button class="cx-btn-icon" onclick="window.openTreasuryLedger(${row.id})" title="السجل"><i class="fas fa-list"></i></button>
-                        ${hasPerm('change_treasuries') ? `<button class="cx-btn-icon" onclick="window.openEdit(${row.id})" title="تعديل"><i class="fas fa-pen-to-square"></i></button>` : '<span class="cx-btn-icon sales-btn-placeholder" aria-hidden="true"></span>'}
+                        ${canEdit ? `<button class="cx-btn-icon" onclick="window.openEdit(${row.id})" title="تعديل"><i class="fas fa-pen-to-square"></i></button>` : '<span class="cx-btn-icon sales-btn-placeholder" aria-hidden="true"></span>'}
                         ${hasPerm('delete_treasuries') ? (canDelete ? `<button class="cx-btn-icon cx-btn-icon--danger" onclick="window.openDelete(${row.id}, '${(row.name || '').replace(/'/g, "\\'")}')" title="حذف"><i class="fas fa-trash"></i></button>` : '<span class="cx-btn-icon sales-btn-placeholder" aria-hidden="true"></span>') : '<span class="cx-btn-icon sales-btn-placeholder" aria-hidden="true"></span>'}
                     </div>`;
                 }
@@ -625,12 +673,6 @@
     window.openDelete = openDelete;
     window.openTreasuryLedger = openTreasuryLedger;
 
-    /* ── Currency symbols map ────────────────────────────────────── */
-    const CURRENCY_SYMBOLS = {{ currency_symbols_json|safe }};
-    function curSym(code) {
-        return CURRENCY_SYMBOLS[(code || '').toUpperCase()] || code || '';
-    }
-
     /* ── Transfer Modal ─────────────────────────────────────────── */
     const TRANSFER_API = "{% url 'treasury:transfer_api' %}";
     const transferModalEl = document.getElementById('transferModal');
@@ -639,31 +681,13 @@
     // Pre-fill today's date
     const transferDateEl = document.getElementById('transferDate');
     if (transferDateEl) {
-        const today = new Date().toISOString().split('T')[0];
-        transferDateEl.value = today;
+        transferDateEl.value = new Date().toISOString().split('T')[0];
     }
-
-    function updateTransferSummary() {
-        const amount = parseFloat(document.getElementById('transferAmount').value) || 0;
-        const fromOpt = document.getElementById('transferFromTreasury');
-        const toOpt = document.getElementById('transferToTreasury');
-        const summary = document.getElementById('transferSummary');
-        const summaryText = document.getElementById('transferSummaryText');
-        if (!amount || !fromOpt.value || !toOpt.value) { if (summary) summary.style.display = 'none'; return; }
-        const fromName = fromOpt.options[fromOpt.selectedIndex]?.text || '';
-        const toName = toOpt.options[toOpt.selectedIndex]?.text || '';
-        const txt = `سيتم تحويل ${BananIMS.formatMoney(amount)} {{ local_currency_symbol }} من «${fromName}» إلى «${toName}»`;
-        if (summary) { summary.style.display = ''; summaryText.textContent = txt; }
-    }
-    document.getElementById('transferAmount')?.addEventListener('input', updateTransferSummary);
-    document.getElementById('transferFromTreasury')?.addEventListener('change', updateTransferSummary);
-    document.getElementById('transferToTreasury')?.addEventListener('change', updateTransferSummary);
 
     function openTransferModal() {
         document.getElementById('transferAmount').value = '';
         document.getElementById('transferNotes').value = '';
         document.querySelector('.js-transfer-errors')?.classList.add('d-none');
-        document.getElementById('transferSummary').style.display = 'none';
         transferModal?.show();
     }
 
@@ -699,8 +723,7 @@
             },
             body: JSON.stringify({
                 from_treasury: fromId, to_treasury: toId,
-                from_amount: amount, to_amount: amount,
-                exchange_rate: 1, transfer_date: transferDate, notes: notes,
+                amount: amount, transfer_date: transferDate, notes: notes,
             }),
         })
         .then(r => r.json().catch(() => ({ success: false, message: `خطأ من الخادم (${r.status})` })))
@@ -722,6 +745,7 @@
             console.error('Transfer error:', err);
         });
     });
+
 })();
 </script>
 {% endblock %}

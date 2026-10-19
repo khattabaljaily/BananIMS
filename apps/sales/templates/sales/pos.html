@@ -4,13 +4,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>الكاشير — BananIMS</title>
+    <title>الكاشير — {{ app_name }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="{% static 'css/main.css' %}?v=9.1">
-    <link rel="stylesheet" href="{% static 'css/pos.css' %}?v=4.1">
+    <link rel="stylesheet" href="{% static 'css/main.css' %}?v=8.2">
+    <link rel="stylesheet" href="{% static 'css/pos.css' %}?v=3.2">
     <meta name="csrf-token" content="{{ csrf_token }}">
-    <script>(function(){ document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'light'); })();</script>
+    <script>(function(){ document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'dark'); })();</script>
 </head>
 <body>
 
@@ -46,7 +46,7 @@
 
             <select id="posStock" class="pos-stock-select">
                 {% for s in stocks %}
-                <option value="{{ s.id }}" {% if s == default_stock %}selected{% endif %}>{{ s.name }}</option>
+                <option value="{{ s.id }}" {% if s == default_stock %}selected{% endif %}>{{ s.name }}{% if s.branch %} — {{ s.branch.name }}{% endif %}</option>
                 {% endfor %}
             </select>
 
@@ -174,6 +174,14 @@
                 <input type="number" id="splitBank" class="pos-split-input" placeholder="بنك" min="0" step="1">
             </div>
 
+            <!-- Bank account -->
+            <select id="bankAccountSelect" class="pos-bank-ref">
+                <option value="">— اختر الحساب البنكي —</option>
+                {% for b in bank_accounts %}
+                <option value="{{ b.id }}">{{ b.name }}</option>
+                {% endfor %}
+            </select>
+
             <!-- Bank ref -->
             <input type="text" id="bankRef" class="pos-bank-ref" placeholder="رقم المرجع / التحويل (اختياري)">
 
@@ -216,12 +224,35 @@
     </div>
 </div>
 
+<!-- ══ OUT-OF-STOCK: OTHER STOCKS ══════════════════════════ -->
+<div class="pos-success-overlay" id="oosOverlay">
+    <div class="pos-success-box" style="max-width:420px;text-align:right;">
+        <div class="pos-success-title" id="oosTitle" style="margin-bottom:1rem;"></div>
+        <div id="oosOtherStocksSection" style="display:none;">
+            <div style="font-weight:700;font-size:.85rem;color:var(--text-tertiary);margin-bottom:.5rem;">
+                <i class="fas fa-warehouse"></i> متوفر في مخزن آخر
+            </div>
+            <div id="oosOtherStocksList"></div>
+        </div>
+        <div id="oosEmptyMsg" style="display:none;color:var(--text-tertiary);font-size:.85rem;text-align:center;padding:1rem 0;">
+            لا يوجد مخزون آخر لهذا الصنف حالياً
+        </div>
+        <div class="pos-success-btns" style="margin-top:1.25rem;">
+            <button class="pos-success-btn primary" id="oosCloseBtn" style="width:100%;">إغلاق</button>
+        </div>
+    </div>
+</div>
+
 <script>
 (function() {
 'use strict';
 
 const CSRF         = document.querySelector('meta[name="csrf-token"]').content;
 const ITEMS_URL    = '{% url "sales:pos_items_api" %}';
+const OTHER_STOCKS_URL  = '{% url "sales:item_other_stocks_api" %}';
+const CAP = {
+    hasBranchStockLookup:  {{ tenant_capabilities.has_branch_stock_lookup|yesno:"true,false" }},
+};
 const CHECKOUT_URL = '{% url "sales:pos_checkout_api" %}';
 
 /* ── State ───────────────────────────────────────────── */
@@ -312,6 +343,7 @@ const $customer   = document.getElementById('posCustomerId');
 const $discType   = document.getElementById('discountType');
 const $discVal    = document.getElementById('discountValue');
 const $bankRef    = document.getElementById('bankRef');
+const $bankAccountSelect = document.getElementById('bankAccountSelect');
 const $splitCash  = document.getElementById('splitCash');
 const $splitBank  = document.getElementById('splitBank');
 const $splitFields= document.getElementById('splitFields');
@@ -375,8 +407,9 @@ function renderGrid(items) {
             qtyBadge = `<div class="pos-item-qty${cls ? ' ' + cls : ''}">${label}</div>`;
         }
 
+        const oosClickable = oos && CAP.hasBranchStockLookup;
         return `
-        <div class="pos-item-card${oos ? ' out-of-stock' : ''}"
+        <div class="pos-item-card${oos ? ' out-of-stock' : ''}${oosClickable ? ' pos-oos-clickable' : ''}"
              data-id="${item.id}"
              data-price="${item.selling_price}"
              data-tax="${item.tax_rate}"
@@ -398,7 +431,45 @@ function renderGrid(items) {
     $grid.querySelectorAll('.pos-item-card:not(.out-of-stock)').forEach(card => {
         card.addEventListener('click', () => addToCart(card));
     });
+
+    if (CAP.hasBranchStockLookup) {
+        $grid.querySelectorAll('.pos-item-card.out-of-stock').forEach(card => {
+            card.addEventListener('click', () => openOtherStocksModal(parseInt(card.dataset.id), card.dataset.name));
+        });
+    }
 }
+
+/* ── Out-of-stock: other stocks ──────────────────────────── */
+function openOtherStocksModal(itemId, itemName) {
+    const $overlay = document.getElementById('oosOverlay');
+    const $stockSection = document.getElementById('oosOtherStocksSection');
+    const $stockList = document.getElementById('oosOtherStocksList');
+    const $empty = document.getElementById('oosEmptyMsg');
+
+    document.getElementById('oosTitle').textContent = `نفد المخزون: ${itemName}`;
+    $stockSection.style.display = 'none';
+    $empty.style.display = 'none';
+    $stockList.innerHTML = '';
+    $overlay.classList.add('show');
+
+    fetch(`${OTHER_STOCKS_URL}?item_id=${itemId}&exclude_stock_id=${$stock.value}`)
+        .then(r => r.json())
+        .then(data => {
+            const stocks = (data.stocks || []);
+            if (!stocks.length) { $empty.style.display = ''; return; }
+            $stockSection.style.display = '';
+            $stockList.innerHTML = stocks.map(s => `
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:.5rem .8rem;margin-bottom:.3rem;background:var(--bg-hover,rgba(0,0,0,.03));border-radius:8px;">
+                    <span>${escHtml(s.stock_name)}</span>
+                    <strong>${s.available_qty}</strong>
+                </div>`).join('');
+        })
+        .catch(() => { $empty.style.display = ''; });
+}
+
+document.getElementById('oosCloseBtn').addEventListener('click', () => {
+    document.getElementById('oosOverlay').classList.remove('show');
+});
 
 /* ── Cart operations ─────────────────────────────────── */
 function addToCart(card) {
@@ -612,6 +683,7 @@ document.querySelectorAll('.pos-pay-btn').forEach(btn => {
 
         const needRef = currentMethod === 'bank' || currentMethod === 'split';
         $bankRef.classList.toggle('visible', needRef);
+        $bankAccountSelect.classList.toggle('visible', needRef);
 
         updateTotals();
     });
@@ -631,13 +703,19 @@ $checkoutBtn.addEventListener('click', async () => {
 
     if (currentMethod === 'cash') {
         cashAmt = t.grand;
+        const cashReceived = parseFloat($cashRcvd.value) || 0;
+        if (!$customer.value && cashReceived < t.grand - 0.01) {
+            showError('المبلغ المستلم أقل من الإجمالي المطلوب — لا يمكن قبول ذلك من زبون عابر');
+            return;
+        }
     } else if (currentMethod === 'bank') {
         bankAmt = t.grand;
     } else if (currentMethod === 'split') {
         cashAmt = parseFloat($splitCash.value) || 0;
         bankAmt = parseFloat($splitBank.value) || 0;
-        if (cashAmt + bankAmt < t.grand - 0.01) {
-            showError('مجموع النقدي + البنك أقل من الإجمالي');
+        const remainder = t.grand - cashAmt - bankAmt;
+        if (remainder > 0.01 && !$customer.value) {
+            showError('المبلغ المتبقي بعد النقدي/البنك يتطلب اختيار عميل');
             return;
         }
     } else if (currentMethod === 'credit') {
@@ -645,6 +723,11 @@ $checkoutBtn.addEventListener('click', async () => {
             showError('الدفع الآجل يتطلب اختيار عميل');
             return;
         }
+    }
+
+    if ((currentMethod === 'bank' || (currentMethod === 'split' && bankAmt > 0)) && !$bankAccountSelect.value) {
+        showError('اختر الحساب البنكي');
+        return;
     }
 
     const received = parseFloat($cashRcvd.value) || 0;
@@ -659,6 +742,7 @@ $checkoutBtn.addEventListener('click', async () => {
         cash_amount:    cashAmt,
         bank_amount:    bankAmt,
         bank_reference: $bankRef.value,
+        bank_account_id: $bankAccountSelect.value || null,
         discount_type:  $discType.value,
         discount_value: parseFloat($discVal.value) || 0,
         notes:          $notes.value,

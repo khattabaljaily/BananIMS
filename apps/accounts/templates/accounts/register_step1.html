@@ -1,14 +1,30 @@
 {% extends "layouts/auth.html" %}
-{% load humanize %}
+{% load static humanize %}
+
+{% block auth_illustration %}
+<div class="auth-illustration">
+    <div class="auth-illu-mark">
+        <img src="{% static 'logo/logo-dark.png' %}" alt="">
+    </div>
+    <span class="auth-illu-word">{{ app_name }}</span>
+    <h2 class="auth-illu-title">ابدأ رحلتك <em>اليوم</em></h2>
+    <p class="auth-illu-desc">ثلاث خطوات قصيرة تفصلك عن نظام متكامل لمبيعاتك ومخزونك وفواتيرك.</p>
+    <div class="auth-illu-feats">
+        <div class="auth-illu-feat"><span class="fi"><i class="fas fa-robot"></i></span> الذكاء الاصطناعي</div>
+        <div class="auth-illu-feat"><span class="fi"><i class="fas fa-cart-shopping"></i></span> المتجر الإلكتروني</div>
+        <div class="auth-illu-feat"><span class="fi"><i class="fas fa-shield-halved"></i></span> الأمان والنسخ الاحتياطي</div>
+    </div>
+</div>
+{% endblock %}
 
 {% block auth_content %}
-<div class="text-center mb-4">
+<div class="text-center mb-2">
     <h1 class="auth-title">إنشاء حساب جديد</h1>
     <p class="auth-subtitle">الخطوة الأولى: أدخل بيانات المستخدم الأساسية</p>
 </div>
 
 <!-- Progress Steps -->
-<div class="progress-steps mb-4">
+<div class="progress-steps mb-4" style="--step-fill:0%">
     <div class="progress-step active">
         <div class="progress-step-circle">
             <i class="fas fa-user"></i>
@@ -19,7 +35,7 @@
         <div class="progress-step-circle">
             <i class="fas fa-store"></i>
         </div>
-        <span class="progress-step-label">النشاط التجاري</span>
+        <span class="progress-step-label">بيانات النشاط</span>
     </div>
     <div class="progress-step">
         <div class="progress-step-circle">
@@ -35,33 +51,51 @@
     <div class="alert alert-danger auth-alert js-form-errors d-none mb-3"></div>
 
     <div class="auth-form-grid">
-        <div class="mb-3">
+        <div class="mb-2 field-start">
             {{ form.username.label_tag }}
-            {{ form.username }}
+            <div class="input-icon-field">
+                <i class="fas fa-user input-icon"></i>
+                {{ form.username }}
+            </div>
             {% if form.username.errors %}
             <div class="text-danger small mt-1 js-field-errors" data-field="username">{{ form.username.errors }}</div>
             {% endif %}
         </div>
-        
-        <div class="mb-3">
+
+        <div class="mb-2 field-end">
             {{ form.email.label_tag }}
-            {{ form.email }}
+            <div class="input-icon-field">
+                <i class="fas fa-envelope input-icon"></i>
+                {{ form.email }}
+            </div>
             {% if form.email.errors %}
             <div class="text-danger small mt-1 js-field-errors" data-field="email">{{ form.email.errors }}</div>
             {% endif %}
         </div>
-        
-        <div class="mb-3">
+
+        <div class="mb-2 field-start">
             {{ form.password.label_tag }}
-            {{ form.password }}
+            <div class="input-icon-field has-toggle">
+                <i class="fas fa-lock input-icon"></i>
+                {{ form.password }}
+                <button type="button" class="input-toggle-pass" data-toggle-target="{{ form.password.id_for_label }}" aria-label="إظهار كلمة المرور">
+                    <i class="fas fa-eye"></i>
+                </button>
+            </div>
             {% if form.password.errors %}
             <div class="text-danger small mt-1 js-field-errors" data-field="password">{{ form.password.errors }}</div>
             {% endif %}
         </div>
-        
-        <div class="mb-3">
+
+        <div class="mb-2 field-end">
             {{ form.password_confirm.label_tag }}
-            {{ form.password_confirm }}
+            <div class="input-icon-field has-toggle">
+                <i class="fas fa-lock input-icon"></i>
+                {{ form.password_confirm }}
+                <button type="button" class="input-toggle-pass" data-toggle-target="{{ form.password_confirm.id_for_label }}" aria-label="إظهار كلمة المرور">
+                    <i class="fas fa-eye"></i>
+                </button>
+            </div>
             {% if form.password_confirm.errors %}
             <div class="text-danger small mt-1 js-field-errors" data-field="password_confirm">{{ form.password_confirm.errors }}</div>
             {% endif %}

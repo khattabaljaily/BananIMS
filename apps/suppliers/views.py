@@ -13,13 +13,19 @@ import csv
 import io
 import json
 
-from apps.accounts.decorators import require_permission
+from apps.accounts.decorators import require_permission, require_scoped_permission, branch_scope_exempt
+from apps.core.utils import (
+    filter_by_branch_via, enforce_branch_ownership, operational_money_accounts,
+    is_central_request, scoped_suppliers, scoped_money_accounts,
+)
 from .forms import SupplierForm
 from .models import Supplier
 from apps.purchases.models import SupplierLedger
 from apps.purchases.services import _apply_supplier_ledger
 from apps.treasury.models import Treasury, TreasuryMovement
 from apps.treasury.services import post_treasury_disbursement, post_treasury_receipt
+from apps.bank_accounts.models import BankAccount, BankAccountMovement
+from apps.bank_accounts.services import post_bank_account_disbursement, post_bank_account_receipt
 
 
 def _ensure_tenant(request):
@@ -29,20 +35,32 @@ def _ensure_tenant(request):
     return tenant
 
 
+def _scope_payment_ledger(qs, request):
+    """دفتر الموردين ضمن نطاق الطلب (مركزي: موردو الإدارة؛ غيره: موردو الفرع دون المركزيين)."""
+    if is_central_request(request):
+        return qs.filter(supplier__branch__isnull=True)
+    qs = filter_by_branch_via(qs, getattr(request, 'branch', None), field='supplier__branch')
+    tenant = getattr(request, 'tenant', None)
+    if tenant is not None and tenant.has_central_warehouse() and getattr(request, 'branch', None) is None:
+        qs = qs.exclude(supplier__branch__isnull=True)
+    return qs
+
+
 @login_required
-@require_permission('view_suppliers')
+@require_scoped_permission('view_suppliers')
 def supplier_list(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
 
-    qs = Supplier.objects.for_tenant(tenant)
+    qs = scoped_suppliers(request, tenant)
     total = qs.count()
     active = qs.filter(is_active=True).count()
     inactive = total - active
 
     context = {
-        'form': SupplierForm(),
+        'form': SupplierForm(tenant=tenant, branch=getattr(request, 'branch', None), central=is_central_request(request)),
+        'central_scope': is_central_request(request),
         'stats': {
             'total': total,
             'active': active,
@@ -68,7 +86,7 @@ def _json_ok(data=None, msg='تمت العملية بنجاح'):
 
 
 @login_required
-@require_permission('view_suppliers')
+@require_scoped_permission('view_suppliers')
 def supplier_table_api(request):
     tenant = _ensure_tenant(request)
     if not tenant:
@@ -80,7 +98,7 @@ def supplier_table_api(request):
     search_value = request.GET.get('search[value]', '').strip()
     status = request.GET.get('status', '').strip()
 
-    queryset = Supplier.objects.for_tenant(tenant)
+    queryset = scoped_suppliers(request, tenant)
     records_total = queryset.count()
 
     if status == 'active':
@@ -118,15 +136,17 @@ def supplier_table_api(request):
 
     queryset = queryset.order_by(order_field)[start:start + length]
 
-    def _supplier_balance(supplier):
+    def _supplier_balance_data(supplier):
+        ledger_total = SupplierLedger.objects.filter(tenant=tenant, supplier=supplier).aggregate(
+            local=Sum('amount')
+        )['local'] if SupplierLedger else None
         opening = supplier.opening_balance or Decimal('0')
-        local_sum = SupplierLedger.objects.filter(tenant=tenant, supplier=supplier).aggregate(
-            s=Sum('amount')
-        )['s'] or Decimal('0')
-        return (opening + local_sum).quantize(Decimal('0.01'))
+        local_bal = opening + (ledger_total or Decimal('0'))
+        return {'current_balance': str(local_bal.quantize(Decimal('0.01')))}
 
     data = []
     for supplier in queryset:
+        bal = _supplier_balance_data(supplier)
         data.append({
             'id': supplier.id,
             'code': supplier.code,
@@ -134,7 +154,7 @@ def supplier_table_api(request):
             'phone': supplier.phone or '-',
             'city': supplier.city or '-',
             'opening_balance': str(supplier.opening_balance),
-            'current_balance': str(_supplier_balance(supplier)),
+            'current_balance': bal['current_balance'],
             'is_active': supplier.is_active,
         })
 
@@ -149,7 +169,7 @@ def supplier_table_api(request):
 
 
 @login_required
-@require_permission('add_suppliers')
+@require_scoped_permission('add_suppliers')
 def supplier_create_api(request):
     tenant = _ensure_tenant(request)
     if not tenant:
@@ -158,10 +178,15 @@ def supplier_create_api(request):
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
 
-    form = SupplierForm(request.POST)
+    branch = getattr(request, 'branch', None)
+    form = SupplierForm(request.POST, tenant=tenant, branch=branch, central=is_central_request(request))
     if form.is_valid():
         supplier = form.save(commit=False)
         supplier.tenant = tenant
+        if branch is not None:
+            supplier.branch = branch
+        if is_central_request(request):
+            supplier.branch = None  # مورد مركزي: تملكه الإدارة
         supplier.created_by = request.user
         supplier.updated_by = request.user
         supplier.save()
@@ -181,19 +206,20 @@ def supplier_create_api(request):
 
 
 @login_required
-@require_permission('view_suppliers')
+@require_scoped_permission('view_suppliers')
 def supplier_detail_api(request, pk):
     tenant = _ensure_tenant(request)
     if not tenant:
         return JsonResponse({'success': False, 'message': 'لا يوجد نشاط تجاري'}, status=400, json_dumps_params={'ensure_ascii': False})
 
-    supplier = get_object_or_404(Supplier.objects.for_tenant(tenant), pk=pk)
+    supplier = get_object_or_404(scoped_suppliers(request, tenant), pk=pk)
+    enforce_branch_ownership(request, supplier)
 
+    ledger_total = SupplierLedger.objects.filter(tenant=tenant, supplier=supplier).aggregate(
+        local=Sum('amount')
+    )['local']
     opening = supplier.opening_balance or Decimal('0')
-    local_sum = SupplierLedger.objects.filter(tenant=tenant, supplier=supplier).aggregate(
-        s=Sum('amount')
-    )['s'] or Decimal('0')
-    current_balance_val = (opening + local_sum).quantize(Decimal('0.01'))
+    current_balance_val = (opening + (ledger_total or Decimal('0'))).quantize(Decimal('0.01'))
 
     return JsonResponse({
         'success': True,
@@ -204,6 +230,7 @@ def supplier_detail_api(request, pk):
             'email': supplier.email,
             'city': supplier.city,
             'address': supplier.address,
+            'branch': supplier.branch_id,
             'opening_balance': str(opening),
             'current_balance': str(current_balance_val),
             'credit_limit': str(supplier.credit_limit),
@@ -214,13 +241,14 @@ def supplier_detail_api(request, pk):
 
 
 @login_required
-@require_permission('view_supplier_transactions')
+@require_scoped_permission('view_supplier_transactions')
 def supplier_transactions_api(request, pk):
     tenant = _ensure_tenant(request)
     if not tenant:
         return JsonResponse({'success': False, 'message': 'لا يوجد نشاط تجاري'}, status=400, json_dumps_params={'ensure_ascii': False})
 
-    supplier = get_object_or_404(Supplier.objects.for_tenant(tenant), pk=pk)
+    supplier = get_object_or_404(scoped_suppliers(request, tenant), pk=pk)
+    enforce_branch_ownership(request, supplier)
     opening = supplier.opening_balance or Decimal('0')
 
     data = []
@@ -285,28 +313,32 @@ def supplier_transactions_api(request, pk):
 
 
 @login_required
-@require_permission('view_supplier_payments')
+@require_scoped_permission('view_supplier_payments')
 def supplier_payments(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
 
-    suppliers = Supplier.objects.for_tenant(tenant).filter(is_active=True).annotate(
+    suppliers = scoped_suppliers(request, tenant).filter(is_active=True).annotate(
         ledger_total=Coalesce(
             Sum('ledger_entries__amount', output_field=DecimalField(max_digits=14, decimal_places=2)),
             Value(0, output_field=DecimalField(max_digits=14, decimal_places=2)),
             output_field=DecimalField(max_digits=14, decimal_places=2),
         ),
     ).order_by('name')
-    treasuries = Treasury.objects.for_tenant(tenant).filter(is_active=True).order_by('name')
-    stats = SupplierLedger.objects.for_tenant(tenant).filter(entry_type='payment').aggregate(
+    treasuries = scoped_money_accounts(Treasury.objects.for_tenant(tenant), request).filter(is_active=True).order_by('name')
+    bank_accounts = scoped_money_accounts(BankAccount.objects.for_tenant(tenant), request).filter(is_active=True).order_by('name')
+    branch = getattr(request, 'branch', None)
+    stats = _scope_payment_ledger(
+        SupplierLedger.objects.for_tenant(tenant).filter(entry_type='payment'), request
+    ).aggregate(
         total=Coalesce(
             Sum('amount', output_field=DecimalField(max_digits=14, decimal_places=2)),
             Value(0, output_field=DecimalField(max_digits=14, decimal_places=2)),
             output_field=DecimalField(max_digits=14, decimal_places=2),
         ),
         cash=Coalesce(
-            Sum('amount', filter=Q(reference_type='supplier_payment_cash'), output_field=DecimalField(max_digits=14, decimal_places=2)),
+            Sum('amount', filter=Q(reference_type__in=['supplier_payment_cash']), output_field=DecimalField(max_digits=14, decimal_places=2)),
             Value(0, output_field=DecimalField(max_digits=14, decimal_places=2)),
             output_field=DecimalField(max_digits=14, decimal_places=2),
         ),
@@ -323,8 +355,11 @@ def supplier_payments(request):
     context = {
         'suppliers': suppliers,
         'treasuries': treasuries,
+        'bank_accounts': bank_accounts,
         'stats': {
-            'total': SupplierLedger.objects.for_tenant(tenant).filter(entry_type='payment').count(),
+            'total': _scope_payment_ledger(
+                SupplierLedger.objects.for_tenant(tenant).filter(entry_type='payment'), request
+            ).count(),
             'total_amount': positive(stats['total']),
             'cash_amount': positive(stats['cash']),
             'bank_amount': positive(stats['bank']),
@@ -335,7 +370,7 @@ def supplier_payments(request):
 
 
 @login_required
-@require_permission('view_supplier_payments')
+@require_scoped_permission('view_supplier_payments')
 def supplier_payments_table_api(request):
     tenant = _ensure_tenant(request)
     if not tenant:
@@ -349,6 +384,7 @@ def supplier_payments_table_api(request):
     method_filter = request.GET.get('payment_method', '')
 
     qs = SupplierLedger.objects.for_tenant(tenant).filter(entry_type='payment')
+    qs = _scope_payment_ledger(qs, request)
     total = qs.count()
 
     if supplier_filter:
@@ -395,7 +431,7 @@ def supplier_payments_table_api(request):
     page_qs = qs[start: start + length]
     data = []
     for entry in page_qs:
-        display_amount = abs(entry.amount)
+        display_amount = abs(entry.amount) if entry.amount is not None else None
         cash_types = ('supplier_payment_cash', 'purchase_payment_cash')
         bank_types = ('supplier_payment_bank', 'purchase_payment_bank')
         if entry.reference_type in cash_types:
@@ -430,48 +466,59 @@ def supplier_payments_table_api(request):
 
 
 @login_required
-@require_permission('view_supplier_payments')
+@require_scoped_permission('view_supplier_payments')
 def supplier_payment_detail_api(request, pk):
     tenant = _ensure_tenant(request)
     if not tenant:
         return _json_error('لا يوجد نشاط تجاري')
 
     payment = get_object_or_404(
-        SupplierLedger.objects.for_tenant(tenant).select_related('supplier'),
+        _scope_payment_ledger(SupplierLedger.objects.for_tenant(tenant).select_related('supplier'), request),
         entry_type='payment',
         pk=pk,
     )
+    enforce_branch_ownership(request, payment, field='supplier__branch')
 
     cancellation = SupplierLedger.objects.for_tenant(tenant).filter(
         reference_type='supplier_payment_cancel',
         reference_id=payment.id,
     ).first()
     cash_treasury = None
-    if payment.reference_type == 'supplier_payment_cash':
+    if payment.reference_type in ('supplier_payment_cash',):
         treasury_movement = TreasuryMovement.objects.for_tenant(tenant).filter(
             reference_type=payment.reference_type,
             reference_id=payment.id,
         ).select_related('treasury').first()
         if treasury_movement:
             cash_treasury = treasury_movement.treasury.name
+    bank_account_name = None
+    if payment.reference_type == 'supplier_payment_bank':
+        bank_movement = BankAccountMovement.objects.for_tenant(tenant).filter(
+            reference_type=payment.reference_type,
+            reference_id=payment.id,
+        ).select_related('bank_account').first()
+        if bank_movement:
+            bank_account_name = bank_movement.bank_account.name
 
+    display_amount = abs(payment.amount) if payment.amount is not None else None
     response_data = {
         'id': payment.id,
         'entry_date': payment.entry_date.strftime('%Y-%m-%d'),
         'supplier': payment.supplier.name,
-        'amount': str(abs(payment.amount)),
+        'amount': str(display_amount),
         'payment_method': 'نقداً' if payment.reference_type == 'supplier_payment_cash' else 'بنكي',
         'notes': payment.notes or '—',
         'is_canceled': bool(cancellation),
         'cancellation_note': cancellation.notes if cancellation else '',
         'cancellation_date': cancellation.entry_date.strftime('%Y-%m-%d') if cancellation else None,
         'cash_treasury': cash_treasury,
+        'bank_account': bank_account_name,
     }
     return _json_ok(data=response_data)
 
 
 @login_required
-@require_permission('add_supplier_payments')
+@require_scoped_permission('add_supplier_payments')
 @require_POST
 def supplier_payment_create_api(request):
     tenant = _ensure_tenant(request)
@@ -488,6 +535,7 @@ def supplier_payment_create_api(request):
         payment_date = body.get('payment_date') or timezone.localdate().isoformat()
         method = body.get('method', 'cash')
         treasury_id = body.get('treasury_id')
+        bank_account_id = body.get('bank_account_id')
         reference = str(body.get('reference', '') or '').strip()
         notes = str(body.get('notes', '') or '').strip()
     except (TypeError, ValueError, json.JSONDecodeError) as e:
@@ -497,13 +545,18 @@ def supplier_payment_create_api(request):
         return _json_error('المبلغ يجب أن يكون أكبر من الصفر')
 
     supplier = get_object_or_404(Supplier.objects.for_tenant(tenant), pk=supplier_id)
+    enforce_branch_ownership(request, supplier)
     note_text = notes
     if reference:
         note_text = f"{note_text} | مرجع: {reference}" if note_text else f"مرجع: {reference}"
     if not note_text:
         note_text = 'سداد مورد'
 
-    reference_type = 'supplier_payment_bank' if method == 'bank' else 'supplier_payment_cash'
+    # Determine reference type based on payment path
+    if method == 'bank':
+        reference_type = 'supplier_payment_bank'
+    else:
+        reference_type = 'supplier_payment_cash'
 
     try:
         with transaction.atomic():
@@ -521,7 +574,8 @@ def supplier_payment_create_api(request):
             if method == 'cash':
                 if not treasury_id:
                     raise ValueError('يجب اختيار الخزينة عند دفع نقداً')
-                treasury = get_object_or_404(Treasury.objects.for_tenant(tenant), pk=int(treasury_id))
+                treasury = get_object_or_404(scoped_money_accounts(Treasury.objects.for_tenant(tenant), request), pk=int(treasury_id))
+                enforce_branch_ownership(request, treasury)
                 movement = post_treasury_disbursement(
                     tenant=tenant,
                     amount=amount,
@@ -534,6 +588,23 @@ def supplier_payment_create_api(request):
                 )
                 if not movement:
                     raise ValueError('تعذر تسجيل حركة الخزينة')
+            elif method == 'bank':
+                if not bank_account_id:
+                    raise ValueError('يجب اختيار الحساب البنكي عند الدفع بنكياً')
+                bank_account = get_object_or_404(scoped_money_accounts(BankAccount.objects.for_tenant(tenant), request), pk=int(bank_account_id))
+                enforce_branch_ownership(request, bank_account)
+                movement = post_bank_account_disbursement(
+                    tenant=tenant,
+                    amount=amount,
+                    date=payment_date,
+                    reference_type=reference_type,
+                    reference_id=payment_entry.id if payment_entry else None,
+                    description=f'دفعة مورد {supplier.name}',
+                    user=request.user,
+                    bank_account=bank_account,
+                )
+                if not movement:
+                    raise ValueError('تعذر تسجيل حركة الحساب البنكي')
     except ValueError as e:
         return _json_error(str(e), status=400)
     except Exception:
@@ -553,7 +624,7 @@ def supplier_payment_create_api(request):
 
 
 @login_required
-@require_permission('cancel_supplier_payments')
+@require_scoped_permission('cancel_supplier_payments')
 @require_POST
 def supplier_payment_cancel_api(request, pk):
     tenant = _ensure_tenant(request)
@@ -561,9 +632,10 @@ def supplier_payment_cancel_api(request, pk):
         return _json_error('لا يوجد نشاط تجاري')
 
     payment = get_object_or_404(
-        SupplierLedger.objects.for_tenant(tenant).filter(entry_type='payment'),
+        _scope_payment_ledger(SupplierLedger.objects.for_tenant(tenant).filter(entry_type='payment'), request),
         pk=pk,
     )
+    enforce_branch_ownership(request, payment, field='supplier__branch')
     reverse_notes = f"إلغاء دفعة مورد — {payment.notes or ''}".strip()
     with transaction.atomic():
         if payment.reference_type == 'supplier_payment_cash':
@@ -582,6 +654,22 @@ def supplier_payment_cancel_api(request, pk):
                     user=request.user,
                     treasury=treasury_movement.treasury,
                 )
+        elif payment.reference_type == 'supplier_payment_bank':
+            bank_movement = BankAccountMovement.objects.for_tenant(tenant).filter(
+                reference_type=payment.reference_type,
+                reference_id=payment.id,
+            ).first()
+            if bank_movement:
+                post_bank_account_receipt(
+                    tenant=tenant,
+                    amount=bank_movement.amount,
+                    date=timezone.localdate(),
+                    reference_type=f'{payment.reference_type}_cancel',
+                    reference_id=payment.id,
+                    description=f'إلغاء دفعة مورد {payment.supplier.name}',
+                    user=request.user,
+                    bank_account=bank_movement.bank_account,
+                )
 
         _apply_supplier_ledger(
             tenant=tenant,
@@ -599,7 +687,7 @@ def supplier_payment_cancel_api(request, pk):
 
 
 @login_required
-@require_permission('change_suppliers')
+@require_scoped_permission('change_suppliers')
 def supplier_update_api(request, pk):
     tenant = _ensure_tenant(request)
     if not tenant:
@@ -608,8 +696,9 @@ def supplier_update_api(request, pk):
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
 
-    supplier = get_object_or_404(Supplier.objects.for_tenant(tenant), pk=pk)
-    form = SupplierForm(request.POST, instance=supplier)
+    supplier = get_object_or_404(scoped_suppliers(request, tenant), pk=pk)
+    enforce_branch_ownership(request, supplier)
+    form = SupplierForm(request.POST, instance=supplier, tenant=tenant, branch=getattr(request, 'branch', None), central=is_central_request(request))
 
     if form.is_valid():
         supplier = form.save(commit=False)
@@ -629,7 +718,7 @@ def supplier_update_api(request, pk):
 
 
 @login_required
-@require_permission('delete_suppliers')
+@require_scoped_permission('delete_suppliers')
 def supplier_delete_api(request, pk):
     tenant = _ensure_tenant(request)
     if not tenant:
@@ -638,7 +727,8 @@ def supplier_delete_api(request, pk):
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
 
-    supplier = get_object_or_404(Supplier.objects.for_tenant(tenant), pk=pk)
+    supplier = get_object_or_404(scoped_suppliers(request, tenant), pk=pk)
+    enforce_branch_ownership(request, supplier)
     sup_name = supplier.name
     try:
         supplier.delete()
@@ -659,85 +749,6 @@ def supplier_delete_api(request, pk):
 def supplier_create(request):
     return redirect('suppliers:list')
 
-
-_SUPPLIER_FIELD_SCHEMA = [
-    {"field": "name",            "description": "اسم المورد أو الشركة أو المصنع", "required": True},
-    {"field": "phone",           "description": "رقم الهاتف أو الجوال أو الموبايل"},
-    {"field": "email",           "description": "البريد الإلكتروني"},
-    {"field": "city",            "description": "المدينة أو المنطقة أو الموقع"},
-    {"field": "address",         "description": "العنوان التفصيلي أو الشارع"},
-    {"field": "opening_balance", "description": "المديونية الافتتاحية أو مديونية البداية أو الرصيد الافتتاحي"},
-    {"field": "credit_limit",    "description": "حد الائتمان أو سقف الدين"},
-    {"field": "notes",           "description": "ملاحظات أو تعليقات"},
-]
-
-
-@login_required
-@require_permission('import_suppliers')
-def supplier_import_api(request):
-    """Import suppliers from Excel/CSV with AI-assisted column mapping."""
-    from apps.core.io_utils import parse_uploaded_file, smart_get, safe_decimal, clean_phone, clean_email
-    from apps.ai.services import smart_map_headers
-
-    tenant = _ensure_tenant(request)
-    if not tenant:
-        return JsonResponse({'success': False, 'message': 'لا يوجد نشاط تجاري'}, status=400, json_dumps_params={'ensure_ascii': False})
-
-    if request.method != 'POST':
-        return HttpResponseNotAllowed(['POST'])
-
-    if 'file' not in request.FILES:
-        return JsonResponse({'success': False, 'message': 'لم يتم رفع أي ملف'}, status=400, json_dumps_params={'ensure_ascii': False})
-
-    rows, err = parse_uploaded_file(request.FILES['file'])
-    if err:
-        return JsonResponse({'success': False, 'message': err}, status=400, json_dumps_params={'ensure_ascii': False})
-
-    if not rows:
-        return JsonResponse({'success': False, 'message': 'الملف فارغ أو لا يحتوي على بيانات'}, status=400, json_dumps_params={'ensure_ascii': False})
-
-    actual_headers = list(rows[0].keys())
-    try:
-        mapping = smart_map_headers(actual_headers, _SUPPLIER_FIELD_SCHEMA)
-    except Exception:
-        mapping = {}
-
-    imported_count, errors = 0, []
-    for row_num, row in enumerate(rows, start=2):
-        try:
-            name = smart_get(row, 'name', mapping, 'الاسم', 'اسم المورد', 'المورد', 'الشركة', 'name')
-            if not name:
-                errors.append(f'الصف {row_num}: اسم المورد مطلوب')
-                continue
-
-            Supplier.objects.create(
-                tenant=tenant,
-                name=name,
-                phone=clean_phone(smart_get(row, 'phone', mapping, 'الهاتف', 'الجوال', 'الموبايل', 'phone')) or '',
-                email=clean_email(smart_get(row, 'email', mapping, 'البريد', 'البريد الإلكتروني', 'email')) or '',
-                city=smart_get(row, 'city', mapping, 'المدينة', 'المنطقة', 'city'),
-                address=smart_get(row, 'address', mapping, 'العنوان', 'address'),
-                opening_balance=safe_decimal(smart_get(row, 'opening_balance', mapping, 'المديونية الافتتاحية', 'المديونية', 'مديونية البداية', 'الرصيد الافتتاحي', 'الرصيد', 'opening_balance', default='0')),
-                credit_limit=safe_decimal(smart_get(row, 'credit_limit', mapping, 'حد الائتمان', 'حد_الائتمان', 'credit_limit', default='0')),
-                notes=smart_get(row, 'notes', mapping, 'الملاحظات', 'ملاحظات', 'notes'),
-                is_active=True,
-            )
-            imported_count += 1
-        except Exception as e:
-            import logging, traceback
-            logging.getLogger('suppliers').error('import row %d: %s\n%s', row_num, e, traceback.format_exc())
-            errors.append(f'الصف {row_num}: {str(e)}')
-
-    message = f'تم استيراد {imported_count} مورد بنجاح'
-    if errors:
-        message += f'. حدثت {len(errors)} أخطاء'
-
-    return JsonResponse({
-        'success': True,
-        'message': message,
-        'imported': imported_count,
-        'errors': errors[:10],
-    }, json_dumps_params={'ensure_ascii': False})
 
 
 @login_required
@@ -764,7 +775,7 @@ def supplier_export_api(request):
     ])
     
     # Write data
-    suppliers = Supplier.objects.for_tenant(tenant).order_by('name')
+    suppliers = Supplier.objects.for_tenant(tenant).for_branch(getattr(request, 'branch', None)).order_by('name')
     for supplier in suppliers:
         writer.writerow([
             supplier.name,
@@ -778,32 +789,5 @@ def supplier_export_api(request):
             supplier.notes or '',
             'نعم' if supplier.is_active else 'لا'
         ])
-    
-    return response
-
-
-@login_required
-@require_permission('import_suppliers')
-def download_template(request):
-    """Download CSV template for import"""
-    response = HttpResponse(content_type='text/csv; charset=utf-8')
-    response['Content-Disposition'] = 'attachment; filename="suppliers_template.csv"'
-    
-    # Add BOM for Excel UTF-8 support
-    response.write('\ufeff')
-    
-    writer = csv.writer(response)
-    
-    # Write headers
-    writer.writerow([
-        'الاسم', 'الهاتف', 'البريد', 'المدينة', 'العنوان',
-        'المديونية الافتتاحية', 'حد الائتمان'
-    ])
-    
-    # Write example row
-    writer.writerow([
-        'شركة التوريدات المحدودة', '0512345678', 'supplier@example.com', 'الرياض', 'شارع الملك فهد',
-        '0', '10000'
-    ])
     
     return response

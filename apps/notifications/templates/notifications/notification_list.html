@@ -103,20 +103,20 @@
     display: inline-flex; align-items: center; gap: 0.3rem;
     font-size: 0.73rem; font-weight: 600;
     color: var(--primary);
-    background: rgba(19,37,57,0.08);
-    border: 1px solid rgba(19,37,57,0.2);
+    background: rgba(var(--primary-rgb),0.08);
+    border: 1px solid rgba(var(--primary-rgb),0.2);
     border-radius: 6px;
     padding: 3px 9px;
     cursor: pointer;
     margin-top: 0.35rem;
     transition: background 0.15s;
 }
-.ntf-ai-btn:hover { background: rgba(19,37,57,0.16); }
+.ntf-ai-btn:hover { background: rgba(var(--primary-rgb),0.16); }
 
 .ntf-ai-result {
     margin-top: 0.5rem;
     padding: 0.65rem 0.85rem;
-    background: rgba(19,37,57,0.06);
+    background: rgba(var(--primary-rgb),0.06);
     border-right: 3px solid var(--primary);
     border-radius: 6px;
     font-size: 0.8rem;
@@ -204,6 +204,7 @@
             <div class="ntf-body">
                 <div class="ntf-head">
                     <span class="ntf-title">{{ n.title }}</span>
+                    {% if n.branch and request.user.is_tenant_admin %}<span class="badge bg-secondary ms-2">{{ n.branch.name }}</span>{% endif %}
                     <span class="ntf-time"><i class="fas fa-clock" style="font-size:.65rem;margin-left:.25rem"></i>{{ n.created_at|naturaltime }}</span>
                 </div>
                 <p class="ntf-msg">{{ n.message }}</p>

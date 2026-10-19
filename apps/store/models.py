@@ -63,7 +63,7 @@ class StoreSettings(TenantMixin):
     display_name  = models.CharField('اسم المتجر', max_length=200, blank=True)
     description   = models.TextField('وصف المتجر', blank=True)
     cover_image   = models.ImageField('صورة الغلاف', upload_to='store/covers/', blank=True, null=True)
-    accent_color  = models.CharField('اللون الرئيسي', max_length=7, default='#132539')
+    accent_color  = models.CharField('اللون الرئيسي', max_length=7, default='#0e6b64')
     whatsapp      = models.CharField('واتساب (اختياري)', max_length=30, blank=True,
                                      help_text='للتواصل السريع مع العملاء')
 
@@ -74,6 +74,10 @@ class StoreSettings(TenantMixin):
     show_price_list      = models.BooleanField(
         'تفعيل قائمة الأسعار', default=False,
         help_text='صفحة عامة منفصلة تعرض كل المنتجات وأسعارها مع بحث وفلترة، بدون طلب أو سلة'
+    )
+    price_list_columns   = models.JSONField(
+        'أعمدة قائمة الأسعار', default=list, blank=True,
+        help_text='الأعمدة التي تظهر في قائمة الأسعار العامة. القائمة الفارغة = كل الأعمدة'
     )
     min_order_amount     = models.DecimalField(
         'الحد الأدنى للطلب', max_digits=12, decimal_places=2, default=0
@@ -113,6 +117,42 @@ class StoreSettings(TenantMixin):
     class Meta:
         db_table      = 'store_settings'
         verbose_name  = 'إعدادات المتجر'
+
+    PRICE_LIST_COLUMNS = (
+        ('idx',       '#'),
+        ('name',      'المنتج'),
+        ('generic',   'بلد المنشأ'),
+        ('unit',      'الوحدة'),
+        ('wholesale', 'سعر الجملة'),
+        ('retail',    'سعر التجزئة'),
+        ('qty',       'الكمية المطلوبة'),
+    )
+
+    def price_list_visible_columns(self):
+        """مجموعة مفاتيح الأعمدة الظاهرة؛ فارغ/غير مضبوط = الكل (السلوك السابق)."""
+        all_keys = [k for k, _ in self.PRICE_LIST_COLUMNS]
+        chosen = [k for k in (self.price_list_columns or []) if k in all_keys]
+        keys = set(chosen) if chosen else set(all_keys)
+        if not self.show_prices:
+            keys -= {'wholesale', 'retail'}
+        return keys
+
+    def for_branch(self, branch):
+        """
+        نسخة من إعدادات المتجر بعد تطبيق تخصيص الفرع عليها (للعرض فقط — لا تُحفظ).
+        بلا فرع أو بلا تخصيص يرجع المتجر الأصلي، فلا يتغير سلوك النسخ الأخرى.
+        تبدأ دائماً من المتجر الأصلي حتى لو استُدعيت على نسخة فرع آخر (فلا تتسرب قيمه).
+        """
+        base = getattr(self, '_base', self)
+        if branch is None:
+            return base
+        own = BranchStoreSettings.objects.filter(branch=branch, tenant=base.tenant).first()
+        if own is None:
+            return base
+        import copy
+        clone = own.apply_to(copy.copy(base))
+        clone._base = base
+        return clone
 
     def __str__(self):
         return f"متجر {self.display_name or self.tenant.name}"
@@ -225,6 +265,83 @@ class StoreSettings(TenantMixin):
 
 
 # ──────────────────────────────────────────────────────────────
+# Branch Store Settings (نسخة المؤسسات)
+# ──────────────────────────────────────────────────────────────
+
+class BranchStoreSettings(TenantMixin):
+    """
+    تخصيص المتجر لفرع واحد (نسخة المؤسسات). كل حقل فارغ/None يعني «وراثة قيمة النشاط»
+    من StoreSettings، فلا يحتاج الفرع لتعبئة إلا ما يختلف فيه (اتصال، حساب بنكي، دوام...).
+    يعدّلها الفرع نفسه؛ ويقرؤها المتجر العام عبر StoreSettings.for_branch().
+    """
+
+    branch = models.OneToOneField(
+        'core.Branch', on_delete=models.CASCADE,
+        related_name='store_settings', verbose_name='الفرع'
+    )
+
+    # تفعيل المتجر لهذا الفرع (None = وراثة تفعيل النشاط). حفظ الفرع لصفحته يضبطه صراحةً،
+    # وعندها تُعتمد كل قيم الفرع كما هي (حتى الفارغة) بدل الرجوع لقيم النشاط.
+    is_enabled = models.BooleanField('المتجر متاح للفرع', null=True, blank=True)
+
+    # الاتصال والدفع والتسليم
+    whatsapp         = models.CharField('واتساب', max_length=30, blank=True)
+    bank_details     = models.TextField('بيانات التحويل البنكي', blank=True)
+    delivery_message = models.TextField('رسالة الشحن/التسليم', blank=True)
+
+    # خيارات العرض (None = وراثة)
+    show_out_of_stock   = models.BooleanField('عرض المنتجات النافدة', null=True, blank=True)
+    show_prices         = models.BooleanField('عرض الأسعار', null=True, blank=True)
+    show_stock_quantity = models.BooleanField('عرض الكمية المتوفرة', null=True, blank=True)
+    show_price_list     = models.BooleanField('تفعيل قائمة الأسعار', null=True, blank=True)
+    price_list_columns  = models.JSONField('أعمدة قائمة الأسعار', null=True, blank=True)
+    min_order_amount    = models.DecimalField(
+        'الحد الأدنى للطلب', max_digits=12, decimal_places=2, null=True, blank=True)
+
+    # الدوام والحالة (فارغ = وراثة)
+    status_override = models.CharField(
+        'حالة المتجر', max_length=10, blank=True, choices=StoreSettings.OVERRIDE_CHOICES)
+    open_message    = models.CharField('رسالة المفتوح', max_length=200, blank=True)
+    closed_message  = models.CharField('رسالة المغلق', max_length=200, blank=True)
+    working_hours   = models.JSONField('ساعات العمل', default=dict, blank=True)
+
+    class Meta:
+        db_table     = 'store_branch_settings'
+        verbose_name = 'إعدادات متجر الفرع'
+
+    TEXT_FIELDS = ('whatsapp', 'bank_details', 'delivery_message',
+                   'status_override', 'open_message', 'closed_message')
+    TRISTATE_FIELDS = ('show_out_of_stock', 'show_prices', 'show_stock_quantity', 'show_price_list')
+
+    def __str__(self):
+        return f"متجر {self.branch}"
+
+    @property
+    def is_configured(self):
+        """الفرع حفظ صفحته مرة على الأقل: قيمه كلها صريحة ولا يُرجَع فيها لإعدادات النشاط."""
+        return self.is_enabled is not None
+
+    def apply_to(self, store):
+        """يكتب القيم المخصصة فوق نسخة store (في الذاكرة فقط، لا تُحفظ)."""
+        configured = self.is_configured
+        for f in self.TEXT_FIELDS:
+            value = getattr(self, f)
+            # الحقول النصية الفارغة تعني «وراثة» قبل أول حفظ فقط؛ بعده الفراغ قرار الفرع
+            if value or (configured and f != 'status_override'):
+                setattr(store, f, value)
+        for f in self.TRISTATE_FIELDS + ('is_enabled',):
+            if getattr(self, f) is not None:
+                setattr(store, f, getattr(self, f))
+        if self.min_order_amount is not None:
+            store.min_order_amount = self.min_order_amount
+        if self.price_list_columns is not None:
+            store.price_list_columns = self.price_list_columns
+        if self.working_hours:
+            store.working_hours = self.working_hours
+        return store
+
+
+# ──────────────────────────────────────────────────────────────
 # Online Order
 # ──────────────────────────────────────────────────────────────
 
@@ -256,6 +373,12 @@ class OnlineOrder(TenantMixin):
 
     payment_method = models.CharField('طريقة الدفع', max_length=10, choices=PAYMENT_CHOICES)
     status         = models.CharField('الحالة', max_length=15, choices=STATUS_CHOICES, default='pending')
+
+    # الفرع الذي اختاره الزائر (نسخة المؤسسات فقط؛ فارغ في النسخ الأخرى)
+    branch = models.ForeignKey(
+        'core.Branch', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='online_orders', verbose_name='الفرع'
+    )
 
     # Totals (denormalised for quick display)
     subtotal     = models.DecimalField('المجموع', max_digits=14, decimal_places=2, default=0)

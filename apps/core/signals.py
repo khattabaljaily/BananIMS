@@ -2,7 +2,72 @@ from django.db.models.signals import post_save, post_delete
 from django.contrib.auth.signals import user_logged_in, user_logged_out
 from django.dispatch import receiver
 
-from apps.core.models import Tenant, TenantCapabilities
+from apps.core.models import Tenant, TenantCapabilities, Branch
+
+
+def _ensure_head_office_treasuries(tenant):
+    """
+    ينشئ خزينة الإدارة المركزية لنسخة المؤسسات (multi_branch). branch=فارغ دائماً،
+    ومملوكة حصراً لمدير النشاط (is_head_office=True يميّزها عن أي خزينة
+    فرع بلا فرع محدد قد تنشأ بالخطأ — راجع الحادثة التي بدأت منها هذه الميزة).
+
+    مقابل _ensure_branch_treasuries لكل فرع، لكن مرة واحدة فقط لكل tenant.
+    """
+    if not tenant.is_enterprise():
+        return
+    from apps.treasury.models import Treasury
+
+    Treasury.objects.get_or_create(
+        tenant=tenant,
+        is_head_office=True,
+        defaults={
+            'name': 'خزينة الإدارة الرئيسية',
+            'code': 'TR-HQ',
+            'is_active': True,
+            'current_balance': 0,
+        },
+    )
+
+
+def _ensure_branch_treasuries(branch):
+    """
+    ينشئ خزينة لفرع جديد في نسخة
+    Enterprise — نفس نمط create_tenant_defaults أدناه، لكن على مستوى كل فرع
+    بدل مرة واحدة لكل tenant (خطة التنفيذ، القسم 6.2).
+
+    لا نضع is_default=True هنا عمداً: هذا الحقل تنافسي على مستوى الـ tenant
+    كله (خزينة افتراضية واحدة فقط لكل tenant، يفرضها treasury/views.py عند
+    التعديل) وليس على مستوى الفرع — ربط "الخزينة الافتراضية لكل فرع" بشكل
+    صحيح هو عمل الإنفاذ المركزي في مرحلة لاحقة (القسم 3)، لا شيء يُحسم هنا.
+    """
+    from apps.treasury.models import Treasury
+    tenant = branch.tenant
+
+    Treasury.objects.get_or_create(
+        tenant=tenant,
+        branch=branch,
+        defaults={
+            'name': f'خزينة {branch.name}',
+            'code': f'TR-{branch.code}',
+            'is_branch_main': True,
+            'is_active': True,
+            'current_balance': 0,
+        },
+    )
+
+
+@receiver(post_save, sender=Branch)
+def on_branch_created(sender, instance, created, **kwargs):
+    """
+    عند إنشاء فرع جديد: يُنشئ خزينته تلقائياً — Enterprise
+    فقط، مغلّف بـ tenant.is_enterprise() لضمان صفر تأثير على
+    single_store/multi_stock (خطة التنفيذ، القسم 1 و9/Phase 1).
+    """
+    if not created:
+        return
+    if not instance.tenant.is_enterprise():
+        return
+    _ensure_branch_treasuries(instance)
 
 
 # ── Admin Notification helpers ─────────────────────────────────────────────
@@ -17,6 +82,19 @@ def _admin_notify(notification_type, title, message, link='', priority='medium',
         )
     except Exception:
         pass
+
+
+@receiver(post_save, sender=Tenant)
+def on_tenant_updated(sender, instance, created, **kwargs):
+    """
+    يضمن خزينة الإدارة المركزية لأي تينانت Enterprise عند كل حفظ — وإلا فمشترك
+    رُقّي إلى باقة المؤسسات (subscription_plan) عبر شاشة إدارة المشتركين لن يحصل
+    على خزينة إدارة مركزية أبداً حتى يُشغَّل أمر backfill_head_office_treasuries يدوياً.
+    """
+    if created:
+        return
+    if instance.is_enterprise():
+        _ensure_head_office_treasuries(instance)
 
 
 @receiver(post_save, sender=Tenant)
@@ -126,6 +204,22 @@ def _make_doc_handler(model_label, name_ar):
 
 
 @receiver(post_save, sender=Tenant)
+def ensure_central_stock_for_central_purchasing(sender, instance, **kwargs):
+    """
+    الشراء المركزي: المخزن المركزي يُنشأ تلقائياً (واحد لكل مشترك) فلا يحتاج مدير النشاط لإنشائه
+    ولا لاختياره في أمر الشراء.
+    """
+    if not instance.is_central_purchasing():
+        return
+    from apps.stocks.models import Stock
+    if Stock.objects.filter(tenant=instance, is_central=True).exists():
+        return
+    stock = Stock.objects.create(tenant=instance, name='المخزن الرئيسي', is_central=True, is_active=True)
+    # مخزن توزيع لا يُباع منه؛ لا يكون المخزن الافتراضي حتى لو كان أول مخزن للمشترك.
+    Stock.objects.filter(pk=stock.pk).update(is_default=False)
+
+
+@receiver(post_save, sender=Tenant)
 def create_tenant_defaults(sender, instance, created, **kwargs):
     if not created:
         return
@@ -133,57 +227,54 @@ def create_tenant_defaults(sender, instance, created, **kwargs):
     from apps.stocks.models import Stock
     from apps.treasury.models import Treasury
 
-    # Default stock (non-deletable system stock)
-    Stock.objects.get_or_create(
-        tenant=instance,
-        is_system_default=True,
-        defaults={
-            'name': 'المخزن الرئيسي',
-            'code': 'WH-MAIN',
-            'stock_type': 'main',
-            'is_default': True,
-            'is_active': True,
-        },
-    )
+    # نسخة المؤسسات (multi_branch) لا تحصل على مخزن/خزينة افتراضيين عند
+    # التسجيل — الخزائن تُنشأ تلقائياً مع كل فرع (راجع _ensure_branch_treasuries
+    # أدناه)، والمخازن يضيفها مدير النشاط يدوياً ويربطها بالفروع لاحقاً (راجع
+    # خطة "تقييد صلاحيات مدير النشاط في نسخة المؤسسات").
+    if not instance.is_enterprise():
+        # Default stock (non-deletable system stock) — العدد الإضافي المسموح به
+        # حسب الباقة (max_stocks) هو سقف أقصى فقط، وليس عدداً يُنشأ تلقائياً؛
+        # المشترك يضيف مخازنه بنفسه ويُمنع عند تجاوز الحد (راجع
+        # apps/stocks/views.py::stock_create_api / Stock.can_add_stock).
+        Stock.objects.get_or_create(
+            tenant=instance,
+            is_system_default=True,
+            defaults={
+                'name': 'المخزن الرئيسي',
+                'code': 'WH-MAIN',
+                'is_default': True,
+                'is_active': True,
+            },
+        )
 
-    # Create additional stocks if max_stocks > 1
-    if instance.max_stocks > 1:
-        for i in range(2, instance.max_stocks + 1):
-            Stock.objects.get_or_create(
-                tenant=instance,
-                code=f'WH-{i:03d}',
-                defaults={
-                    'name': f'مخزن {i}',
-                    'stock_type': 'main',
-                    'is_active': True,
-                },
-            )
+        # Ensure at least one default stock flag exists
+        if not Stock.objects.for_tenant(instance).filter(is_default=True).exists():
+            fallback_stock = Stock.objects.for_tenant(instance).order_by('id').first()
+            if fallback_stock:
+                fallback_stock.is_default = True
+                fallback_stock.save(update_fields=['is_default', 'updated_at'])
 
-    # Ensure at least one default stock flag exists
-    if not Stock.objects.for_tenant(instance).filter(is_default=True).exists():
-        fallback_stock = Stock.objects.for_tenant(instance).order_by('id').first()
-        if fallback_stock:
-            fallback_stock.is_default = True
-            fallback_stock.save(update_fields=['is_default', 'updated_at'])
+        # Default treasury (non-deletable system treasury)
+        Treasury.objects.get_or_create(
+            tenant=instance,
+            is_system_default=True,
+            defaults={
+                'name': 'الخزينة الرئيسية',
+                'code': 'TR-MAIN',
+                'is_default': True,
+                'is_active': True,
+                'current_balance': 0,
+            },
+        )
 
-    # Default treasury (non-deletable system treasury)
-    Treasury.objects.get_or_create(
-        tenant=instance,
-        is_system_default=True,
-        defaults={
-            'name': 'الخزينة الرئيسية',
-            'code': 'TR-MAIN',
-            'is_default': True,
-            'is_active': True,
-            'current_balance': 0,
-        },
-    )
-
-    if not Treasury.objects.for_tenant(instance).filter(is_default=True).exists():
-        fallback_treasury = Treasury.objects.for_tenant(instance).order_by('id').first()
-        if fallback_treasury:
-            fallback_treasury.is_default = True
-            fallback_treasury.save(update_fields=['is_default', 'updated_at'])
+        if not Treasury.objects.for_tenant(instance).filter(is_default=True).exists():
+            fallback_treasury = Treasury.objects.for_tenant(instance).order_by('id').first()
+            if fallback_treasury:
+                fallback_treasury.is_default = True
+                fallback_treasury.save(update_fields=['is_default', 'updated_at'])
+    else:
+        # نسخة المؤسسات: خزينة الإدارة المركزية بدل الخزينة الافتراضية العادية.
+        _ensure_head_office_treasuries(instance)
 
     # Capabilities derived from business type
     caps = TenantCapabilities.from_business_type(instance)

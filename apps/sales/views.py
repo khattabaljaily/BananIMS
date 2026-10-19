@@ -28,7 +28,7 @@ from decimal import Decimal, InvalidOperation
 from datetime import datetime, timedelta, date
 
 from django.contrib.auth.decorators import login_required
-from apps.accounts.decorators import require_permission
+from apps.accounts.decorators import require_permission, branch_scope_exempt
 from django.db import transaction
 from django.db.models import Q, Sum, Count, DecimalField, OuterRef, Subquery
 from django.db.models.functions import Coalesce
@@ -40,6 +40,7 @@ from django.views.decorators.http import require_POST
 from apps.customers.models import Customer
 from apps.items.models import Item
 from apps.stocks.models import Stock, StockQuantity
+from apps.core.utils import filter_by_branch_via, filter_by_branch_strict, enforce_branch_ownership, resolve_report_scope, operational_money_accounts
 
 from .models import (
     CustomerLedger,
@@ -145,7 +146,7 @@ def invoice_list(request):
     if not tenant:
         return redirect('core:no_tenant')
 
-    qs = SaleInvoice.objects.for_tenant(tenant)
+    qs = filter_by_branch_via(SaleInvoice.objects.for_tenant(tenant), getattr(request, 'branch', None))
     total = qs.count()
     confirmed = qs.filter(status='confirmed').count()
     pending_delivery = qs.filter(status='pending_delivery').count()
@@ -177,9 +178,11 @@ def invoice_list(request):
 
     # للفلترة في الـ DataTable
     customers = Customer.objects.for_tenant(tenant).filter(is_active=True).values('id', 'name')
-    stocks = Stock.objects.for_tenant(tenant).filter(is_active=True).values('id', 'name')
+    stocks = Stock.objects.for_tenant(tenant).for_branch(getattr(request, 'branch', None)).filter(is_active=True).values('id', 'name')
     from apps.agents.models import Agent as _Agent
     agents_qs = _Agent.objects.filter(tenant=tenant, is_active=True).values('id', 'name') if tenant.plan_allows('agents') else []
+    from apps.bank_accounts.models import BankAccount
+    bank_accounts = operational_money_accounts(BankAccount.objects.for_tenant(tenant), request).filter(is_active=True).values('id', 'name', 'current_balance')
 
     context = {
         'stats': {
@@ -197,6 +200,7 @@ def invoice_list(request):
         'stocks': list(stocks),
         'agents': list(agents_qs),
         'active_agent_id': request.GET.get('agent', ''),
+        'bank_accounts': list(bank_accounts),
     }
     return render(request, 'sales/invoice_list.html', context)
 
@@ -225,7 +229,7 @@ def invoice_table_api(request):
         .values('t')
     )
 
-    qs = SaleInvoice.objects.for_tenant(tenant).select_related('customer', 'stock')
+    qs = filter_by_branch_via(SaleInvoice.objects.for_tenant(tenant), getattr(request, 'branch', None)).select_related('customer', 'stock')
     total = qs.count()
 
     if status_filter:
@@ -323,10 +327,12 @@ def invoice_create(request):
         return redirect('core:no_tenant')
 
     customers = Customer.objects.for_tenant(tenant).filter(is_active=True)
-    stocks = Stock.objects.for_tenant(tenant).filter(is_active=True)
+    stocks = Stock.objects.for_tenant(tenant).for_branch(getattr(request, 'branch', None)).filter(is_active=True).select_related('branch')
     items = Item.objects.for_tenant(tenant).filter(is_active=True, is_sellable=True)
     from apps.agents.models import Agent as _Agent
     agents = _Agent.objects.filter(tenant=tenant, is_active=True).order_by('name') if tenant.plan_allows('agents') else []
+    from apps.bank_accounts.models import BankAccount
+    bank_accounts = operational_money_accounts(BankAccount.objects.for_tenant(tenant), request).filter(is_active=True)
 
     # default stock
     default_stock = stocks.filter(is_default=True).first() or stocks.first()
@@ -350,6 +356,7 @@ def invoice_create(request):
         'stocks': stocks,
         'items': items,
         'agents': agents,
+        'bank_accounts': bank_accounts,
         'default_stock': default_stock,
         'today': timezone.localdate().isoformat(),
         'action': 'create',
@@ -365,15 +372,18 @@ def invoice_edit(request, pk):
         return redirect('core:no_tenant')
 
     invoice = get_object_or_404(SaleInvoice, pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, invoice, field='stock__branch')
 
     if invoice.status not in ('draft', 'confirmed'):
         return redirect('sales:invoice_detail', pk=pk)
 
     customers = Customer.objects.for_tenant(tenant).filter(is_active=True)
-    stocks = Stock.objects.for_tenant(tenant).filter(is_active=True)
+    stocks = Stock.objects.for_tenant(tenant).for_branch(getattr(request, 'branch', None)).filter(is_active=True).select_related('branch')
     items = Item.objects.for_tenant(tenant).filter(is_active=True, is_sellable=True)
     from apps.agents.models import Agent as _Agent
     agents = _Agent.objects.filter(tenant=tenant, is_active=True).order_by('name') if tenant.plan_allows('agents') else []
+    from apps.bank_accounts.models import BankAccount
+    bank_accounts = operational_money_accounts(BankAccount.objects.for_tenant(tenant), request).filter(is_active=True)
 
     if request.method == 'POST':
         result = _process_invoice_post(request, tenant, invoice=invoice)
@@ -403,17 +413,13 @@ def invoice_edit(request, pk):
             'discount_percent': str(line.discount_percent),
             'tax_rate': str(line.tax_rate),
             'cost_price_snapshot': str(line.cost_price_snapshot),
-            'batch_number': line.batch_number,
             'serial_number': line.serial_number,
-            'expiry_date': line.expiry_date.isoformat() if line.expiry_date else '',
             'line_total': str(line.line_total),
             'unit_id': unit_id,
             'unit_name': iu_list[0].name if iu_list else '',
             'unit_factor': str(line.unit_factor) if line.unit_factor else '1',
             'units': units,
-            'track_batch': line.item.track_batch,
             'track_serial': line.item.track_serial,
-            'track_expiry': line.item.track_expiry,
         })
 
     context = {
@@ -423,6 +429,7 @@ def invoice_edit(request, pk):
         'stocks': stocks,
         'items': items,
         'agents': agents,
+        'bank_accounts': bank_accounts,
         'today': timezone.localdate().isoformat(),
         'action': 'edit',
     }
@@ -456,9 +463,7 @@ def _process_invoice_post(request, tenant, invoice):
                 'discount_percent': Decimal(str(ld.get('discount_percent') or '0')),
                 'tax_rate': Decimal(str(ld.get('tax_rate') or '0')),
                 'cost_price_snapshot': Decimal(str(ld.get('cost_price_snapshot', 0))),
-                'batch_number': ld.get('batch_number', ''),
                 'serial_number': ld.get('serial_number', ''),
-                'expiry_date': ld.get('expiry_date') or None,
                 'unit_id': int(ld['unit_id']) if ld.get('unit_id') else None,
                 'unit_factor': Decimal(str(ld.get('unit_factor', 1) or 1)),
             })
@@ -469,6 +474,7 @@ def _process_invoice_post(request, tenant, invoice):
         stock = Stock.objects.get(id=header.get('stock_id'), tenant=tenant)
     except Stock.DoesNotExist:
         return _json_error('المخزن المحدد غير موجود')
+    enforce_branch_ownership(request, stock)
 
     try:
         with transaction.atomic():
@@ -490,15 +496,28 @@ def _process_invoice_post(request, tenant, invoice):
                     }
 
                     # FK mapping for service layer (expects objects, not *_id keys)
+                    bank_account_raw = header.get('bank_account_id')
+                    if bank_account_raw:
+                        from apps.bank_accounts.models import BankAccount
+                        bank_account_obj = operational_money_accounts(BankAccount.objects.for_tenant(tenant), request).get(id=bank_account_raw, is_active=True)
+                        enforce_branch_ownership(request, bank_account_obj)
+                        confirmed_header['bank_account'] = bank_account_obj
+                    else:
+                        confirmed_header['bank_account'] = None
+
                     customer_raw = header.get('customer_id')
                     if customer_raw:
-                        confirmed_header['customer'] = Customer.objects.get(id=customer_raw, tenant=tenant)
+                        customer_obj = Customer.objects.get(id=customer_raw, tenant=tenant)
+                        enforce_branch_ownership(request, customer_obj)
+                        confirmed_header['customer'] = customer_obj
                     else:
                         confirmed_header['customer'] = None
 
                     stock_raw = header.get('stock_id')
                     if stock_raw:
-                        confirmed_header['stock'] = Stock.objects.get(id=stock_raw, tenant=tenant)
+                        stock_obj = Stock.objects.get(id=stock_raw, tenant=tenant)
+                        enforce_branch_ownership(request, stock_obj)
+                        confirmed_header['stock'] = stock_obj
 
                     agent_raw = header.get('agent_id')
                     if agent_raw:
@@ -532,7 +551,12 @@ def _process_invoice_post(request, tenant, invoice):
                     # تحديث هيدر (تعيين صريح لتجنب أخطاء FK مثل customer)
                     if 'customer_id' in header:
                         customer_raw = header.get('customer_id')
-                        invoice.customer_id = int(customer_raw) if customer_raw else None
+                        if customer_raw:
+                            customer_obj = Customer.objects.get(id=int(customer_raw), tenant=tenant)
+                            enforce_branch_ownership(request, customer_obj)
+                            invoice.customer_id = customer_obj.id
+                        else:
+                            invoice.customer_id = None
 
                     if 'invoice_date' in header:
                         invoice.invoice_date = header.get('invoice_date') or invoice.invoice_date
@@ -552,15 +576,20 @@ def _process_invoice_post(request, tenant, invoice):
                         invoice.bank_amount = Decimal(str(header.get('bank_amount') or 0))
                     if 'bank_reference' in header:
                         invoice.bank_reference = header.get('bank_reference', '')
+                    if 'bank_account_id' in header:
+                        bank_account_raw = header.get('bank_account_id')
+                        invoice.bank_account_id = int(bank_account_raw) if bank_account_raw else None
                     if 'notes' in header:
                         invoice.notes = header.get('notes', '')
 
                     # المخزن يظل مطلوباً في التعديل
                     if 'stock_id' in header and header.get('stock_id'):
                         try:
-                            invoice.stock = Stock.objects.get(id=header.get('stock_id'), tenant=tenant)
+                            new_stock = Stock.objects.get(id=header.get('stock_id'), tenant=tenant)
                         except Stock.DoesNotExist:
                             return _json_error('المخزن المحدد غير موجود')
+                        enforce_branch_ownership(request, new_stock)
+                        invoice.stock = new_stock
 
                     # المندوب
                     if 'agent_id' in header:
@@ -601,9 +630,10 @@ def invoice_detail(request, pk):
         return redirect('core:no_tenant')
 
     invoice = get_object_or_404(
-        SaleInvoice.objects.select_related('customer', 'stock', 'agent', 'confirmed_by', 'cancelled_by'),
+        SaleInvoice.objects.select_related('customer', 'stock', 'agent', 'confirmed_by', 'cancelled_by', 'bank_account'),
         pk=pk, tenant=tenant,
     )
+    enforce_branch_ownership(request, invoice, field='stock__branch')
     lines = list(invoice.lines.select_related('item').prefetch_related('item__item_units').all())
     for ln in lines:
         iu_list = list(ln.item.item_units.order_by('factor'))
@@ -634,6 +664,10 @@ def invoice_detail(request, pk):
             and invoice.remaining_amount > 0
         ),
     }
+    from apps.bank_accounts.models import BankAccount
+    context['bank_accounts'] = list(
+        operational_money_accounts(BankAccount.objects.for_tenant(tenant), request).filter(is_active=True).values('id', 'name', 'current_balance')
+    )
 
     return render(request, 'sales/invoice_detail.html', context)
 
@@ -651,6 +685,7 @@ def invoice_delete_draft_ajax(request, pk):
         return _json_error('لا يوجد نشاط تجاري')
 
     invoice = get_object_or_404(SaleInvoice, pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, invoice, field='stock__branch')
 
     if invoice.status != 'draft':
         return _json_error('يمكن حذف الفاتورة إذا كانت مسودة فقط')
@@ -678,6 +713,7 @@ def invoice_confirm_ajax(request, pk):
         return _json_error('لا يوجد نشاط تجاري')
 
     invoice = get_object_or_404(SaleInvoice, pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, invoice, field='stock__branch')
     try:
         confirm_sale_invoice(invoice, request.user)
         cust = invoice.customer.name if invoice.customer else 'زبون عابر'
@@ -698,6 +734,7 @@ def invoice_cancel_ajax(request, pk):
         return _json_error('لا يوجد نشاط تجاري')
 
     invoice = get_object_or_404(SaleInvoice, pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, invoice, field='stock__branch')
     try:
         body = json.loads(request.body or '{}')
     except json.JSONDecodeError:
@@ -721,6 +758,7 @@ def invoice_deliver_ajax(request, pk):
     if not tenant:
         return _json_error('لا يوجد نشاط تجاري')
     invoice = get_object_or_404(SaleInvoice, pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, invoice, field='stock__branch')
     try:
         deliver_sale_invoice(invoice, request.user)
         cust = invoice.customer.name if invoice.customer else 'زبون عابر'
@@ -739,6 +777,7 @@ def record_payment_ajax(request, pk):
         return _json_error('لا يوجد نشاط تجاري')
 
     invoice = get_object_or_404(SaleInvoice, pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, invoice, field='stock__branch')
     try:
         body = json.loads(request.body)
         amount = Decimal(str(body['amount']))
@@ -746,11 +785,19 @@ def record_payment_ajax(request, pk):
         date = body.get('date') or timezone.localdate().isoformat()
         reference = body.get('reference', '')
         notes = body.get('notes', '')
+        bank_account_id = body.get('bank_account_id')
     except (KeyError, InvalidOperation, json.JSONDecodeError) as e:
         return _json_error(f'بيانات الدفعة غير صالحة: {e}')
 
+    bank_account = None
+    if method == 'bank':
+        if not bank_account_id:
+            return _json_error('يجب اختيار الحساب البنكي عند الدفع بنكياً')
+        from apps.bank_accounts.models import BankAccount
+        bank_account = get_object_or_404(operational_money_accounts(BankAccount.objects.for_tenant(tenant), request), pk=int(bank_account_id))
+
     try:
-        record_customer_payment(invoice, amount, method, date, reference, notes, request.user)
+        record_customer_payment(invoice, amount, method, date, reference, notes, request.user, bank_account=bank_account)
         return _json_ok(
             data={
                 'paid_amount': str(invoice.paid_amount),
@@ -773,7 +820,7 @@ def return_list(request):
     if not tenant:
         return redirect('core:no_tenant')
 
-    qs = SaleReturn.objects.for_tenant(tenant)
+    qs = filter_by_branch_via(SaleReturn.objects.for_tenant(tenant), getattr(request, 'branch', None), field='original_invoice__stock__branch')
     total = qs.count()
     confirmed = qs.filter(status='confirmed').count()
     draft = qs.filter(status='draft').count()
@@ -808,7 +855,7 @@ def return_table_api(request):
     search_value = request.GET.get('search[value]', '').strip()
     status_filter = request.GET.get('status', '')
 
-    qs = SaleReturn.objects.for_tenant(tenant).select_related(
+    qs = filter_by_branch_via(SaleReturn.objects.for_tenant(tenant), getattr(request, 'branch', None), field='original_invoice__stock__branch').select_related(
         'original_invoice', 'original_invoice__customer'
     )
     total = qs.count()
@@ -865,6 +912,7 @@ def return_lines_api(request, return_pk):
         return _json_error('لا يوجد نشاط تجاري')
 
     sale_return = get_object_or_404(SaleReturn, pk=return_pk, tenant=tenant)
+    enforce_branch_ownership(request, sale_return)
     lines = sale_return.lines.select_related('item').all()
 
     data = []
@@ -891,6 +939,7 @@ def return_create(request, invoice_pk):
         SaleInvoice, pk=invoice_pk, tenant=tenant,
         status__in=['confirmed', 'partially_returned']
     )
+    enforce_branch_ownership(request, invoice, field='stock__branch')
     lines = invoice.lines.select_related('item').all()
     returnable_lines = [l for l in lines if l.returnable_quantity > 0]
 
@@ -913,6 +962,7 @@ def return_create(request, invoice_pk):
     return render(request, 'sales/return_form.html', context)
 
 
+@branch_scope_exempt('invoice تحقّقت ملكيته بالفعل في return_create() المستدعية قبل استدعاء هذه الدالة؛ SaleInvoiceLine هنا مفلترة بـ invoice=invoice المُتحقَّق منه')
 def _process_return_post(request, tenant, invoice):
     try:
         body = json.loads(request.body)
@@ -986,6 +1036,7 @@ def return_detail(request, pk):
         SaleReturn.objects.select_related('original_invoice', 'original_invoice__customer'),
         pk=pk, tenant=tenant
     )
+    enforce_branch_ownership(request, sale_return)
     return_lines = sale_return.lines.select_related('item', 'invoice_line')
 
     context = {
@@ -1005,6 +1056,7 @@ def return_confirm_ajax(request, pk):
     if not tenant:
         return _json_error('لا يوجد نشاط تجاري')
     sale_return = get_object_or_404(SaleReturn, pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, sale_return)
     try:
         confirm_sale_return(sale_return, request.user)
         log_activity(request, 'تأكيد مرتجع مبيعات', f'{sale_return.return_number}', 'create')
@@ -1021,6 +1073,7 @@ def return_cancel_ajax(request, pk):
     if not tenant:
         return _json_error('لا يوجد نشاط تجاري')
     sale_return = get_object_or_404(SaleReturn, pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, sale_return)
     try:
         cancel_sale_return(sale_return, request.user)
         log_activity(request, 'إلغاء مرتجع مبيعات', f'{sale_return.return_number}', 'delete')
@@ -1058,11 +1111,11 @@ def item_info_api(request):
     is_service = item.item_type == 'service'
     available_qty = None if is_service else 0
     if stock_id and not is_service:
-        try:
-            sq = StockQuantity.objects.get(tenant=tenant, stock_id=stock_id, item=item)
-            available_qty = float(sq.available_quantity)
-        except StockQuantity.DoesNotExist:
-            available_qty = 0
+        sq = filter_by_branch_via(
+            StockQuantity.objects.filter(tenant=tenant, stock_id=stock_id, item=item),
+            getattr(request, 'branch', None), field='stock__branch',
+        ).first()
+        available_qty = float(sq.available_quantity) if sq else 0
 
     iu_qs = list(item.item_units.order_by('factor'))
     units = [{'id': u.id, 'name': u.name, 'factor': str(u.factor)} for u in iu_qs]
@@ -1079,9 +1132,7 @@ def item_info_api(request):
             'min_selling_price': str(item.min_selling_price),
             'cost_price': str(item.cost_price),
             'tax_rate': str(item.tax_rate),
-            'track_batch': item.track_batch,
             'track_serial': item.track_serial,
-            'track_expiry': item.track_expiry,
             'item_type': item.item_type,
             'is_service': is_service,
             'available_qty': available_qty,
@@ -1109,6 +1160,7 @@ def customer_info_api(request):
         customer = Customer.objects.get(id=customer_id, tenant=tenant)
     except Customer.DoesNotExist:
         return _json_error('العميل غير موجود', status=404)
+    enforce_branch_ownership(request, customer)
 
     # حساب الرصيد الجاري من CustomerLedger
     total = (
@@ -1170,9 +1222,9 @@ def stock_items_api(request):
 
     sq_map = {
         sq.item_id: sq.available_quantity
-        for sq in StockQuantity.objects.filter(
-            tenant=tenant, stock_id=stock_id,
-            item_id__in=item_ids
+        for sq in filter_by_branch_via(
+            StockQuantity.objects.filter(tenant=tenant, stock_id=stock_id, item_id__in=item_ids),
+            getattr(request, 'branch', None), field='stock__branch',
         )
     }
 
@@ -1205,9 +1257,9 @@ def quote_list(request):
     if not tenant:
         return redirect('core:no_tenant')
 
-    qs = SaleQuote.objects.for_tenant(tenant)
+    qs = filter_by_branch_via(SaleQuote.objects.for_tenant(tenant), getattr(request, 'branch', None))
     customers = Customer.objects.for_tenant(tenant).filter(is_active=True).values('id', 'name')
-    stocks = Stock.objects.for_tenant(tenant).filter(is_active=True).values('id', 'name')
+    stocks = Stock.objects.for_tenant(tenant).for_branch(getattr(request, 'branch', None)).filter(is_active=True).values('id', 'name')
 
     stats = {
         'total':     qs.count(),
@@ -1244,7 +1296,7 @@ def quote_table_api(request):
     status_filter = request.GET.get('status', '')
     customer_filter = request.GET.get('customer_id', '')
 
-    qs = SaleQuote.objects.for_tenant(tenant).select_related('customer', 'stock')
+    qs = filter_by_branch_via(SaleQuote.objects.for_tenant(tenant), getattr(request, 'branch', None)).select_related('customer', 'stock')
     total = qs.count()
 
     if status_filter:
@@ -1307,7 +1359,7 @@ def quote_create(request):
         return redirect('core:no_tenant')
 
     customers = Customer.objects.for_tenant(tenant).filter(is_active=True)
-    stocks = Stock.objects.for_tenant(tenant).filter(is_active=True)
+    stocks = Stock.objects.for_tenant(tenant).for_branch(getattr(request, 'branch', None)).filter(is_active=True)
 
     if request.method == 'POST':
         try:
@@ -1351,11 +1403,12 @@ def quote_edit(request, pk):
         return redirect('core:no_tenant')
 
     quote = get_object_or_404(SaleQuote, pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, quote, field='stock__branch')
     if quote.status not in ('draft', 'sent', 'accepted'):
         return redirect('sales:quote_detail', pk=pk)
 
     customers = Customer.objects.for_tenant(tenant).filter(is_active=True)
-    stocks = Stock.objects.for_tenant(tenant).filter(is_active=True)
+    stocks = Stock.objects.for_tenant(tenant).for_branch(getattr(request, 'branch', None)).filter(is_active=True)
 
     if request.method == 'POST':
         try:
@@ -1419,6 +1472,7 @@ def quote_detail(request, pk):
         SaleQuote.objects.select_related('customer', 'stock', 'converted_invoice', 'converted_by'),
         pk=pk, tenant=tenant
     )
+    enforce_branch_ownership(request, quote, field='stock__branch')
     lines = list(quote.quote_lines.select_related('item').prefetch_related('item__item_units').all())
     for ln in lines:
         iu_list = list(ln.item.item_units.order_by('factor'))
@@ -1426,12 +1480,15 @@ def quote_detail(request, pk):
 
     from apps.core.models import Settings as TenantSettings
     settings_obj, _ = TenantSettings.objects.get_or_create(tenant=tenant)
+    from apps.bank_accounts.models import BankAccount
+    bank_accounts = operational_money_accounts(BankAccount.objects.for_tenant(tenant), request).filter(is_active=True)
 
     return render(request, 'sales/quote_detail.html', {
         'quote': quote,
         'lines': lines,
         'settings_obj': settings_obj,
         'tenant': tenant,
+        'bank_accounts': bank_accounts,
         'can_edit': quote.status == 'draft',
         'can_send': quote.can_send,
         'can_accept': quote.status == 'sent',
@@ -1447,6 +1504,7 @@ def quote_detail(request, pk):
 def quote_send_ajax(request, pk):
     tenant = _ensure_tenant(request)
     quote = get_object_or_404(SaleQuote, pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, quote, field='stock__branch')
     try:
         mark_quote_sent(quote, request.user)
         qcust = quote.customer.name if quote.customer else 'بدون عميل'
@@ -1462,6 +1520,7 @@ def quote_send_ajax(request, pk):
 def quote_accept_ajax(request, pk):
     tenant = _ensure_tenant(request)
     quote = get_object_or_404(SaleQuote, pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, quote, field='stock__branch')
     try:
         mark_quote_accepted(quote, request.user)
         qcust = quote.customer.name if quote.customer else 'بدون عميل'
@@ -1477,6 +1536,7 @@ def quote_accept_ajax(request, pk):
 def quote_reject_ajax(request, pk):
     tenant = _ensure_tenant(request)
     quote = get_object_or_404(SaleQuote, pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, quote, field='stock__branch')
     try:
         mark_quote_rejected(quote, request.user)
         qcust = quote.customer.name if quote.customer else 'بدون عميل'
@@ -1492,6 +1552,7 @@ def quote_reject_ajax(request, pk):
 def quote_cancel_ajax(request, pk):
     tenant = _ensure_tenant(request)
     quote = get_object_or_404(SaleQuote, pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, quote, field='stock__branch')
     try:
         cancel_sale_quote(quote, request.user)
         qcust = quote.customer.name if quote.customer else 'بدون عميل'
@@ -1507,6 +1568,7 @@ def quote_cancel_ajax(request, pk):
 def quote_delete_draft_ajax(request, pk):
     tenant = _ensure_tenant(request)
     quote = get_object_or_404(SaleQuote, pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, quote, field='stock__branch')
     if quote.status != 'draft':
         return _json_error('لا يمكن حذف إلا المسودات')
     q_num = quote.quote_number
@@ -1521,6 +1583,7 @@ def quote_delete_draft_ajax(request, pk):
 def quote_convert_ajax(request, pk):
     tenant = _ensure_tenant(request)
     quote = get_object_or_404(SaleQuote, pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, quote, field='stock__branch')
     try:
         body = json.loads(request.body) if request.body else {}
     except Exception:
@@ -1530,6 +1593,7 @@ def quote_convert_ajax(request, pk):
     cash_amount = body.get('cash_amount')
     bank_amount = body.get('bank_amount')
     bank_reference = body.get('bank_reference', '')
+    bank_account_id = body.get('bank_account_id') or None
 
     try:
         invoice = convert_quote_to_invoice(
@@ -1539,6 +1603,7 @@ def quote_convert_ajax(request, pk):
             cash_amount=cash_amount,
             bank_amount=bank_amount,
             bank_reference=bank_reference,
+            bank_account_id=bank_account_id,
         )
         log_activity(request, 'تحويل عرض سعر لفاتورة', f'{quote.quote_number} ← {invoice.invoice_number}', 'create')
         return _json_ok(
@@ -1561,6 +1626,7 @@ def sales_summary_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
     
     # Get date range from request
     start_date = _parse_date(request.GET.get('start_date'))
@@ -1572,7 +1638,7 @@ def sales_summary_report(request):
         end_date = timezone.localdate()
     
     # Generate report
-    generator = SalesReportGenerator(tenant, start_date, end_date)
+    generator = SalesReportGenerator(tenant, start_date, end_date, branch=branch)
     report_data = generator.get_summary_report()
 
     # Chart data: daily trend for the selected period
@@ -1589,6 +1655,9 @@ def sales_summary_report(request):
         'report_type': 'summary',
         'chart_labels': chart_labels,
         'chart_amounts': chart_amounts,
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -1602,6 +1671,7 @@ def sales_summary_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
     
     # Get date range
     start_date = _parse_date(request.GET.get('start_date'))
@@ -1613,7 +1683,7 @@ def sales_summary_report_export(request):
         end_date = timezone.localdate()
     
     # Generate report
-    generator = SalesReportGenerator(tenant, start_date, end_date)
+    generator = SalesReportGenerator(tenant, start_date, end_date, branch=branch)
     report_data = generator.get_summary_report()
     
     # Create CSV
@@ -1644,6 +1714,7 @@ def sales_by_customer_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
     
     # Get date range
     start_date = _parse_date(request.GET.get('start_date'))
@@ -1659,16 +1730,17 @@ def sales_by_customer_report(request):
     customer_id = request.GET.get('customer_id')
 
     # Generate report
-    generator = SalesReportGenerator(tenant, start_date, end_date)
+    generator = SalesReportGenerator(tenant, start_date, end_date, branch=branch)
     report_data = generator.get_by_customer_report(customer_id=customer_id)
 
     # customers list for filter
     from apps.customers.models import Customer
-    customers = Customer.objects.filter(tenant=tenant).order_by('name')
+    customers = Customer.objects.filter(tenant=tenant).for_branch(branch).order_by('name')
     selected_customer = None
     if customer_id:
         try:
             selected_customer = Customer.objects.get(tenant=tenant, id=customer_id)
+            enforce_branch_ownership(request, selected_customer)
         except Customer.DoesNotExist:
             selected_customer = None
 
@@ -1681,6 +1753,9 @@ def sales_by_customer_report(request):
         'selected_customer': selected_customer,
         'section': 'sales_reports',
         'report_type': 'by_customer',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -1694,6 +1769,7 @@ def sales_by_customer_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
     
     # Get date range
     start_date = _parse_date(request.GET.get('start_date'))
@@ -1709,7 +1785,7 @@ def sales_by_customer_report_export(request):
     customer_id = request.GET.get('customer_id')
 
     # Generate report
-    generator = SalesReportGenerator(tenant, start_date, end_date)
+    generator = SalesReportGenerator(tenant, start_date, end_date, branch=branch)
     report_data = generator.get_by_customer_report(customer_id=customer_id)
     # fetch selected customer for header if available
     selected_customer = None
@@ -1717,6 +1793,7 @@ def sales_by_customer_report_export(request):
         from apps.customers.models import Customer
         try:
             selected_customer = Customer.objects.get(tenant=tenant, id=customer_id)
+            enforce_branch_ownership(request, selected_customer)
         except Customer.DoesNotExist:
             selected_customer = None
 
@@ -1772,17 +1849,18 @@ def sales_by_item_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
 
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
     item_id = request.GET.get('item_id') or None
 
-    generator = SalesReportGenerator(tenant, start_date, end_date)
+    generator = SalesReportGenerator(tenant, start_date, end_date, branch=branch)
     report_data = generator.get_by_item_report(item_id=item_id)
 
     items = Item.objects.filter(
         tenant=tenant,
-        sale_lines__invoice__status='confirmed',
+        sale_lines__invoice__status__in=SaleInvoice.REVENUE_STATUSES,
     ).distinct().order_by('name')
 
     return render(request, 'sales/reports/by_item.html', {
@@ -1793,6 +1871,9 @@ def sales_by_item_report(request):
         'selected_item_id': item_id,
         'section': 'sales_reports',
         'report_type': 'by_item',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -1806,12 +1887,13 @@ def sales_by_item_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
 
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
     item_id = request.GET.get('item_id') or None
 
-    generator = SalesReportGenerator(tenant, start_date, end_date)
+    generator = SalesReportGenerator(tenant, start_date, end_date, branch=branch)
     report_data = generator.get_by_item_report(item_id=item_id)
 
     response = HttpResponse(content_type='text/csv; charset=utf-8')
@@ -1842,6 +1924,7 @@ def sales_by_date_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
     
     # Get date range
     start_date = _parse_date(request.GET.get('start_date'))
@@ -1854,7 +1937,7 @@ def sales_by_date_report(request):
         end_date = timezone.localdate()
     
     # Generate report
-    generator = SalesReportGenerator(tenant, start_date, end_date)
+    generator = SalesReportGenerator(tenant, start_date, end_date, branch=branch)
     report_data = generator.get_by_date_report(group_by)
     
     return render(request, 'sales/reports/by_date.html', {
@@ -1864,6 +1947,9 @@ def sales_by_date_report(request):
         'group_by': group_by,
         'section': 'sales_reports',
         'report_type': 'by_date',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -1877,6 +1963,7 @@ def sales_by_date_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
     
     # Get date range
     start_date = _parse_date(request.GET.get('start_date'))
@@ -1889,7 +1976,7 @@ def sales_by_date_report_export(request):
         end_date = timezone.localdate()
     
     # Generate report
-    generator = SalesReportGenerator(tenant, start_date, end_date)
+    generator = SalesReportGenerator(tenant, start_date, end_date, branch=branch)
     report_data = generator.get_by_date_report(group_by)
     
     # Create CSV
@@ -1926,14 +2013,15 @@ def sales_customer_statement(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
 
     customer_id = request.GET.get('customer_id')
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
 
-    generator = SalesReportGenerator(tenant, start_date, end_date)
+    generator = SalesReportGenerator(tenant, start_date, end_date, branch=branch)
     report = generator.get_customer_statement(customer_id) if customer_id else None
-    customers = Customer.objects.filter(tenant=tenant).order_by('name')
+    customers = Customer.objects.filter(tenant=tenant).for_branch(branch).order_by('name')
 
     return render(request, 'sales/reports/customer_statement.html', {
         'report': report,
@@ -1942,6 +2030,9 @@ def sales_customer_statement(request):
         'start_date': start_date,
         'end_date': end_date,
         'section': 'sales_reports',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -1953,12 +2044,13 @@ def sales_customer_statement_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
 
     customer_id = request.GET.get('customer_id')
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
 
-    generator = SalesReportGenerator(tenant, start_date, end_date)
+    generator = SalesReportGenerator(tenant, start_date, end_date, branch=branch)
     report = generator.get_customer_statement(customer_id) if customer_id else None
 
     response = HttpResponse(content_type='text/csv; charset=utf-8')
@@ -1982,13 +2074,17 @@ def sales_customer_balances(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
 
-    generator = SalesReportGenerator(tenant)
+    generator = SalesReportGenerator(tenant, branch=branch)
     report = generator.get_customer_balances()
 
     return render(request, 'sales/reports/customer_balances.html', {
         'report': report,
         'section': 'sales_reports',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -2000,8 +2096,9 @@ def sales_customer_balances_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
 
-    report = SalesReportGenerator(tenant).get_customer_balances()
+    report = SalesReportGenerator(tenant, branch=branch).get_customer_balances()
     response = HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = 'attachment; filename="customer_balances.csv"'
     response.write('﻿')
@@ -2019,14 +2116,15 @@ def sales_payments_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
 
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
     customer_id = request.GET.get('customer_id') or None
 
-    generator = SalesReportGenerator(tenant, start_date, end_date)
+    generator = SalesReportGenerator(tenant, start_date, end_date, branch=branch)
     report = generator.get_payments_report(customer_id=customer_id)
-    customers = Customer.objects.filter(tenant=tenant, is_active=True).order_by('name')
+    customers = Customer.objects.filter(tenant=tenant, is_active=True).for_branch(branch).order_by('name')
 
     return render(request, 'sales/reports/payments.html', {
         'report': report,
@@ -2035,6 +2133,9 @@ def sales_payments_report(request):
         'customers': customers,
         'selected_customer_id': customer_id or '',
         'section': 'sales_reports',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -2046,11 +2147,12 @@ def sales_payments_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
 
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
 
-    report = SalesReportGenerator(tenant, start_date, end_date).get_payments_report()
+    report = SalesReportGenerator(tenant, start_date, end_date, branch=branch).get_payments_report()
     response = HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = f'attachment; filename="sales_payments_{end_date}.csv"'
     response.write('﻿')
@@ -2067,11 +2169,12 @@ def sales_returns_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
 
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
 
-    generator = SalesReportGenerator(tenant, start_date, end_date)
+    generator = SalesReportGenerator(tenant, start_date, end_date, branch=branch)
     report = generator.get_returns_report()
 
     return render(request, 'sales/reports/returns.html', {
@@ -2079,6 +2182,9 @@ def sales_returns_report(request):
         'start_date': start_date,
         'end_date': end_date,
         'section': 'sales_reports',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -2090,11 +2196,12 @@ def sales_returns_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
 
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
 
-    report = SalesReportGenerator(tenant, start_date, end_date).get_returns_report()
+    report = SalesReportGenerator(tenant, start_date, end_date, branch=branch).get_returns_report()
     response = HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = f'attachment; filename="sales_returns_{end_date}.csv"'
     response.write('﻿')
@@ -2115,17 +2222,21 @@ def sales_by_user_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
 
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
     user_id = request.GET.get('user_id') or None
 
-    generator = SalesReportGenerator(tenant, start_date, end_date)
+    generator = SalesReportGenerator(tenant, start_date, end_date, branch=branch)
     report = generator.get_by_user_report(user_id=user_id)
 
     from django.contrib.auth import get_user_model
     from .models import SaleInvoice
-    user_ids = SaleInvoice.objects.filter(tenant=tenant, status='confirmed').values_list('created_by', flat=True).distinct()
+    user_ids = filter_by_branch_strict(
+        SaleInvoice.objects.filter(tenant=tenant, status__in=SaleInvoice.REVENUE_STATUSES),
+        branch,
+    ).values_list('created_by', flat=True).distinct()
     users = get_user_model().objects.filter(pk__in=user_ids).order_by('first_name', 'last_name')
 
     return render(request, 'sales/reports/by_user.html', {
@@ -2135,6 +2246,9 @@ def sales_by_user_report(request):
         'users': users,
         'selected_user_id': user_id,
         'section': 'sales_reports',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -2146,12 +2260,13 @@ def sales_by_user_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
 
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
     user_id = request.GET.get('user_id') or None
 
-    report = SalesReportGenerator(tenant, start_date, end_date).get_by_user_report(user_id=user_id)
+    report = SalesReportGenerator(tenant, start_date, end_date, branch=branch).get_by_user_report(user_id=user_id)
     response = HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = f'attachment; filename="sales_by_user_{end_date}.csv"'
     response.write('\ufeff')
@@ -2184,17 +2299,21 @@ def income_statement_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
 
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
 
-    report = IncomeStatementGenerator(tenant, start_date, end_date).get_report()
+    report = IncomeStatementGenerator(tenant, start_date, end_date, branch=branch).get_report()
 
     return render(request, 'sales/reports/income_statement.html', {
         'report': report,
         'start_date': start_date,
         'end_date': end_date,
         'section': 'sales_reports',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -2207,11 +2326,12 @@ def income_statement_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
 
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
 
-    report = IncomeStatementGenerator(tenant, start_date, end_date).get_report()
+    report = IncomeStatementGenerator(tenant, start_date, end_date, branch=branch).get_report()
     response = HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = f'attachment; filename="income_statement_{end_date}.csv"'
     response.write('﻿')
@@ -2240,17 +2360,18 @@ def sales_profit_margin_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
 
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
     item_id = request.GET.get('item_id') or None
 
-    generator = SalesReportGenerator(tenant, start_date, end_date)
+    generator = SalesReportGenerator(tenant, start_date, end_date, branch=branch)
     report = generator.get_profit_margin_report(item_id=item_id)
 
     items = Item.objects.filter(
         tenant=tenant,
-        sale_lines__invoice__status='confirmed',
+        sale_lines__invoice__status__in=SaleInvoice.REVENUE_STATUSES,
     ).distinct().order_by('name')
 
     return render(request, 'sales/reports/profit_margin.html', {
@@ -2260,6 +2381,9 @@ def sales_profit_margin_report(request):
         'items': items,
         'selected_item_id': item_id,
         'section': 'sales_reports',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -2271,12 +2395,13 @@ def sales_profit_margin_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
 
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
     item_id = request.GET.get('item_id') or None
 
-    report = SalesReportGenerator(tenant, start_date, end_date).get_profit_margin_report(item_id=item_id)
+    report = SalesReportGenerator(tenant, start_date, end_date, branch=branch).get_profit_margin_report(item_id=item_id)
     response = HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = f'attachment; filename="profit_margin_{end_date}.csv"'
     response.write('﻿')
@@ -2310,17 +2435,21 @@ def sales_by_payment_method_report(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
 
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
 
-    report = SalesReportGenerator(tenant, start_date, end_date).get_by_payment_method_report()
+    report = SalesReportGenerator(tenant, start_date, end_date, branch=branch).get_by_payment_method_report()
 
     return render(request, 'sales/reports/by_payment_method.html', {
         'report': report,
         'start_date': start_date,
         'end_date': end_date,
         'section': 'sales_reports',
+        'is_central_admin': is_central_admin,
+        'branches_for_filter': branches_for_filter,
+        'selected_branch': branch,
     })
 
 
@@ -2332,11 +2461,12 @@ def sales_by_payment_method_report_export(request):
     tenant = _ensure_tenant(request)
     if not tenant:
         return redirect('core:no_tenant')
+    branch, is_central_admin, branches_for_filter = resolve_report_scope(request)
 
     start_date = _parse_date(request.GET.get('start_date')) or (timezone.localdate() - timedelta(days=30))
     end_date = _parse_date(request.GET.get('end_date')) or timezone.localdate()
 
-    report = SalesReportGenerator(tenant, start_date, end_date).get_by_payment_method_report()
+    report = SalesReportGenerator(tenant, start_date, end_date, branch=branch).get_by_payment_method_report()
     response = HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = f'attachment; filename="sales_by_payment_{end_date}.csv"'
     response.write('﻿')
@@ -2365,18 +2495,21 @@ def pos_view(request):
     if not tenant:
         return redirect('core:no_tenant')
 
-    stocks = Stock.objects.filter(tenant=tenant, is_active=True).order_by('-is_default', 'name')
+    stocks = Stock.objects.filter(tenant=tenant, is_active=True).for_branch(getattr(request, 'branch', None)).select_related('branch').order_by('-is_default', 'name')
     default_stock = stocks.filter(is_default=True).first() or stocks.first()
 
     from apps.items.models import Category
     categories = Category.objects.filter(tenant=tenant, parent=None).order_by('display_order', 'name')
-    customers = Customer.objects.filter(tenant=tenant, is_active=True).order_by('name').values('id', 'name')
+    customers = Customer.objects.filter(tenant=tenant, is_active=True).for_branch(getattr(request, 'branch', None)).order_by('name').values('id', 'name')
+    from apps.bank_accounts.models import BankAccount
+    bank_accounts = operational_money_accounts(BankAccount.objects.for_tenant(tenant), request).filter(is_active=True).values('id', 'name', 'current_balance')
 
     return render(request, 'sales/pos.html', {
         'stocks': stocks,
         'default_stock': default_stock,
         'categories': categories,
         'customers': list(customers),
+        'bank_accounts': list(bank_accounts),
         'section': 'pos',
     })
 
@@ -2421,8 +2554,9 @@ def pos_items_api(request):
 
     stock_qty_map = {}
     if stock_id and item_ids:
-        sqqs = StockQuantity.objects.filter(
-            tenant=tenant, stock_id=stock_id, item_id__in=item_ids
+        sqqs = filter_by_branch_via(
+            StockQuantity.objects.filter(tenant=tenant, stock_id=stock_id, item_id__in=item_ids),
+            getattr(request, 'branch', None), field='stock__branch',
         ).values('item_id', 'quantity', 'reserved_quantity')
         for sq in sqqs:
             available = float((sq['quantity'] or 0) - (sq['reserved_quantity'] or 0))
@@ -2456,6 +2590,37 @@ def pos_items_api(request):
 
 
 @login_required
+@require_permission('view_items')
+@branch_scope_exempt('ميزة نقطة البيع مقصودة: تعرض توفر الصنف في كل مخازن الفروع الأخرى عمداً لمساعدة الموظف على تحويل العميل لفرع آخر عند نفاد الصنف — رقم كمية فقط، لا بيانات مالية أو عميل حسّاسة')
+def item_other_stocks_api(request):
+    """يُعيد الكمية المتاحة لصنف معيّن في كل مخازن الـ tenant الأخرى (باستثناء المخزن الحالي)."""
+    tenant = _ensure_tenant(request)
+    if not tenant:
+        return _json_error('لا يوجد نشاط تجاري')
+
+    item_id = request.GET.get('item_id')
+    exclude_stock_id = request.GET.get('exclude_stock_id')
+    if not item_id:
+        return _json_error('item_id مطلوب')
+
+    rows = (
+        StockQuantity.objects
+        .filter(tenant=tenant, item_id=item_id, stock__is_active=True)
+        .exclude(stock_id=exclude_stock_id)
+        .select_related('stock')
+    )
+    data = [
+        {
+            'stock_id': r.stock_id,
+            'stock_name': r.stock.name,
+            'available_qty': float(r.available_quantity),
+        }
+        for r in rows if r.available_quantity > 0
+    ]
+    return JsonResponse({'success': True, 'stocks': data}, json_dumps_params={'ensure_ascii': False})
+
+
+@login_required
 @require_permission('add_sales')
 @require_POST
 def pos_checkout_api(request):
@@ -2484,11 +2649,13 @@ def pos_checkout_api(request):
         stock = Stock.objects.get(id=stock_id, tenant=tenant)
     except Stock.DoesNotExist:
         return _json_error('المخزن غير موجود')
+    enforce_branch_ownership(request, stock)
 
     payment_method = body.get('payment_method', 'cash')
     cash_amount = Decimal(str(body.get('cash_amount', 0) or 0))
     bank_amount = Decimal(str(body.get('bank_amount', 0) or 0))
     bank_reference = body.get('bank_reference', '')
+    bank_account_id = body.get('bank_account_id') or None
     customer_id = body.get('customer_id') or None
     discount_type = body.get('discount_type', 'fixed')
     discount_value = Decimal(str(body.get('discount_value', 0) or 0))
@@ -2513,6 +2680,7 @@ def pos_checkout_api(request):
         'cash_amount': cash_amount,
         'bank_amount': bank_amount,
         'bank_reference': bank_reference,
+        'bank_account_id': bank_account_id,
         'notes': notes,
         'customer_id': customer_id,
     }
@@ -2527,13 +2695,15 @@ def pos_checkout_api(request):
             if payment_method == 'credit' and customer_id and cash_amount + bank_amount > 0:
                 partial = cash_amount + bank_amount
                 if partial > 0:
+                    partial_method = 'cash' if cash_amount >= bank_amount else 'bank'
                     record_customer_payment(
                         invoice=invoice,
                         amount=partial,
-                        method='cash' if cash_amount >= bank_amount else 'bank',
+                        method=partial_method,
                         date=timezone.localdate(),
                         reference=bank_reference,
                         user=request.user,
+                        bank_account=invoice.bank_account if partial_method == 'bank' else None,
                     )
 
     except Exception as exc:
@@ -2570,6 +2740,7 @@ def invoice_send_email_ajax(request, pk):
         return _json_error('لا يوجد نشاط تجاري')
 
     invoice = get_object_or_404(SaleInvoice, pk=pk, tenant=tenant)
+    enforce_branch_ownership(request, invoice, field='stock__branch')
 
     if invoice.status not in ('confirmed', 'partially_returned', 'returned'):
         return _json_error('يمكن إرسال الفاتورة المؤكدة فقط')

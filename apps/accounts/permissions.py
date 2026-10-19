@@ -18,35 +18,265 @@ def get_permission_schema_path():
     )
 
 
-def load_permission_schema():
+def _load_structured_schema():
+    """
+    يقرأ apps/accounts/permissions_schema.json كما هو: قائمة sections مرتبة
+    تماماً بترتيب القائمة الجانبية (راجع apps/core/templates/components/
+    sidebar.html)، كل قسم فيه معرّف ثابت (key) بالإنجليزية، اسم ثنائي اللغة
+    (name.ar/name.en)، وسوم اختيارية تحدد من يرى هذا القسم:
+      - role_scope: 'admin_only' | 'branch_ops' | غائبة (= الاثنين معاً).
+      - versions: قائمة version_type المسموحة، أو غائبة (= كل النسخ).
+      - central_role_scope: نطاق بديل يُطبَّق فقط على مشترك نسخة المؤسسات (شراء مركزي)
+        (Tenant.is_central_purchasing): مثلاً المشتريات والموردون branch_ops
+        عادةً لكنها admin_only في الشراء المركزي (يملكها مدير النشاط لا الفرع).
+      - name_when_central: اسم بديل للقسم يظهر في الشراء المركزي.
+      - requires_capability / requires_plan_feature / requires_flag: اسم
+        الخاصية على TenantCapabilities / Tenant.plan_allows / Tenant نفسه.
+    كل صلاحية {key, label: {ar, en}} قد تحمل نفس الوسوم كلها لتضييق صلاحية واحدة
+    داخل قسم أوسع (مثال: transfer_treasuries داخل الخزائن، أو تقرير «المبيعات حسب
+    العميل» role_scope=branch_ops داخل تقارير المبيعات المشتركة بين الدورين).
+
+    هذا هو المصدر الوحيد لشجرة الصلاحيات — أي شاشة/دالة أخرى في المشروع يجب
+    أن تمر عبر الدوال أدناه بدل قراءة الملف مباشرة.
+    """
     schema_path = get_permission_schema_path()
     with schema_path.open('r', encoding='utf-8-sig') as handle:
-        return json.load(handle)
+        data = json.load(handle)
+    return data['sections']
 
 
-def get_permission_schema():
-    return load_permission_schema()
+def load_permission_schema():
+    """
+    توافقاً مع الاستخدام القديم: يرجع الشكل المسطّح {اسم_القسم_عربي: {مفتاح:
+    تسمية_عربية}} بدون أي فلترة حسب الـ tenant — نفس شكل ونتيجة الدالة قبل
+    إعادة الهيكلة تماماً.
+    """
+    return _render_legacy_shape(_load_structured_schema())
+
+
+def get_permission_schema(lang='ar'):
+    return _render_legacy_shape(_load_structured_schema(), lang)
+
+
+def _render_legacy_shape(sections, lang='ar'):
+    """
+    يحوّل قائمة sections المهيكلة إلى الشكل القديم {اسم_القسم: {مفتاح:
+    تسمية}} بلغة lang، بنفس ترتيب القائمة الجانبية — وهذا ما يجعل عرض
+    الصلاحيات في صفحة المجموعات (permission_groups.js عبر Object.entries)
+    يظهر تلقائياً بترتيب السايد بار دون أي تعديل على تلك الصفحة.
+    """
+    return {
+        section['name'][lang]: {
+            perm['key']: perm['label'][lang] for perm in section['permissions']
+        }
+        for section in sections
+    }
 
 
 def get_permission_keys():
-    schema = load_permission_schema()
-    keys = []
-    for section in schema.values():
-        keys.extend(section.keys())
-    return keys
+    return [perm['key'] for section in _load_structured_schema() for perm in section['permissions']]
 
 
 def get_all_permissions():
     return get_permission_keys()
 
 
-def get_permission_choices():
-    schema = load_permission_schema()
-    flatten = []
-    for section, permissions in schema.items():
-        for key, label in permissions.items():
-            flatten.append((key, label))
-    return flatten
+def get_permission_choices(lang='ar'):
+    return [
+        (perm['key'], perm['label'][lang])
+        for section in _load_structured_schema()
+        for perm in section['permissions']
+    ]
+
+
+# تصنيفات حصرية لمدير النشاط (مالك الاشتراك) — لا تُمنح تلقائياً لمشرف الفرع
+# لأنها إما تخص المنشأة ككل (إعدادات) أو قد تُستخدم للتصعيد
+# الصلاحيات (مستخدمين، مجموعات صلاحيات) أو إدارة الفروع نفسها، أو مورد
+# واحد مشترك بين كل الفروع (المتجر الإلكتروني — راجع BRANCH_SCOPING.md §9).
+# مُشتقّة الآن من role_scope=="admin_only" في الملف بدل قائمة يدوية منفصلة —
+# يستحيل أن تختلف عن الملف بعد اليوم (لا مجال لنسيان تحديثها).
+def _effective_role_scope(section, perm, central=True):
+    """
+    نطاق الصلاحية: وسمها الخاص إن وُجد، وإلا نطاق قسمها. وفي الشراء المركزي
+    (central=True) يتقدّم central_role_scope على النطاق العادي إن وُجد (للصلاحية أو
+    لقسمها حين لا يكون للصلاحية role_scope خاص).
+    """
+    if central:
+        override = perm.get('central_role_scope')
+        if override is None and not perm.get('role_scope'):
+            override = section.get('central_role_scope')
+        if override:
+            return override
+    return perm.get('role_scope') or section.get('role_scope')
+
+
+def _fully_scoped(section, scope, central=True):
+    """كل صلاحيات القسم نطاقها scope (وسم الصلاحية يتقدّم على وسم القسم)."""
+    return all(_effective_role_scope(section, perm, central) == scope for perm in section['permissions'])
+
+
+def _excluded_categories(scope, central=True):
+    return {
+        section['name']['ar']
+        for section in _load_structured_schema()
+        if _fully_scoped(section, scope, central)
+    }
+
+
+BRANCH_SUPERVISOR_EXCLUDED_CATEGORIES = _excluded_categories('admin_only', True)
+
+
+def branch_supervisor_excluded_categories(central=True):
+    """أقسام حصرية لمدير النشاط (تُستبعد من مشرف الفرع ومجموعات الفروع)."""
+    return _excluded_categories('admin_only', central)
+
+
+def _keys_excluding_scope(excluded_scope, central=True):
+    return [
+        perm['key']
+        for section in _load_structured_schema()
+        for perm in section['permissions']
+        if _effective_role_scope(section, perm, central) != excluded_scope
+    ]
+
+
+def get_scope_excluded_permission_keys(excluded_scope, central=True):
+    """مفاتيح نطاقها مستبعد داخل أقسام مختلطة (لإخفائها وحدها في شاشة المجموعات)."""
+    return sorted(
+        perm['key']
+        for section in _load_structured_schema()
+        if not _fully_scoped(section, excluded_scope, central)
+        for perm in section['permissions']
+        if _effective_role_scope(section, perm, central) == excluded_scope
+    )
+
+
+def get_branch_supervisor_permission_keys(central=True):
+    """
+    كل مفاتيح الصلاحيات المتاحة لمشرف الفرع تلقائياً: كل الصلاحيات ما عدا
+    الحصرية لمدير النشاط (role_scope == 'admin_only' للقسم أو للصلاحية نفسها).
+    central=True لمشترك نسخة المؤسسات (شراء مركزي): تُستبعد أيضاً المشتريات والموردون وتقاريرهم.
+    """
+    return _keys_excluding_scope('admin_only', central)
+
+
+def get_central_mode_admin_only_keys():
+    """
+    مفاتيح تصبح حصرية للإدارة في الشراء المركزي فقط (المشتريات والموردون وحساباتهم
+    وتقاريرهم) — يُرفضها النظام لأي مستخدم مربوط بفرع مهما كانت مجموعته.
+    """
+    return {
+        perm['key']
+        for section in _load_structured_schema()
+        for perm in section['permissions']
+        if _effective_role_scope(section, perm, True) == 'admin_only'
+        and _effective_role_scope(section, perm, False) != 'admin_only'
+    }
+
+
+# تصنيفات عمليات الفرع اليومية التي تُخفى عن مدير النشاط في نسخة المؤسسات
+# تحديداً (Tenant.is_enterprise()) — هو يبقى إدارياً (فروع، مخازن، مستخدمين،
+# مجموعات صلاحيات، منتجات، موظفين، إعدادات، تقارير) بينما هذه العمليات
+# التشغيلية اليومية تبقى حصراً لمشرف/موظفي كل فرع. باقي الباقات
+# (single_store/multi_stock) غير متأثرة إطلاقاً — راجع خطة "تقييد صلاحيات
+# مدير النشاط في نسخة المؤسسات". مُشتقّة من role_scope=="branch_ops".
+ENTERPRISE_OWNER_EXCLUDED_CATEGORIES = _excluded_categories('branch_ops', True)
+
+
+def enterprise_owner_excluded_categories(central=True):
+    """أقسام عمليات الفرع اليومية التي تُخفى عن مدير النشاط (central: المشتريات والموردون تخصّه)."""
+    return _excluded_categories('branch_ops', central)
+
+
+def get_enterprise_owner_permission_keys(central=True):
+    """
+    كل مفاتيح الصلاحيات المتاحة لمدير النشاط في نسخة المؤسسات: كل الصلاحيات
+    ما عدا عمليات الفرع اليومية وتقارير تفاصيل الفرع (role_scope == 'branch_ops'
+    للقسم أو للصلاحية نفسها) — هو يحتاج صورة عامة، لا عملاء ومناديب كل فرع.
+    central=True لمشترك نسخة المؤسسات (شراء مركزي): المشتريات والموردون وتقاريرهم تدخل صلاحياته.
+    """
+    return _keys_excluding_scope('branch_ops', central)
+
+
+# مفاتيح محظورة على أي مستخدم مربوط بفرع (request.branch/user.branch) بصرف
+# النظر عن دوره أو مجموعة الصلاحيات المسندة له — قيد مطلق (hard rule) وليس
+# افتراضاً قابلاً للتعديل عبر PermissionGroup: المنتج/الصنف كتالوج مركزي
+# واحد يشترك فيه كل الفروع (السعر والوصف والتصنيف... إلخ)، فلا يجوز لأي فرع
+# إضافته أو تعديله أو حذفه — فقط عرض تفاصيله وكشف حركته (راجع
+# User.has_perm_key/get_permission_keys في apps/accounts/models.py). هذا قيد
+# منتج ثابت لا علاقة له بتنظيم الأقسام، فيبقى صريحاً هنا بدل ترميزه في الملف.
+BRANCH_BLOCKED_KEYS = {
+    'add_items',
+    'change_items',
+    'delete_items',
+    'import_items',
+}
+
+
+def branch_assignable_permission_keys(central=True):
+    """
+    أقصى ما يجوز لمستخدم مربوط بفرع أن يمنحه لموظفي فرعه عبر مجموعات الصلاحيات:
+    صلاحيات مشرف الفرع ما عدا المحظور مطلقاً على أي مستخدم فرع.
+    """
+    return set(get_branch_supervisor_permission_keys(central)) - BRANCH_BLOCKED_KEYS
+
+
+def _apply_tenant_filter(sections, *, version_type, has_capability, plan_allows, get_flag):
+    """
+    دالة نقية: تفلتر شجرة الصلاحيات حسب وسوم versions/requires_capability/
+    requires_plan_feature/requires_flag على مستوى القسم ثم المفتاح، عبر
+    استدعاءات/قيم بسيطة بدل كائن Tenant حي — هذا يسمح لمولّد ملفات المرجع
+    (management command) باستدعائها بقدرات "افتراضية قصوى" دون الحاجة لكائن
+    Tenant وهمي غير محفوظ في قاعدة البيانات.
+    """
+    def visible(node):
+        if version_type is not None:
+            versions = node.get('versions')
+            if versions and version_type not in versions:
+                return False
+        capability = node.get('requires_capability')
+        if capability and not has_capability(capability):
+            return False
+        feature = node.get('requires_plan_feature')
+        if feature and not plan_allows(feature):
+            return False
+        flag = node.get('requires_flag')
+        if flag and not get_flag(flag):
+            return False
+        return True
+
+    section_visible = perm_visible = visible
+
+    result = []
+    for section in sections:
+        if not section_visible(section):
+            continue
+        visible_perms = [perm for perm in section['permissions'] if perm_visible(perm)]
+        if not visible_perms:
+            continue
+        # الشراء المركزي (نسخة المؤسسات) يستبدل اسم القسم إن وُجد اسم بديل له.
+        if section.get('name_when_central') and get_flag('central_purchasing'):
+            section = {**section, 'name': section['name_when_central']}
+        result.append({**section, 'permissions': visible_perms})
+    return result
+
+
+def filter_schema_for_tenant(tenant, lang='ar'):
+    """
+    يحذف من شجرة الصلاحيات أي تصنيف/مفتاح يخص ميزة غير متاحة لباقة أو قدرات
+    هذا الـ tenant، حتى لا تعرض شاشة إدارة المجموعات صلاحيات لمزايا لا يستطيع
+    استخدامها أصلاً. نفس الشروط المستخدمة لإخفاء روابط القائمة الجانبية
+    (apps/core/templates/components/sidebar.html) — ويجب أن تبقى متطابقة.
+    """
+    caps = getattr(tenant, 'capabilities', None)
+    sections = _apply_tenant_filter(
+        _load_structured_schema(),
+        version_type=getattr(tenant, 'version_type', None),
+        has_capability=lambda name: bool(getattr(caps, name, False)),
+        plan_allows=tenant.plan_allows,
+        get_flag=lambda name: bool(getattr(tenant, name, False)),
+    )
+    return _render_legacy_shape(sections, lang)
 
 
 def access_allowed(user_group_id, perm):

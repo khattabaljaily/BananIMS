@@ -1,5 +1,5 @@
 /* =============================================================
-   Reports Base CSS — BananIMS  v4.0
+   Reports Base CSS — BANAN  v4.0
    All report templates share this stylesheet.
    Uses CSS variables from main.css → adapts to dark & light mode.
    ============================================================= */
@@ -15,8 +15,8 @@
     padding: 1.5rem 1.75rem;
     position: relative;
     overflow: hidden;
-    background: linear-gradient(135deg, var(--primary) 0%, var(--indigo-700) 60%, #3730a3 100%);
-    box-shadow: 0 8px 32px rgba(19,37,57, 0.28), 0 2px 8px rgba(10,22,34, 0.15);
+    background: linear-gradient(135deg, var(--primary) 0%, #164e63 60%, #164e63 100%);
+    box-shadow: 0 8px 32px rgba(var(--primary-rgb), 0.28), 0 2px 8px rgba(67, 56, 202, 0.15);
 }
 .rpt-hero::before {
     content: '';
@@ -46,7 +46,7 @@
 .rpt-hero--expenses,
 .rpt-hero--treasury,
 .rpt-hero--accounting {
-    background: linear-gradient(135deg, var(--primary) 0%, var(--indigo-700) 60%, #3730a3 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, #164e63 60%, #164e63 100%);
 }
 
 .rpt-hero-inner {
@@ -155,7 +155,7 @@
 .rpt-filters .form-control:focus,
 .rpt-filters .form-select:focus {
     border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(19,37,57, 0.12);
+    box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.12);
     outline: none;
     background: var(--bg-primary);
     color: var(--text-primary);
@@ -176,7 +176,7 @@
     opacity: 0.9;
     color: white;
     transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(19,37,57, 0.35);
+    box-shadow: 0 4px 14px rgba(var(--primary-rgb), 0.35);
 }
 .rpt-filter-btn--sales,
 .rpt-filter-btn--purchases,
@@ -184,7 +184,7 @@
 .rpt-filter-btn--expenses,
 .rpt-filter-btn--treasury,
 .rpt-filter-btn--accounting {
-    background: linear-gradient(135deg, var(--primary) 0%, var(--indigo-700) 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, #164e63 100%);
 }
 
 /* ── KPI Cards Grid ──────────────────────────────────────────── */
@@ -246,13 +246,13 @@
 }
 
 /* KPI accent colors */
-.rpt-kpi--purple::before { background: linear-gradient(90deg, #667eea, #764ba2); }
-.rpt-kpi--purple .rpt-kpi-icon  { background: rgba(102, 126, 234, .12); color: #667eea; }
-.rpt-kpi--purple .rpt-kpi-value { color: #667eea; }
+.rpt-kpi--purple::before { background: linear-gradient(90deg, var(--primary), #e6731f); }
+.rpt-kpi--purple .rpt-kpi-icon  { background: rgba(var(--primary-rgb), .12); color: var(--primary); }
+.rpt-kpi--purple .rpt-kpi-value { color: var(--primary); }
 
-.rpt-kpi--violet::before { background: linear-gradient(90deg, #764ba2, var(--primary)); }
-.rpt-kpi--violet .rpt-kpi-icon  { background: rgba(118, 75, 162, .12); color: #764ba2; }
-.rpt-kpi--violet .rpt-kpi-value { color: #764ba2; }
+.rpt-kpi--violet::before { background: linear-gradient(90deg, #e6731f, var(--primary)); }
+.rpt-kpi--violet .rpt-kpi-icon  { background: rgba(230, 115, 31, .12); color: #e6731f; }
+.rpt-kpi--violet .rpt-kpi-value { color: #e6731f; }
 
 .rpt-kpi--blue::before { background: linear-gradient(90deg, #4facfe, #00f2fe); }
 .rpt-kpi--blue .rpt-kpi-icon  { background: rgba(79, 172, 254, .12); color: #4facfe; }
@@ -266,21 +266,21 @@
 .rpt-kpi--green .rpt-kpi-icon  { background: rgba(17, 153, 142, .12); color: #11998e; }
 .rpt-kpi--green .rpt-kpi-value { color: #11998e; }
 
-.rpt-kpi--emerald::before { background: linear-gradient(90deg, var(--success), #34d399); }
-.rpt-kpi--emerald .rpt-kpi-icon  { background: rgba(16, 185, 129, .12); color: var(--success); }
-.rpt-kpi--emerald .rpt-kpi-value { color: var(--success); }
+.rpt-kpi--emerald::before { background: linear-gradient(90deg, #10b981, #34d399); }
+.rpt-kpi--emerald .rpt-kpi-icon  { background: rgba(16, 185, 129, .12); color: #10b981; }
+.rpt-kpi--emerald .rpt-kpi-value { color: #10b981; }
 
 .rpt-kpi--orange::before { background: linear-gradient(90deg, #fa709a, #fee140); }
 .rpt-kpi--orange .rpt-kpi-icon  { background: rgba(250, 112, 154, .12); color: #fa709a; }
 .rpt-kpi--orange .rpt-kpi-value { color: #fa709a; }
 
-.rpt-kpi--amber::before { background: linear-gradient(90deg, var(--warning), #f97316); }
-.rpt-kpi--amber .rpt-kpi-icon  { background: rgba(245, 158, 11, .12); color: var(--warning); }
-.rpt-kpi--amber .rpt-kpi-value { color: var(--warning); }
+.rpt-kpi--amber::before { background: linear-gradient(90deg, #f59e0b, #f97316); }
+.rpt-kpi--amber .rpt-kpi-icon  { background: rgba(245, 158, 11, .12); color: #f59e0b; }
+.rpt-kpi--amber .rpt-kpi-value { color: #f59e0b; }
 
-.rpt-kpi--red::before { background: linear-gradient(90deg, var(--danger), #f97316); }
-.rpt-kpi--red .rpt-kpi-icon  { background: rgba(239, 68, 68, .12); color: var(--danger); }
-.rpt-kpi--red .rpt-kpi-value { color: var(--danger); }
+.rpt-kpi--red::before { background: linear-gradient(90deg, #ef4444, #f97316); }
+.rpt-kpi--red .rpt-kpi-icon  { background: rgba(239, 68, 68, .12); color: #ef4444; }
+.rpt-kpi--red .rpt-kpi-value { color: #ef4444; }
 
 .rpt-kpi--teal::before { background: linear-gradient(90deg, #14b8a6, #06b6d4); }
 .rpt-kpi--teal .rpt-kpi-icon  { background: rgba(20, 184, 166, .12); color: #14b8a6; }
@@ -329,7 +329,7 @@
 /* ── Tables ──────────────────────────────────────────────────── */
 .rpt-panel .table { margin: 0; }
 .rpt-panel .table thead tr {
-    background: linear-gradient(135deg, var(--primary) 0%, var(--indigo-700) 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, #164e63 100%);
 }
 .rpt-panel .table thead th {
     background: transparent;
@@ -351,9 +351,9 @@
 }
 .rpt-panel .table tbody tr:last-child td { border-bottom: none; }
 .rpt-panel .table tbody tr:nth-child(even) { background: var(--bg-secondary); }
-.rpt-panel .table tbody tr:hover { background: rgba(19,37,57, 0.05); }
+.rpt-panel .table tbody tr:hover { background: rgba(var(--primary-rgb), 0.05); }
 .rpt-panel .table tbody tr.rpt-total-row td {
-    background: linear-gradient(90deg, rgba(19,37,57,.07) 0%, rgba(10,22,34,.04) 100%) !important;
+    background: linear-gradient(90deg, rgba(var(--primary-rgb), .07) 0%, rgba(67,56,202,.04) 100%) !important;
     font-weight: 800;
     font-size: 0.9rem;
     border-top: 2px solid var(--primary) !important;
@@ -375,17 +375,17 @@
     line-height: 1.4;
     white-space: nowrap;
 }
-.rpt-badge--invoice  { background: rgba(19,37,57,.12);  color: var(--primary); }
+.rpt-badge--invoice  { background: rgba(var(--primary-rgb), .12);  color: var(--primary); }
 .rpt-badge--payment  { background: rgba(17,153,142,.12);  color: #11998e; }
-.rpt-badge--return   { background: rgba(239,68,68,.12);   color: var(--danger); }
-.rpt-badge--receipt  { background: rgba(16,185,129,.12);  color: var(--success); }
+.rpt-badge--return   { background: rgba(239,68,68,.12);   color: #ef4444; }
+.rpt-badge--receipt  { background: rgba(16,185,129,.12);  color: #10b981; }
 .rpt-badge--transfer { background: rgba(79,172,254,.12);  color: #4facfe; }
-.rpt-badge--expense  { background: rgba(245,158,11,.12);  color: var(--warning); }
-.rpt-badge--other    { background: rgba(107,114,128,.12); color: var(--text-tertiary); }
+.rpt-badge--expense  { background: rgba(245,158,11,.12);  color: #f59e0b; }
+.rpt-badge--other    { background: rgba(107,114,128,.12); color: #6b7280; }
 
 /* Colored amounts */
 .rpt-pos { color: #11998e !important; font-weight: 700; }
-.rpt-neg { color: var(--danger) !important; font-weight: 700; }
+.rpt-neg { color: #ef4444 !important; font-weight: 700; }
 .rpt-bal { color: var(--primary) !important; font-weight: 700; }
 .rpt-dim { color: var(--text-tertiary) !important; font-size: 0.82rem; }
 
@@ -429,7 +429,7 @@
     flex-shrink: 0;
 }
 .rpt-rank--1     { background: #fef3c7; color: #92400e; }
-.rpt-rank--2     { background: var(--bg-tertiary); color: var(--text-secondary); }
+.rpt-rank--2     { background: #f3f4f6; color: #374151; }
 .rpt-rank--3     { background: #fde8d8; color: #9a3412; }
 .rpt-rank--other { background: var(--bg-tertiary); color: var(--text-tertiary); }
 
@@ -502,7 +502,7 @@
         height: auto !important;
         min-height: 0 !important;
         font-size: 10pt;
-        color: #1a1a2e;
+        color: #1f1712;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
@@ -526,7 +526,7 @@
        Appears above the report title. Shows system name and the
        date the report was printed (set via data-print-date attr). */
     .printable-scene::before {
-        content: 'BananIMS — نظام إدارة المخزون   ·   ' attr(data-print-date);
+        content: 'BANAN — نظام إدارة المخزون   ·   ' attr(data-print-date);
         display: block !important;
         text-align: center;
         font-size: 8pt;
@@ -542,7 +542,7 @@
         background: none !important;
         box-shadow: none !important;
         border: none !important;
-        border-bottom: 2pt solid #132539 !important;
+        border-bottom: 2pt solid var(--primary) !important;
         border-radius: 0 !important;
         padding: 0.7rem 0 1rem !important;
         margin-bottom: 1.25rem !important;
@@ -557,7 +557,7 @@
         gap: 0.2rem !important;
     }
     .rpt-hero-title {
-        color: #1a1a2e !important;
+        color: #1f1712 !important;
         font-size: 18pt !important;
         font-weight: 800 !important;
         letter-spacing: -0.02em;
@@ -602,8 +602,8 @@
         letter-spacing: 0.04em;
     }
     /* Preserve semantic KPI colors in print (print-friendly shades) */
-    .rpt-kpi--purple .rpt-kpi-value  { color: #5b5bd6 !important; }
-    .rpt-kpi--violet .rpt-kpi-value  { color: #6d28d9 !important; }
+    .rpt-kpi--purple .rpt-kpi-value  { color: var(--primary) !important; }
+    .rpt-kpi--violet .rpt-kpi-value  { color: #4fbcb0 !important; }
     .rpt-kpi--blue .rpt-kpi-value    { color: #2563eb !important; }
     .rpt-kpi--cyan .rpt-kpi-value    { color: #1d4ed8 !important; }
     .rpt-kpi--green .rpt-kpi-value   { color: #047857 !important; }
@@ -633,22 +633,22 @@
     .rpt-panel-header--accounting {
         background: #f6f6f9 !important;
         border-bottom: 1pt solid #d1d5db !important;
-        border-right: 3pt solid #132539 !important;
+        border-right: 3pt solid var(--primary) !important;
         border-left: none !important;
         padding: 5pt 10pt !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
     }
     .rpt-panel-title {
-        color: #1a1a2e !important;
+        color: #1f1712 !important;
         font-size: 9.5pt !important;
         font-weight: 700 !important;
     }
-    .rpt-panel-title i { color: #5b5bd6 !important; }
+    .rpt-panel-title i { color: var(--primary) !important; }
 
     /* ── 7. Tables → crisp, color-accurate ─────────────────── */
     .rpt-panel .table thead tr {
-        background: #132539 !important;
+        background: var(--primary) !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
     }
@@ -662,7 +662,7 @@
         letter-spacing: 0.04em;
     }
     .rpt-panel .table tbody td {
-        color: #1a1a2e !important;
+        color: #1f1712 !important;
         border-bottom: 0.5pt solid #e5e7eb !important;
         font-size: 8.5pt !important;
         padding: 4.5pt 8pt !important;
@@ -679,10 +679,10 @@
     }
     .rpt-panel .table tbody tr.rpt-total-row td {
         background: #eef0ff !important;
-        color: #1a1a2e !important;
+        color: #1f1712 !important;
         font-size: 10pt !important;
         font-weight: 800 !important;
-        border-top: 1.5pt solid #132539 !important;
+        border-top: 1.5pt solid var(--primary) !important;
         border-bottom: none !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
@@ -705,7 +705,7 @@
         border: 0.5pt solid currentColor !important;
         opacity: 0.9;
     }
-    .rpt-badge--invoice  { color: #5b5bd6 !important; background: rgba(19,37,57,.07) !important; }
+    .rpt-badge--invoice  { color: var(--primary) !important; background: rgba(var(--primary-rgb), .07) !important; }
     .rpt-badge--payment  { color: #059669 !important; background: rgba(16,185,129,.07) !important; }
     .rpt-badge--return   { color: #dc2626 !important; background: rgba(239,68,68,.07)  !important; }
     .rpt-badge--receipt  { color: #059669 !important; background: rgba(16,185,129,.07) !important; }
@@ -714,19 +714,19 @@
     /* ── 9. Colored amounts → print-safe palette ────────────── */
     .rpt-pos { color: #047857 !important; }
     .rpt-neg { color: #dc2626 !important; }
-    .rpt-bal { color: #5b5bd6 !important; }
+    .rpt-bal { color: var(--primary) !important; }
 
-    td[style*="color:#667eea"], td[style*="color: #667eea"] { color: #5b5bd6 !important; font-weight: 700 !important; }
+    td[style*="color:var(--secondary)"], td[style*="color: var(--secondary)"] { color: var(--primary) !important; font-weight: 700 !important; }
     td[style*="color:#11998e"], td[style*="color: #11998e"] { color: #047857 !important; }
     td[style*="color:#ef4444"], td[style*="color: #ef4444"] { color: #dc2626 !important; }
     td[style*="color:#fa709a"], td[style*="color: #fa709a"] { color: #be185d !important; }
     td[style*="color:#4facfe"], td[style*="color: #4facfe"] { color: #2563eb !important; }
     td[style*="color:#f59e0b"], td[style*="color: #f59e0b"] { color: #b45309 !important; }
     td[style*="color:#10b981"], td[style*="color: #10b981"] { color: #059669 !important; }
-    td[style*="color:#132539"], td[style*="color: #132539"] { color: #5b5bd6 !important; }
+    td[style*="color:var(--primary)"], td[style*="color: var(--primary)"] { color: var(--primary) !important; }
 
     /* ── 10. Section row backgrounds ────────────────────────── */
-    tr[style*="rgba(19,37,57"] {
+    tr[style*="rgba(246,168,33"] {
         background: #f0f0ff !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;

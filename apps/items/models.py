@@ -1,10 +1,6 @@
 """
 Items Models - نماذج المنتجات والأصناف
-مصمم ليعمل مع جميع أنواع الأنشطة التجارية:
-  - صيدلية:          track_expiry, track_batch
-  - إلكترونيات:      track_serial
-  - سوبرماركت:       track_expiry, barcode
-  - شركة طبية/توزيع: track_batch, track_serial
+التصنيفات، المنتجات، الوحدات وعوامل التحويل.
 """
 from django.db import models
 from django.utils.text import slugify
@@ -18,7 +14,7 @@ from apps.core.models import TenantMixin
 class Category(TenantMixin):
     """
     تصنيف هرمي للمنتجات (Parent → Children).
-    مثال: أدوية → مسكنات → باراسيتامول
+    مثال: إلكترونيات → هواتف ذكية → سامسونج
     """
 
     name = models.CharField('اسم التصنيف', max_length=200)
@@ -119,19 +115,14 @@ class Unit(TenantMixin):
 
 class Item(TenantMixin):
     """
-    المنتج الأساسي - مشترك بين جميع أنواع الأنشطة التجارية.
+    المنتج أو الصنف الأساسي في المخزون.
 
-    الحقول المشروطة (تظهر/تُفعَّل حسب نوع النشاط التجاري):
-      track_expiry  → صيدليات، أغذية، مواد كيميائية
-      track_batch   → صناعات، أدوية، أغذية
-      track_serial  → إلكترونيات، أجهزة طبية
+    track_serial: تتبع رقم تسلسلي لكل وحدة مباعة أو مشتراة.
     """
 
     ITEM_TYPE_CHOICES = (
         ('product', 'منتج'),
         ('service', 'خدمة'),
-        ('raw_material', 'مادة خام'),
-        ('semi_finished', 'منتج نصف مصنع'),
     )
 
     # ------ معلومات أساسية ------
@@ -167,6 +158,14 @@ class Item(TenantMixin):
         verbose_name='وحدة الشراء'
     )
     has_multiple_units = models.BooleanField('وحدات متعددة', default=False)
+    supplier = models.ForeignKey(
+        'suppliers.Supplier',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='supplied_items',
+        verbose_name='الشركة الموردة',
+        help_text='الشركة/المورد الذي يوفر هذا الصنف — يُستخدم للتصفية، وهو غير الشركة المصنعة'
+    )
 
     # ------ التسعير ------
     cost_price = models.DecimalField(
@@ -193,19 +192,14 @@ class Item(TenantMixin):
         'الحد الأقصى للمخزون', max_digits=12, decimal_places=4, default=0
     )
 
-    # ------ خيارات التتبع (مشروطة بنوع النشاط) ------
-    # الصيدليات، الأغذية، المواد الكيميائية
-    track_expiry = models.BooleanField(
-        'تتبع تاريخ الانتهاء', default=False
-    )
-    # الصناعات، الأدوية، الأغذية
-    track_batch = models.BooleanField(
-        'تتبع رقم الدفعة / الباتش', default=False
-    )
-    # الإلكترونيات، الأجهزة الطبية
+    # ------ خيارات التتبع ------
     track_serial = models.BooleanField(
         'تتبع الرقم التسلسلي', default=False
     )
+
+    # ------ بيانات المصدر ------
+    manufacturer = models.CharField('الشركة المصنعة', max_length=200, blank=True)
+    country_of_origin = models.CharField('بلد المنشأ', max_length=100, blank=True)
 
     # ------ تفاصيل إضافية ------
     description = models.TextField('الوصف', blank=True)
@@ -226,6 +220,7 @@ class Item(TenantMixin):
             models.Index(fields=['tenant', 'is_active']),
             models.Index(fields=['tenant', 'barcode']),
             models.Index(fields=['tenant', 'category']),
+            models.Index(fields=['tenant', 'supplier']),
             models.Index(fields=['tenant', 'name']),
         ]
 
@@ -246,127 +241,22 @@ class Item(TenantMixin):
     def save(self, *args, **kwargs):
         # توليد SKU تلقائي إذا لم يُحدَّد
         if not self.sku:
-            last = (
-                Item.objects.filter(tenant=self.tenant)
-                .exclude(sku='')
-                .order_by('-id')
-                .first()
-            )
-            next_num = 1
-            if last and last.sku.startswith('ITM-'):
-                try:
-                    next_num = int(last.sku.split('-')[-1]) + 1
-                except ValueError:
-                    next_num = Item.objects.filter(tenant=self.tenant).count() + 1
-            self.sku = f"ITM-{next_num:05d}"
+            self.sku = self._next_auto_sku()
         super().save(*args, **kwargs)
 
-
-# ============================================
-# BOM RECIPE (وصفة التصنيع)
-# ============================================
-
-class BOMRecipe(TenantMixin):
-    """وصفة التصنيع — مرتبطة بمنتج نهائي واحد"""
-    item = models.OneToOneField(
-        Item, on_delete=models.CASCADE, related_name='bom_recipe',
-        verbose_name='المنتج النهائي'
-    )
-    notes = models.TextField('ملاحظات', blank=True)
-    is_active = models.BooleanField('نشط', default=True)
-
-    class Meta:
-        db_table = 'bom_recipes'
-        verbose_name = 'وصفة تصنيع'
-        verbose_name_plural = 'وصفات التصنيع'
-
-    def __str__(self):
-        return f"وصفة: {self.item.name}"
-
-    @property
-    def total_cost(self):
-        return sum(
-            (line.component.cost_price * line.quantity)
-            for line in self.lines.select_related('component').all()
+    def _next_auto_sku(self):
+        """
+        أكبر رقم ITM-xxxxx مستخدم لدى المشترك + 1، مع تخطّي أي رمز محجوز —
+        لا يعتمد على «آخر صنف أُنشئ» لأن رمزه قد يكون مخصصاً أو أُعيد توليده.
+        """
+        existing = set(
+            Item.objects.filter(tenant=self.tenant, sku__startswith='ITM-').values_list('sku', flat=True)
         )
-
-
-class BOMLine(TenantMixin):
-    """مكوّن واحد في الوصفة"""
-    recipe = models.ForeignKey(
-        BOMRecipe, on_delete=models.CASCADE, related_name='lines'
-    )
-    component = models.ForeignKey(
-        Item, on_delete=models.PROTECT, related_name='used_in_bom',
-        verbose_name='المكوّن'
-    )
-    quantity = models.DecimalField('الكمية', max_digits=12, decimal_places=4)
-    unit = models.ForeignKey(
-        'ItemUnit', on_delete=models.SET_NULL, null=True, blank=True,
-        verbose_name='الوحدة'
-    )
-    notes = models.CharField('ملاحظات', max_length=200, blank=True)
-
-    class Meta:
-        db_table = 'bom_lines'
-        verbose_name = 'مكوّن وصفة'
-        verbose_name_plural = 'مكوّنات الوصفات'
-
-    @property
-    def line_total(self):
-        return self.quantity * self.component.cost_price
-
-    def __str__(self):
-        return f"{self.component.name} × {self.quantity}"
-
-
-# ============================================
-# ITEM BATCH (دفعات المنتج)
-# ============================================
-
-class ItemBatch(TenantMixin):
-    """تتبع الدفعات والمخزون لكل دفعة"""
-    item = models.ForeignKey(
-        Item, on_delete=models.CASCADE, related_name='batches',
-        verbose_name='المنتج'
-    )
-    stock = models.ForeignKey(
-        'stocks.Stock', on_delete=models.CASCADE, related_name='batches',
-        verbose_name='المخزن'
-    )
-    batch_number = models.CharField('رقم الدفعة', max_length=100, blank=True)
-    expiry_date = models.DateField('تاريخ انتهاء الصلاحية', null=True, blank=True)
-    quantity_received = models.DecimalField('الكمية الواردة', max_digits=12, decimal_places=4, default=0)
-    quantity_remaining = models.DecimalField('الكمية المتبقية', max_digits=12, decimal_places=4, default=0)
-    purchase_date = models.DateField('تاريخ الشراء', null=True, blank=True)
-    notes = models.TextField('ملاحظات', blank=True)
-
-    class Meta:
-        db_table = 'item_batches'
-        verbose_name = 'دفعة'
-        verbose_name_plural = 'الدفعات'
-        ordering = ['expiry_date', 'batch_number']
-        indexes = [
-            models.Index(fields=['tenant', 'item', 'stock']),
-            models.Index(fields=['tenant', 'expiry_date']),
-        ]
-
-    def __str__(self):
-        return f"{self.item.name} — {self.batch_number or 'بدون رقم'}"
-
-    @property
-    def is_expired(self):
-        from django.utils import timezone
-        if self.expiry_date:
-            return self.expiry_date < timezone.localdate()
-        return False
-
-    @property
-    def days_to_expiry(self):
-        from django.utils import timezone
-        if self.expiry_date:
-            return (self.expiry_date - timezone.localdate()).days
-        return None
+        numbers = [int(s[4:]) for s in existing if s[4:].isdigit()]
+        next_num = (max(numbers) + 1) if numbers else 1
+        while f"ITM-{next_num:05d}" in existing:
+            next_num += 1
+        return f"ITM-{next_num:05d}"
 
 
 # ============================================
@@ -377,7 +267,7 @@ class ItemUnit(TenantMixin):
     """
     وحدات قياس مرتبطة بمنتج محدد.
     كل وحدة لها عامل تحويل بالنسبة للوحدة الأصغر (factor=1).
-    مثال: حبة=1، كرتون=12، طرد=144
+    مثال: قطعة=1، كرتون=12، طرد=144
     """
     item = models.ForeignKey(
         Item,
@@ -402,3 +292,18 @@ class ItemUnit(TenantMixin):
 
     def __str__(self):
         return self.name
+
+
+def unit_for_item_unit(tenant, item_unit_id):
+    """
+    بنود الفواتير ترتبط بجدول الوحدات العام (Unit)، بينما الواجهة ترسل معرّف
+    وحدة المنتج (ItemUnit). المعرّفان من جدولين مختلفين، فالبحث بالمعرّف مباشرة
+    كان يربط البند بوحدة أخرى لا علاقة لها. نطابق بالاسم، وإلا نترك الوحدة فارغة
+    (المعامل unit_factor هو ما يحدد الكمية فعلياً).
+    """
+    if not item_unit_id:
+        return None
+    name = ItemUnit.objects.filter(pk=item_unit_id, tenant=tenant).values_list('name', flat=True).first()
+    if not name:
+        return None
+    return Unit.objects.filter(tenant=tenant, name=name).first()

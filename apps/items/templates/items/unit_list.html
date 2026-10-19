@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/items.css' %}?v=2.0">
+<link rel="stylesheet" href="{% static 'css/items.css' %}?v=1.1">
 <style>
 /* ── Unit type toggle (same pattern as categories) ─────────── */
 .unit-type-row {
@@ -32,8 +32,8 @@
 .unit-type-btn input[type=radio] { display: none; }
 .unit-type-btn.active {
   border-color: var(--indigo-500, var(--primary));
-  background: var(--indigo-50, var(--indigo-50));
-  color: var(--indigo-700, var(--indigo-700));
+  background: var(--indigo-50, #ecfeff);
+  color: var(--indigo-700, #164e63);
 }
 .unit-type-btn i { font-size: 1.1rem; display: block; margin-bottom: .2rem; }
 .unit-type-btn small { font-size: .7rem; font-weight: 400; opacity: .75; }
@@ -76,9 +76,9 @@
 [data-theme="dark"] .cx-label-opt { background: rgba(255,255,255,.08); }
 
 /* ── Type badge in table ──────────────────────────────────── */
-.unit-badge-standalone { background:var(--indigo-50); color:var(--indigo-700); border-radius:20px; padding:.18rem .65rem; font-size:.68rem; font-weight:700; }
+.unit-badge-standalone { background:#ecfeff; color:#164e63; border-radius:20px; padding:.18rem .65rem; font-size:.68rem; font-weight:700; }
 .unit-badge-derived    { background:#f0fdf4; color:#166534; border-radius:20px; padding:.18rem .65rem; font-size:.68rem; font-weight:700; }
-[data-theme="dark"] .unit-badge-standalone { background:rgba(19,37,57,.18); color:#a5b4fc; }
+[data-theme="dark"] .unit-badge-standalone { background:rgba(var(--primary-rgb),.18); color:#4fbcb0; }
 [data-theme="dark"] .unit-badge-derived    { background:rgba(16,185,129,.18); color:#6ee7b7; }
 </style>
 {% endblock %}
@@ -174,7 +174,7 @@
               <label class="unit-type-btn" id="btnTypeDerived">
                 <input type="radio" name="unit_type" value="derived">
                 <i class="fas fa-cubes"></i>
-                عبوة أو مجموعة
+                وحدة مجمّعة
                 <small>كرتون · كيس · حزمة</small>
               </label>
             </div>
@@ -201,7 +201,7 @@
             <div id="derivedRow" class="d-none">
               <div class="derived-title">
                 <i class="fas fa-link"></i>
-                هذه العبوة تحتوي على كم وحدة؟
+                كم وحدة تحتوي هذه الوحدة المجمّعة؟
               </div>
               <div class="row g-3">
                 <div class="col-7">
@@ -307,7 +307,7 @@
       { data: 'abbreviation', render: a => a === '-' ? '<span class="cxr-empty">—</span>' : `<code class="cxr-code">${a}</code>` },
       { data: null, render: function(_, __, r) {
           return r.base_unit && r.base_unit !== '-'
-            ? '<span class="unit-badge-derived">عبوة</span>'
+            ? '<span class="unit-badge-derived">مجمّعة</span>'
             : '<span class="unit-badge-standalone">عادية</span>';
       }},
       { data: null, render: function(_, __, r) {
