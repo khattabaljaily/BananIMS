@@ -19,7 +19,7 @@ def _ensure_tenant(request):
     return getattr(request, 'tenant', None)
 
 
-from apps.core.utils import enforce_branch_ownership, enforce_transfer_branch_ownership, resolve_report_scope
+from apps.core.utils import dt_ordering, enforce_branch_ownership, enforce_transfer_branch_ownership, resolve_report_scope
 
 
 def _serialize_form_errors(form):
@@ -129,7 +129,7 @@ def treasury_table_api(request):
     if order_dir == 'desc':
         order_field = f'-{order_field}'
 
-    queryset = queryset.order_by(order_field)[start:start + length]
+    queryset = queryset.order_by(*dt_ordering(request, order_field))[start:start + length]
 
     data = [
         {

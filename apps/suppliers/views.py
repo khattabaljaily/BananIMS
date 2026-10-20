@@ -15,7 +15,7 @@ import json
 
 from apps.accounts.decorators import require_permission, require_scoped_permission, branch_scope_exempt
 from apps.core.utils import (
-    filter_by_branch_via, enforce_branch_ownership, operational_money_accounts,
+    dt_ordering, filter_by_branch_via, enforce_branch_ownership, operational_money_accounts,
     is_central_request, scoped_suppliers, scoped_money_accounts,
 )
 from .forms import SupplierForm
@@ -134,7 +134,7 @@ def supplier_table_api(request):
     if order_dir == 'desc':
         order_field = f'-{order_field}'
 
-    queryset = queryset.order_by(order_field)[start:start + length]
+    queryset = queryset.order_by(*dt_ordering(request, order_field))[start:start + length]
 
     def _supplier_balance_data(supplier):
         ledger_total = SupplierLedger.objects.filter(tenant=tenant, supplier=supplier).aggregate(
@@ -420,7 +420,7 @@ def supplier_payments_table_api(request):
         order_field = col_map.get(order_col, 'id')
         if order_dir == 'desc':
             order_field = f'-{order_field}'
-    qs = qs.order_by(order_field)
+    qs = qs.order_by(*dt_ordering(request, order_field))
 
     cancel_qs = SupplierLedger.objects.for_tenant(tenant).filter(
         reference_type='supplier_payment_cancel',

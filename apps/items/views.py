@@ -11,7 +11,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from decimal import Decimal
 from apps.accounts.decorators import require_permission, branch_scope_exempt
-from apps.core.utils import filter_by_branch_via
+from apps.core.utils import dt_ordering, filter_by_branch_via
 from .forms import CategoryForm, ItemForm, UnitForm
 from .models import Category, Item, Unit
 from apps.sales.models import StockMovement
@@ -164,7 +164,7 @@ def item_table_api(request):
     if order_dir == 'desc':
         order_field = f'-{order_field}'
 
-    qs = qs.order_by(order_field)[start:start + length]
+    qs = qs.order_by(*dt_ordering(request, order_field))[start:start + length]
 
     def _unit_label(item):
         units = list(item.item_units.order_by('factor'))
@@ -716,7 +716,7 @@ def unit_table_api(request):
         qs = qs.filter(Q(name__icontains=search_value) | Q(abbreviation__icontains=search_value))
 
     records_filtered = qs.count()
-    qs = qs[start:start + length]
+    qs = qs.order_by('-id')[start:start + length]
 
     data = [
         {
